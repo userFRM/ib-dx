@@ -2231,6 +2231,12 @@ impl CcpState {
             )
         };
         log::warn!("Request abandoned: {reason}");
+        // One the engine opened for itself is refused to nobody.
+        if let crate::types::ControlCommand::Subscribe { req_id, .. } = cmd
+            && crate::engine::hot_loop::intake::engine_owned(*req_id)
+        {
+            return;
+        }
         // A book's number is free again, as a gateway frees it.
         if let crate::types::ControlCommand::SubscribeDepth { req_id, .. } = cmd {
             shared.market.note_book_let_go(*req_id);

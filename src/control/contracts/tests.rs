@@ -1592,7 +1592,7 @@ mod unread_tag_tests {
     #[test]
     fn the_tags_read_include_the_ones_known_to_be_read() {
         let read = tags_read_from_a_definition();
-        for known in [TAG_IB_CON_ID, TAG_EV_RULE, 6577, 6624] {
+        for known in [TAG_IB_CON_ID, TAG_EV_RULE, 200, 6624] {
             assert!(read.contains(&known), "{known} is read but not reported as read");
         }
         assert!(read.len() > 40, "only {} tags reported as read", read.len());

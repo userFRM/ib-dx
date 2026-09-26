@@ -1256,7 +1256,6 @@ fn parse_secdef_record(
         def.stock_type = v.clone();
     }
     if let Some(v) = tags.get(&200) { def.contract_month = v.clone(); }
-    if let Some(v) = tags.get(&6577) { def.under_sec_type = v.clone(); }
     if let Some(v) = tags.get(&TAG_EV_RULE) { def.ev_rule = v.clone(); }
     if let Some(v) = tags.get(&TAG_EV_MULTIPLIER) && let Ok(x) = v.trim().parse() {
         def.ev_multiplier = x;
@@ -1274,9 +1273,7 @@ fn parse_secdef_record(
     if let Some(v) = tags.get(&TAG_UNDERLYING_SYMBOL) {
         def.under_symbol = v.clone();
     }
-    if let Some(v) = tags.get(&TAG_UNDERLYING_SEC_TYPE)
-        && def.under_sec_type.is_empty()
-    {
+    if let Some(v) = tags.get(&TAG_UNDERLYING_SEC_TYPE) {
         def.under_sec_type = v.clone();
     }
     if let Some(v) = tags.get(&TAG_LAST_TRADE_TIME) {

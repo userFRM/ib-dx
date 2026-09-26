@@ -11845,7 +11845,7 @@ fn internal_definition_answers_keep_each_contracts_full_pricing_fields() {
     let mut ccp = CcpState::new();
     let mut context = Context::new();
     let shared = SharedState::new();
-    let frame = b"35=d\x01320=4026531840\x0155=AAA\x01167=CFD\x016008=41\x01207=BEST\x016031=26\x016577=CASH\x016431=LMT,STP\x0155=BBB\x01167=CS\x016008=42\x01207=NASDAQ\x016031=27\x016431=LMT,TRAIL\x016019=1\x016031=26\x016020=0\x016021=1\x016026=1\x016023=0\x016027=0.01\x016031=27\x016020=1\x016021=100\x016026=1\x016023=0\x016027=0.25\x01";
+    let frame = b"35=d\x01320=4026531840\x0155=AAA\x01167=CFD\x016008=41\x01207=BEST\x016031=26\x01310=CASH\x016431=LMT,STP\x0155=BBB\x01167=CS\x016008=42\x01207=NASDAQ\x016031=27\x016431=LMT,TRAIL\x016019=1\x016031=26\x016020=0\x016021=1\x016026=1\x016023=0\x016027=0.01\x016031=27\x016020=1\x016021=100\x016026=1\x016023=0\x016027=0.25\x01";
     ccp.process_ccp_message(frame, &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "");
     let first = shared.reference.contract_definition(41, "SMART").unwrap();
     let second = shared.reference.contract_definition(42, "NASDAQ").unwrap();

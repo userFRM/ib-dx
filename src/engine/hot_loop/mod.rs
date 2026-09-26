@@ -186,6 +186,10 @@ pub struct HotLoop {
     /// How many watches the engine has opened for itself, which numbers the
     /// next one.
     own_watches: i64,
+    /// The watches the option model holds on its options' underlyings'
+    /// quotes: the number each was opened under and how many of the model's
+    /// underlyings it serves, by the contract watched.
+    underlying_watches: std::collections::HashMap<i64, (i64, usize)>,
     /// Spread scans held behind another scan of the same contract.
     pub(crate) held_scans: Vec<ControlCommand>,
     pending_farm_reconnect: Option<Receiver<io::Result<Connection>>>,
@@ -517,6 +521,7 @@ impl HotLoop {
             md_requests: std::collections::HashMap::new(),
             md_numbers: 0,
             own_watches: 0,
+            underlying_watches: std::collections::HashMap::new(),
             held_scans: Vec::new(),
             pending_farm_reconnect: None,
             ccp_next_attempt_at: None,
@@ -580,6 +585,31 @@ impl HotLoop {
     pub fn poll_once(&mut self) {
         self.poll_control_commands();
         self.poll_attached_quotes(Instant::now());
+    }
+
+    /// Ask for what the option model waits on: over the security definition
+    /// connection, an option's sessions and its currency's rates; and the
+    /// watches it holds on its options' underlyings' own quotes, taken and
+    /// given up as its options come and go.
+    pub(crate) fn serve_model_wants(&mut self) {
+        for con_id in std::mem::take(&mut self.farm.schedules_wanted) {
+            self.ccp.ask_schedule(con_id, &self.shared, &mut self.ccp_conn, &mut self.hb);
+        }
+        for currency in std::mem::take(&mut self.farm.rates_wanted) {
+            self.ccp.ask_currency_rates(&currency, &mut self.ccp_conn, &mut self.hb);
+        }
+        for (con_id, sec_type) in std::mem::take(&mut self.farm.watches_wanted) {
+            self.watch_underlying(con_id, sec_type);
+        }
+        for con_id in std::mem::take(&mut self.farm.watches_ended) {
+            let Some((req_id, serving)) = self.underlying_watches.get_mut(&con_id) else { continue };
+            *serving -= 1;
+            if *serving == 0 {
+                let req_id = *req_id;
+                self.underlying_watches.remove(&con_id);
+                self.withdraw_mkt_data(req_id);
+            }
+        }
     }
 
     /// Whether the hot loop is still running. For testing.
@@ -866,15 +896,7 @@ impl HotLoop {
                 &mut self.farm_conn, &mut self.context, &self.shared,
                 &self.event_tx, &mut self.hb,
             );
-            // What the option model waits on that is asked for over the
-            // security definition connection: an option's sessions and its
-            // currency's rates.
-            for con_id in std::mem::take(&mut self.farm.schedules_wanted) {
-                self.ccp.ask_schedule(con_id, &self.shared, &mut self.ccp_conn, &mut self.hb);
-            }
-            for currency in std::mem::take(&mut self.farm.rates_wanted) {
-                self.ccp.ask_currency_rates(&currency, &mut self.ccp_conn, &mut self.hb);
-            }
+            self.serve_model_wants();
 
             // 1b. Busy-poll historical socket for tick-by-tick data
             self.poll_historical();

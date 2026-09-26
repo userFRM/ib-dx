@@ -293,7 +293,9 @@ it:
 - `tickAttrib` is 1 where the mid's volatility was worked from prices.
 - The underlying's price is the one the chain parameters on the underlying
   (687, asked for once per underlying on each connection) state for the
-  option's trading class, multiplier and last trading day.
+  option's trading class, multiplier and last trading day, and where they
+  state none, the mark the model holds from the underlying's own quote
+  (below).
 - The present value of dividends is that of the payments the underlying's
   schedule states over the option's life, discounted at the currency's rate
   for the option's term. The currency's rates are the venue's answer to the
@@ -328,10 +330,13 @@ gateway takes, as [Limits](./limits.md) says.
 - The greeks are this client's option model's at that volatility, the model for
   volatilities worked from prices where any the venue states for the option,
   or its chain parameters, say so. They are worked from the underlying's price
-  the chain parameters state — the first set for the option's class at its
-  multiplier, or, where no set names the class, the only set or else the first
-  for its last trading day at its multiplier — the time to the option's
-  expiry, the currency's rate for its term and the dividends above. A side's
+  the model holds from the underlying's own quote (below) — its mark, else the
+  midpoint of its sides, else its last, else its close — and, until the model
+  holds one, from the price the chain parameters state — the first set for the
+  option's class at its multiplier, or, where no set names the class, the only
+  set or else the first for its last trading day at its multiplier — and from
+  the time to the option's expiry, the currency's rate for its term and the
+  dividends above. A side's
   greeks are replaced only by four that can be worked out. Its theta is held
   to no more than its time value, its price less its intrinsic value, as a
   gateway holds it; a side with no price has no time value to hold it to, so
@@ -354,6 +359,28 @@ gateway takes, as [Limits](./limits.md) says.
   quote. Each figure a side does not state is the last one of that side the
   request was sent, and a request is sent a side when that differs from the
   last.
+
+A gateway's option model watches each modelled option's underlying's own
+quote itself, and so does this client, under a request of its own that nothing
+is said of to a program: on the listing a gateway prefers for the contract,
+which is the one the venue names when asked for the contract alone (the smart
+one for a share), or, for an index whose definition names another contract it
+is priced off, on that contract, each of its prices multiplied by the figure
+the definition states beside it. The watch holds a quote line as any
+subscription does, shares a subscription a program holds on the same listing,
+and is withdrawn with the last option on the underlying. The model marks the
+underlying from that quote as a gateway marks it: at the venue's mark for the
+contract where something asked for it (221); else, where trading has halted or
+the subscription stands with nothing quoted, at the market price the account's
+portfolio states for it; else an index at its last, and anything else at its
+last, at the midpoint of its sides where it trades no last to be marked at, or
+at its close where the close's attributes do not say it does not stand; a mark
+outside the sides is held to them unless they cross, and a quote with no mark
+is marked at the midpoint of its sides, or its bid; and a mark that is not a
+price the contract may take is replaced by the last. The model takes nothing
+from the quote until the mark first stands, then its bid, ask, last and close
+to single precision and the mark at once, and afterwards each part again as it
+changes, with the mark as it stands then.
 
 A snapshot of an option is held, as a gateway holds it, until it has been sent
 the model and the bid's, the ask's and the last's computations as well as the

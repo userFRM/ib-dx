@@ -1488,6 +1488,43 @@ impl HotLoop {
         req_id
     }
 
+    /// Watch the quote of an option's underlying for the option model, under
+    /// a number of the engine's own, which nothing is said of to a caller:
+    /// named by the contract alone, which the venue answers with the listing
+    /// a gateway prefers for it, the smart one where the contract has one.
+    pub(crate) fn watch_underlying(&mut self, con_id: i64, sec_type: String) {
+        // One watch per contract, whichever of the model's underlyings it
+        // serves.
+        if let Some((req_id, serving)) = self.underlying_watches.get_mut(&con_id) {
+            *serving += 1;
+            if let Some(slot) = self.md_requests.get(req_id).map(|req| req.slot) {
+                self.farm.note_underlying_watch(con_id, slot);
+            }
+            return;
+        }
+        self.own_watches += 1;
+        let req_id = OWN_WATCHES + self.own_watches;
+        self.underlying_watches.insert(con_id, (req_id, 1));
+        let cmd = ControlCommand::Subscribe {
+            req_id,
+            contract: crate::types::ContractRef { con_id, sec_type, ..Default::default() },
+            filters: Default::default(),
+            mode_9887: 0,
+            delayed_mode: None,
+            frozen: false,
+            delayed_frozen: false,
+            regulatory_snapshot: false,
+            snapshot: false,
+            generic_ticks: Vec::new(),
+            news: None,
+            spread_scan: None,
+            calculation: None,
+        };
+        if let Some(cmd) = self.ccp.hold_until_named(cmd, &mut self.ccp_conn, &mut self.hb, &self.shared) {
+            self.take_subscription(cmd);
+        }
+    }
+
     /// Refuse, with the stop's words, every exercise still watching for its
     /// option's in-the-money figure: a gateway sets no bound on that wait, so
     /// a stop does not wait for it.

@@ -83,11 +83,8 @@ fn stated_volatilities(series: u32, payload: &[u8]) -> Vec<(usize, Option<(f64, 
 /// The underlying's price the chain parameters state for an option: that of
 /// the first set covering the option's trading class at its multiplier, where
 /// the set has a term for the option's last trading day and says its price
-/// stands.
-///
-/// Where they state none a gateway takes the underlying's mark. The rule it
-/// marks the underlying by is not carried here, so no price is stated in its
-/// place.
+/// stands. Where they state none a gateway takes the mark its watch on the
+/// underlying's quote holds.
 fn underlying_price(
     sets: &[ChainModelParameters],
     class: &str,
@@ -135,11 +132,14 @@ fn modelled_underlying_price(
     set.and_then(|set| set.underlying_price).unwrap_or(UNSTATED)
 }
 
+/// What is held for an option's underlying.
+fn underlying_of<'a>(held: &'a [UnderlyingModel], terms: &OptionTerms) -> Option<&'a UnderlyingModel> {
+    held.iter().find(|held| Some(held.con_id) == terms.underlying)
+}
+
 /// The chain parameters held for an option's underlying.
 fn chain_of<'a>(held: &'a [UnderlyingModel], terms: &OptionTerms) -> &'a [ChainModelParameters] {
-    held.iter()
-        .find(|held| Some(held.con_id) == terms.underlying)
-        .map_or(&[], |held| held.sets.as_slice())
+    underlying_of(held, terms).map_or(&[], |held| held.sets.as_slice())
 }
 
 /// A side's tick as last built, with the volatility it was built at.
@@ -467,7 +467,12 @@ impl FarmState {
         };
         let und_price = terms.map_or(UNSTATED, |terms| {
             let sets = chain_of(&self.underlying_models, terms);
-            underlying_price(sets, &terms.trading_class, terms.multiplier, &terms.last_trading_day)
+            match underlying_price(sets, &terms.trading_class, terms.multiplier, &terms.last_trading_day) {
+                UNSTATED => underlying_of(&self.underlying_models, terms)
+                    .and_then(|held| held.price)
+                    .map_or(UNSTATED, |price| price.mark),
+                stated => stated,
+            }
         });
         let pv_dividend = option.inputs.as_ref().map_or(UNSTATED, |inputs| inputs.pv_dividend);
         tick.figures = as_stated([
@@ -583,12 +588,20 @@ impl FarmState {
                 continue;
             };
             let sets = chain_of(&self.underlying_models, terms);
-            let spot = modelled_underlying_price(
-                sets,
-                &terms.trading_class,
-                terms.multiplier,
-                &terms.last_trading_day,
-            );
+            // The price the watch on the underlying's quote holds, and the
+            // chain parameters' where it holds none.
+            let spot = underlying_of(&self.underlying_models, terms)
+                .and_then(|held| held.price)
+                .map(|price| price.preferred())
+                .filter(|spot| !spot.is_nan())
+                .unwrap_or_else(|| {
+                    modelled_underlying_price(
+                        sets,
+                        &terms.trading_class,
+                        terms.multiplier,
+                        &terms.last_trading_day,
+                    )
+                });
             if !stated(spot) {
                 continue;
             }
@@ -739,17 +752,29 @@ impl FarmState {
             let Some(underlying) = underlying else { continue };
             match self.underlying_models.iter_mut().find(|held| held.con_id == underlying) {
                 Some(held) => held.options.push(*instrument),
-                None => self.underlying_models.push(UnderlyingModel {
-                    con_id: underlying,
-                    sec_type: crate::control::contracts::sec_type_to_fix(
-                        &definition.under_sec_type,
-                    )
-                    .to_string(),
-                    req_id: None,
-                    server_tag: None,
-                    options: vec![*instrument],
-                    sets: Vec::new(),
-                }),
+                None => {
+                    // And its own quote watched, on the listing a gateway
+                    // prefers for it, which the venue names when asked for
+                    // the contract alone.
+                    self.watches_wanted.push((underlying, definition.under_sec_type.clone()));
+                    self.underlying_models.push(UnderlyingModel {
+                        con_id: underlying,
+                        sec_type: crate::control::contracts::sec_type_to_fix(
+                            &definition.under_sec_type,
+                        )
+                        .to_string(),
+                        req_id: None,
+                        server_tag: None,
+                        options: vec![*instrument],
+                        sets: Vec::new(),
+                        under_sec_type: definition.under_sec_type.clone(),
+                        watched: underlying,
+                        scale: 1.0,
+                        watch: None,
+                        price: None,
+                        seen: Default::default(),
+                    })
+                }
             }
         }
         let Some(conn) = farm_conn.as_mut() else { return };
@@ -814,6 +839,7 @@ impl FarmState {
             return;
         }
         let held = self.underlying_models.remove(at);
+        self.watches_ended.push(held.watched);
         let (Some(conn), Some(req_id)) = (farm_conn.as_mut(), held.req_id) else { return };
         let req_id = req_id.to_string();
         let con_id = (held.con_id as u32).to_string();

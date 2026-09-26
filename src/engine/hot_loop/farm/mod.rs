@@ -3,6 +3,7 @@ use std::time::Instant;
 mod attached_quotes;
 mod frozen;
 mod option_ticks;
+mod underlying_price;
 
 use crate::bridge::{Event, SharedState};
 use crate::protocol::datetime::chrono_free_timestamp;
@@ -995,6 +996,21 @@ struct UnderlyingModel {
     /// What they last stated. It stands through a reconnect until they state
     /// it again, as the rest of what the model is built from does.
     sets: Vec<crate::protocol::chain_model::ChainModelParameters>,
+    /// The underlying's security type as its options' definitions state it.
+    under_sec_type: String,
+    /// The contract whose quote the underlying is watched on: its own, or
+    /// the one its definition says it is priced off, with the figure each of
+    /// that contract's prices is multiplied by.
+    watched: i64,
+    scale: f64,
+    /// The slot the watch is served on, once the venue has named the
+    /// contract and the watch is taken.
+    watch: Option<InstrumentId>,
+    /// What the model holds of the underlying's price from that quote, from
+    /// the first time its mark stands.
+    price: Option<underlying_price::UnderlyingPrice>,
+    /// What the watch last read of the quote.
+    seen: underlying_price::Seen,
 }
 
 /// An option a gateway's model is asked for, and what its model tick is built
@@ -1185,6 +1201,14 @@ pub(crate) struct FarmState {
     /// The chain parameters asked for on the underlyings of the options
     /// modelled here.
     underlying_models: Vec<UnderlyingModel>,
+    /// The underlyings whose own quote the option model is to watch, and
+    /// those it no longer needs, by contract and type: taken and withdrawn
+    /// by the engine under numbers of its own.
+    pub(crate) watches_wanted: Vec<(i64, String)>,
+    pub(crate) watches_ended: Vec<i64>,
+    /// What each quote's record last stated of whether trading has halted,
+    /// the lowest bit.
+    quote_flags: std::collections::HashMap<InstrumentId, i32>,
     /// What generic tick each request asked for, as (req_id, request type).
     /// The venue numbers a generic tick separately from the prices and states
     /// nothing on the frames themselves about which tick they carry, so the
@@ -2500,6 +2524,9 @@ impl FarmState {
             rates_wanted: Vec::new(),
             currency_curves: std::collections::HashMap::new(),
             underlying_models: Vec::new(),
+            watches_wanted: Vec::new(),
+            watches_ended: Vec::new(),
+            quote_flags: std::collections::HashMap::new(),
             generic_tick_reqs: Vec::new(),
             asked_generic_ticks: std::collections::HashMap::new(),
             subscription_asked_on: std::collections::HashMap::new(),
@@ -3000,6 +3027,12 @@ impl FarmState {
                     let (eligible, _) = shared.market.quote_attribute_masks(instrument);
                     shared.market.note_quote_attributes(instrument, eligible, tick.magnitude);
                 }
+                // Whether trading has halted, which the underlying's mark
+                // reads. Kept beside the quote, as the two masks above are.
+                13 if !held => {
+                    let flags = tick.magnitude as i32;
+                    applied = self.quote_flags.insert(instrument, flags) != Some(flags);
+                }
                 tick_decoder::O_BID_EXCH => { q.bid_exch_mask = tick.magnitude; }
                 tick_decoder::O_ASK_EXCH => { q.ask_exch_mask = tick.magnitude; }
                 tick_decoder::O_LAST_EXCH => { q.last_exch_mask = tick.magnitude; }
@@ -3046,6 +3079,7 @@ impl FarmState {
             let present = std::mem::take(&mut self.pricing_present[instrument as usize]);
             shared.market.push_quote(instrument, context.quote(instrument));
             self.note_option_quote(instrument, present, shared);
+            self.note_underlying_quote(instrument, context, shared);
             emit(event_tx, Event::Tick(instrument));
             notified[(instrument >> 6) as usize] &= !(1u64 << (instrument & 63));
         }
@@ -4141,6 +4175,7 @@ impl FarmState {
         // print for everything that traded in between, or for a negative
         // number of shares where the venue has started its day over.
         self.rt_volume_totals.retain(|(watched, _), _| *watched != instrument);
+        self.quote_flags.remove(&instrument);
         // And what was stated for the option model, whether or not the farm is
         // up: left behind, the next contract on this slot is modelled from it.
         self.option_ticks_due.remove(&instrument);
@@ -5376,6 +5411,7 @@ impl FarmState {
         self.quotes_for_no_one.clear();
         context.market.clear_server_tags();
         context.market.zero_all_quotes();
+        self.quote_flags.clear();
         // And the copy the caller reads, which is a different one: zeroing the
         // engine's alone left the pre-drop prices standing where
         // `poll_instrument_ticks` looks, so the notice below was followed by
@@ -5778,6 +5814,17 @@ impl FarmState {
                 other => {
                     if !deliver_series(other, payload, instrument, shared) {
                         log::debug!("Generic tick {other} arrives and nothing here reads it");
+                    }
+                    // The venue's mark for a contract stands for every listing
+                    // of it, the one an underlying's watch is served on too.
+                    if other == 232 && let Some(con_id) = context.market.con_id(instrument) {
+                        let watches: Vec<InstrumentId> = self.underlying_models.iter()
+                            .filter(|held| held.watched == con_id)
+                            .filter_map(|held| held.watch)
+                            .collect();
+                        for watch in watches {
+                            self.note_underlying_quote(watch, context, shared);
+                        }
                     }
                 }
             }

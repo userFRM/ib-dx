@@ -1372,6 +1372,110 @@ fn an_exercise_clamps_to_whole_contracts_in_the_saved_position() {
     assert_eq!(exercised(&mut hl), [(5, 1, 2.0)]);
 }
 
+/// A gateway's option model watches the quote of each modelled option's
+/// underlying itself: asked for by the contract alone, which the venue names
+/// on the listing a gateway prefers for it (the smart one for a share),
+/// served on that listing, told to nobody, and given up with the last option
+/// on the underlying. An index whose definition says it is priced off another
+/// contract is watched on that contract, and its own quote is not asked for.
+#[test]
+fn an_options_underlying_is_watched_on_the_listing_the_venue_names() {
+    // Each entry the quote feed was sent: the action, the contract, where.
+    let asked_of_the_feed = |peer: &mut Connection| -> Vec<(String, String, String)> {
+        crate::engine::hot_loop::farm::tests::drain_inner(peer).iter()
+            .flat_map(|message| {
+                let action = crate::protocol::fix::fix_parse(message).get(&263).cloned().unwrap_or_default();
+                crate::protocol::fix::fix_parse_repeating(message, 262).into_iter().map(move |entry| (
+                    action.clone(),
+                    entry.get(&6008).cloned().unwrap_or_default(),
+                    entry.get(&207).cloned().unwrap_or_default(),
+                ))
+            })
+            .collect()
+    };
+    let spy: &[(u32, &str)] = &[(55, "SPY"), (167, "STK"), (6008, "756733"), (207, "BEST"), (15, "USD")];
+    let spx: &[(u32, &str)] = &[
+        (55, "SPX"), (167, "IND"), (6008, "416904"), (207, "CBOE"), (15, "USD"), (6577, "11004968"),
+        (6578, "1"),
+    ];
+    let es: &[(u32, &str)] = &[(55, "ES"), (167, "FUT"), (6008, "11004968"), (207, "CME"), (15, "USD")];
+    // The underlying, what the venue names each lookup of the engine's with,
+    // and the contract and listing watched.
+    let cases = [
+        ("a share", 756_733, vec![spy], ("756733", "BEST")),
+        ("an index priced off a future", 416_904, vec![spx, es], ("11004968", "CME")),
+    ];
+    for (what, underlying, answers, (con_id, listing)) in cases {
+        let (mut hl, shared, tx, mut peer) = with_trading();
+        let (farm, farm_peer) = Connection::for_test();
+        let mut farm_peer = Connection::new_raw(farm_peer).unwrap();
+        hl.farm_conn = Some(farm);
+        shared.reference.cache_contract_definition(crate::control::contracts::ContractDefinition {
+            con_id: 700_001, trading_class: "OPT".into(), multiplier: 100.0,
+            last_trade_date: "20261016".into(), under_con_id: underlying,
+            under_sec_type: if underlying == 756_733 { "STK" } else { "IND" }.into(),
+            ..Default::default()
+        });
+        let subscribe = ControlCommand::Subscribe {
+            req_id: 1,
+            contract: ContractRef {
+                con_id: 700_001, sec_type: "OPT".into(), exchange: "SMART".into(),
+                symbol: "OPT".into(), last_trade_date: "20261016".into(), strike: 765.0,
+                right: "C".into(), multiplier: "100".into(), currency: "USD".into(),
+            },
+            filters: Default::default(),
+            mode_9887: 0,
+            delayed_mode: None,
+            frozen: false,
+            delayed_frozen: false,
+            regulatory_snapshot: false,
+            snapshot: false,
+            generic_ticks: Vec::new(),
+            news: None,
+            spread_scan: None,
+            calculation: None,
+        };
+        shared.admit(&tx, subscribe).unwrap();
+        hl.poll_once();
+        let _ = asked_of_the_feed(&mut farm_peer);
+        // The option's definition is read on the model's next second.
+        hl.farm.poll_market_data(&mut None, &mut hl.context, &hl.shared, &hl.event_tx, &mut hl.hb);
+        for answer in &answers {
+            hl.serve_model_wants();
+            let asked = on_the_wire(&mut peer);
+            let named = answer.iter().find(|(tag, _)| *tag == 6008).unwrap().1;
+            assert!(
+                asked.contains(&format!("6008={named}|")) && !asked.contains("207="),
+                "{what}: {named} asked by the contract alone: {asked}",
+            );
+            assert!(own_watches(&hl).is_empty(), "{what}: held until the venue names it");
+            let query = hl.ccp.pending_named.last().unwrap().0.to_string();
+            let mut fields = vec![(35, "d"), (320, query.as_str()), (323, "4")];
+            fields.extend_from_slice(answer);
+            let frame = crate::protocol::fix::fix_build(&fields, 1);
+            hl.ccp.process_ccp_message(&frame, &mut hl.ccp_conn, &mut hl.context, &shared, &None, &mut hl.hb, "DU1");
+            hl.poll_once();
+        }
+        let watched = asked_of_the_feed(&mut farm_peer);
+        assert!(!watched.is_empty(), "{what}: the quote is asked for");
+        assert!(
+            watched.iter().all(|entry| *entry == ("1".into(), con_id.into(), listing.into())),
+            "{what}: the quote watched: {watched:?}",
+        );
+        assert_eq!(own_watches(&hl).len(), 1, "{what}");
+        assert_eq!(shared.backlog(), 0, "{what}: nothing is said of it to a caller");
+
+        hl.withdraw_mkt_data(1);
+        hl.serve_model_wants();
+        let withdrawn = asked_of_the_feed(&mut farm_peer);
+        assert!(
+            withdrawn.contains(&("2".into(), con_id.into(), listing.into())),
+            "{what}: given up with the option: {withdrawn:?}",
+        );
+        assert!(own_watches(&hl).is_empty(), "{what}");
+    }
+}
+
 #[test]
 fn a_snapshot_is_registered_after_its_option_is_named() {
     for by_id in [true, false] {

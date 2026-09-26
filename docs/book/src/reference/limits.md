@@ -176,15 +176,9 @@ are built from what the venue states as a gateway builds them, as
 
 On all of them:
 
-- The underlying's price is the one the chain parameters on the underlying
-  state. Where they state none for the option, a gateway takes the underlying's
-  mark on 13, which is not carried here, so 13 states no underlying's price.
-- On 10 to 12 a gateway takes the underlying's own quote, and the chain
-  parameters' price only while it holds no quote of the underlying. This client
-  always takes the chain parameters' price, so wherever a gateway holds the
-  underlying's quote, the underlying's price on 10 to 12 and the greeks worked
-  from it differ from a gateway's. Where the chain parameters state no price,
-  10 to 12 are not sent.
+- Where a program asks the venue's real-time close series (459) on an
+  option's underlying, a gateway may mark the underlying at a close it works
+  out from that series; this client marks it from the quote alone.
 - An option is worked from its definition as the venue has answered it to
   this session, by a contract-details request or by a lookup of this client's
   own. One this session has not been answered is modelled without it: no

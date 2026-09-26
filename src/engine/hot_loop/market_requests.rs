@@ -151,6 +151,14 @@ impl HotLoop {
             });
             return;
         }
+        // A watch the option model would hold on an index priced off another
+        // contract is held on that contract instead, and this one is not
+        // asked for.
+        if let Some(watched) = self.underlying_watch_of(req_id)
+            && self.farm.priced_off_another(watched, &self.shared)
+        {
+            return;
+        }
         let issued = self.next_md_number();
         let ContractRef {
             con_id,
@@ -303,6 +311,10 @@ impl HotLoop {
                 for_calculation: calculation.is_some(),
             },
         );
+        // A watch the option model holds on an underlying is served here.
+        if let Some(watched) = self.underlying_watch_of(req_id) {
+            self.farm.note_underlying_watch(watched, id);
+        }
         let (stated_type, stated_exchange) = self.described_as(con_id, &sec_type, &exchange);
         // One the engine opened for itself is served to nobody, so nothing
         // is said of it.
@@ -395,6 +407,12 @@ impl HotLoop {
                 &mut self.hb,
             );
         }
+    }
+
+    /// The contract a watch the option model holds is on, by the number the
+    /// watch was opened under.
+    fn underlying_watch_of(&self, req_id: i64) -> Option<i64> {
+        self.underlying_watches.iter().find_map(|(watched, (held, _))| (*held == req_id).then_some(*watched))
     }
 
     /// Whether a contract's definition, where it is held, says its quote is

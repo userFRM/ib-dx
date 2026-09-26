@@ -1169,6 +1169,39 @@ mod news_tests {
         assert_eq!(super::tag_values(&tags, 207), ["IBVOL"]);
     }
 
+    /// SPY's own quote as the venue sent it on a live login, under the
+    /// numbers it acknowledged the subscription with (552674 the two sides,
+    /// 552676 the last trade and the day's figures): bid 770.95, ask 770.98,
+    /// last 770.98; then bid 770.97, ask 770.99; then a last of 770.97; then
+    /// bid 770.93 and ask 770.94, under which the last stands above the ask.
+    const SPY_QUOTES: [&str; 4] = [
+        "383d4f01393d303131330133353d500102d800086ee206012d272513600e012d2a2d01903c0c8614be688e048600580000086ee416012d2a34326c00a76ab6a56bac00d81180086ee4b2012c4f80086ee41e012baea70135283c46012d8e4e012b55fc0a660fe7f68494f9600001383334393d353841334137424101",
+        "383d4f01393d303130380133353d500102b000086ee43428a80180086ee4f80a660fe8000dfcf980086ee4f80a660fe8000dfcf980086ee4f80a660fe8000dfcf980086ee4f80a660fe8000dfcf900086ee206012d292504880e012d2b2d014086149e488a00860801383334393d304342353843313801",
+        "383d4f01393d303037380133353d500101c000086ee416012d29ac02d80980086ee4f80a660fe80d2aebf900086ee22501682d01e086008e408a00842880086ee4f80a660fe80d2aebf901383334393d313335314331333301",
+        "383d4f01393d303035380133353d5001012000086ee206012d2524500e012d262d016885020089040080086ee4f80a660fe80f8d45f901383334393d453842354331363501",
+    ];
+
+    /// Serve the watch the option model holds on SPY's own quote on a slot,
+    /// and state that quote on it as the venue stated it: the last, 770.97,
+    /// stands above the ask of 770.94 at the end, so SPY is marked at the
+    /// ask, which is the price the model holds for it.
+    fn watched_spy(farm: &mut FarmState, context: &mut Context, shared: &SharedState) -> f64 {
+        let spy = context.market.register(756733);
+        context.market.set_min_tick(spy, 0.01);
+        for tag in [552674, 552676] {
+            context.market.register_server_tag(tag, spy);
+        }
+        farm.note_underlying_watch(756733, spy);
+        for frame in SPY_QUOTES {
+            let bytes: Vec<u8> = (0..frame.len())
+                .step_by(2)
+                .map(|at| u8::from_str_radix(&frame[at..at + 2], 16).unwrap())
+                .collect();
+            farm.handle_tick_data(&bytes, context, shared, &None);
+        }
+        770.94
+    }
+
     /// Chain parameters as the fourth version states them: per set, one class
     /// at one multiplier, the underlying's price, the set's attributes and one
     /// term, whose last trading day is counted in days since the epoch.
@@ -1328,13 +1361,31 @@ mod news_tests {
             farm.publish_option_ticks(20_000, &context, &mut conn, &shared, &mut hb);
             assert!(ticks_taken().is_empty(), "{sec_type}: rebuilt twice in one second");
 
-            // Owed when the connection drops, it is built from what was stated
-            // before the drop.
-            farm.handle_disconnect(&mut conn, &mut context, &None, &shared);
+            // Where the chain parameters state no price for the option, the
+            // mark the watch on the underlying's own quote holds.
+            let marked = watched_spy(&mut farm, &mut context, &shared);
+            let unstanding = chain(&[("SPY", 100.0, 766.5, 1, expiry)]);
+            farm.handle_generic_tick(
+                &framed_generic_ticks(&[(unstanding.0, unstanding.1, &unstanding.2)]),
+                &mut context, &shared, &None,
+            );
             farm.publish_option_ticks(21_000, &context, &mut conn, &shared, &mut hb);
             assert_eq!(
                 ticks_taken(),
-                [crate::bridge::OptionTick { instrument, kind: Model, figures: stated(model, 766.5), price_based: true }],
+                [crate::bridge::OptionTick { instrument, kind: Model, figures: stated(model, marked), price_based: true }],
+                "{sec_type}: the underlying's mark",
+            );
+
+            // Owed when the connection drops, it is built from what was stated
+            // before the drop.
+            farm.handle_generic_tick(&restated, &mut context, &shared, &None);
+            farm.publish_option_ticks(21_000, &context, &mut conn, &shared, &mut hb);
+            assert!(ticks_taken().is_empty(), "{sec_type}: rebuilt twice in one second");
+            farm.handle_disconnect(&mut conn, &mut context, &None, &shared);
+            farm.publish_option_ticks(22_000, &context, &mut conn, &shared, &mut hb);
+            assert_eq!(
+                ticks_taken(),
+                [crate::bridge::OptionTick { instrument, kind: Model, figures: stated(model, marked), price_based: true }],
                 "{sec_type}: across the drop",
             );
 
@@ -1350,7 +1401,7 @@ mod news_tests {
             farm.handle_generic_tick(
                 &framed_generic_ticks(&[(81, 732, &greeks(Some(0.55)))]), &mut context, &shared, &None,
             );
-            farm.publish_option_ticks(22_000, &context, &mut conn, &shared, &mut hb);
+            farm.publish_option_ticks(23_000, &context, &mut conn, &shared, &mut hb);
             assert_eq!(
                 ticks_taken(),
                 [crate::bridge::OptionTick {
@@ -1438,12 +1489,13 @@ mod news_tests {
             expiry: &'static str,
             date_only: bool,
             frozen: bool,
+            watched: bool,
         }
         let an_option = Row {
             what: "an option", sec_type: "OPT", per_contract: 1.0, under: "STK",
             last_trade_time: "1615", real_expiration: "", liquid: &[], chain: ("SPY", 5),
             rates: Rates::AtStart, expiry: "2026-10-01T16:15:00-04:00", date_only: false,
-            frozen: false,
+            frozen: false, watched: false,
         };
         let rows = [
             an_option,
@@ -1478,6 +1530,10 @@ mod news_tests {
             },
             Row { what: "an option on an index", under: "IND", ..an_option },
             Row { what: "a frozen quote stating no side", frozen: true, ..an_option },
+            Row {
+                what: "the underlying's own quote watched: its price, not the chain parameters'",
+                watched: true, ..an_option
+            },
         ];
         for (at_row, row) in rows.into_iter().enumerate() {
             let what = row.what;
@@ -1496,6 +1552,9 @@ mod news_tests {
                 crate::options::rate_term(years),
             );
             let pv = 1.8 * (-rate * (3.0 / 365.0)).exp();
+            // The chain parameters' price, or the one the watch on the
+            // underlying's quote holds.
+            let spot = if row.watched { 770.94 } else { 769.45 };
             // What the model makes of a side, worked here from the inputs
             // stated above and nothing the engine assembled.
             let worked = |per_day: f64, price: f64, price_based: bool| {
@@ -1504,7 +1563,7 @@ mod news_tests {
                         is_call: true,
                         american: true,
                         price_based,
-                        spot: 769.45,
+                        spot,
                         strike: 769.0,
                         years,
                         rate,
@@ -1591,6 +1650,9 @@ mod news_tests {
                 .expect("the chain parameters are asked for");
             let ack = format!("35=Q\x0190,{},0.01,0,0,a6,,0,1", asked[&262]);
             farm.handle_subscription_ack(ack.as_bytes(), &mut context, &shared);
+            if row.watched {
+                assert_eq!(watched_spy(&mut farm, &mut context, &shared), spot);
+            }
             let chain = chain_parameters(&[(row.chain.0, 100.0, 769.45, row.chain.1, 20727)]);
             farm.handle_generic_tick(
                 &framed_generic_ticks(&[
@@ -1644,7 +1706,7 @@ mod news_tests {
                 crate::bridge::OptionTick {
                     instrument, kind,
                     figures: [
-                        per_day * 252f64.sqrt(), delta, opt_price, pv, gamma, vega, theta, 769.45,
+                        per_day * 252f64.sqrt(), delta, opt_price, pv, gamma, vega, theta, spot,
                     ],
                     price_based: false,
                 }
