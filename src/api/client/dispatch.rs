@@ -423,15 +423,8 @@ impl EClient {
             // An option computation to every request watching the option
             // that is owed it, with the figures it is owed.
             Record::OptionTick((generation, tick)) => {
-                let (tick_type, to) = self.core.option_tick_owed(generation, &tick);
-                for (req_id, figures) in to {
-                    let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] =
-                        figures;
-                    wrapper.tick_option_computation(
-                        req_id, tick_type, i32::from(tick.price_based),
-                        implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price,
-                    );
-                }
+                let owed = self.core.option_tick_owed(&self.shared, generation, &tick);
+                deliver_option_ticks(owed, tick.price_based, wrapper);
             }
             // What the venue said went wrong. It attributes these to no
             // request, so neither does this.
@@ -445,13 +438,8 @@ impl EClient {
             // And one joining an option already modelled is sent the model as
             // it stands, to it alone.
             Record::MarketDataTaken(taken) => {
-                if let Some((tick_type, req_id, tick)) = self.core.note_mkt_data_taken(&self.shared, &taken) {
-                    let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] =
-                        tick.figures;
-                    wrapper.tick_option_computation(
-                        req_id, tick_type, i32::from(tick.price_based),
-                        implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price,
-                    );
+                if let Some((owed, price_based)) = self.core.note_mkt_data_taken(&self.shared, &taken) {
+                    deliver_option_ticks(owed, price_based, wrapper);
                 }
             }
             // And withdrawn: nothing more is delivered under its number.
@@ -1315,6 +1303,24 @@ impl EClient {
     }
 }
 
+/// An option computation to each request owed it, after what any of them is
+/// told of a quote it may not see.
+fn deliver_option_ticks(
+    owed: crate::client_core::OwedOptionTicks, price_based: bool, wrapper: &mut impl Wrapper,
+) {
+    for (req_id, code, text) in owed.refusals {
+        let origin = ErrorOrigin::Request { id: req_id, ends: false };
+        wrapper.error_from(origin, raised_now(), i64::from(code), &text, "");
+    }
+    for (req_id, figures) in owed.to {
+        let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] = figures;
+        wrapper.tick_option_computation(
+            req_id, owed.tick_type, i32::from(price_based),
+            implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price,
+        );
+    }
+}
+
 /// An answer given at the call, delivered in its place.
 fn deliver_reply(reply: Reply, wrapper: &mut impl Wrapper) {
     match reply {
@@ -1380,6 +1386,30 @@ mod delivered_size_tests {
     use crate::types::model::{TickAttribBidAsk, TickAttribLast};
     use crate::types::{PRICE_SCALE, QTY_SCALE, TbtQuote, TbtTrade};
 
+    /// Wire a slot as an option a program may see whole: the venue has
+    /// answered its definition and its underlying's, and every live quote —
+    /// the option's own and the watch on the underlying's listing — is
+    /// acknowledged with nothing restricting it.
+    fn wire_the_quote_access(shared: &crate::bridge::SharedState, slot: u32, con_id: u32) {
+        use crate::bridge::QuoteAccess;
+        use crate::control::contracts::{ContractDefinition, SecurityType};
+        let under = con_id + 1;
+        shared.reference.cache_contract_definition(ContractDefinition {
+            con_id, under_con_id: under, sec_type: SecurityType::Option,
+            exchange: "SMART".into(), ..Default::default()
+        });
+        shared.reference.cache_contract_definition(ContractDefinition {
+            con_id: under, symbol: "UND".into(), sec_type: SecurityType::Stock,
+            exchange: "SMART".into(), ..Default::default()
+        });
+        shared.market.note_listing_subscribed(slot, i64::from(con_id), "SMART");
+        shared.market.note_listing_subscribed(slot + 1000, i64::from(under), "BEST");
+        for id in [slot, slot + 1000] {
+            shared.market.note_listing_access(id, false, QuoteAccess::Allowed);
+            shared.market.note_listing_access(id, true, QuoteAccess::Allowed);
+        }
+    }
+
     /// A snapshot of an option ends, as a gateway ends one, only once the
     /// venue's model and the bid's, ask's and last's computations have been
     /// delivered as well as the five kinds; and one on a delayed feed only once
@@ -1425,6 +1455,7 @@ mod delivered_size_tests {
         client.try_req_mkt_data(1, &option, "", true, false).expect("taken");
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(1).expect("the engine took it");
+        wire_the_quote_access(&shared, slot, 700_001);
         shared.market.push_quote(slot, &five);
         let mut heard = Heard::default();
         client.process_msgs(&mut heard);
@@ -1449,6 +1480,7 @@ mod delivered_size_tests {
         client.try_req_mkt_data(3, &option, "", true, false).expect("taken");
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(3).expect("the engine took it");
+        wire_the_quote_access(&shared, slot, 700_001);
         shared.market.push_quote(slot, &five);
         let mut short = [0.2; 8];
         short[3] = f64::MAX;
@@ -1592,6 +1624,7 @@ mod delivered_size_tests {
         }
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(1).expect("the engine took it");
+        wire_the_quote_access(&shared, slot, 756733);
         let figures = |iv: f64| [iv, 0.55, 5.0, f64::MAX, 0.02, 0.3, -0.1, 765.0];
         let publish = |iv: f64| {
             shared.market.push_tick_news(crate::types::TickNews {

@@ -359,6 +359,28 @@ gateway takes, as [Limits](./limits.md) says.
   quote. Each figure a side does not state is the last one of that side the
   request was sent, and a request is sent a side when that differs from the
   last.
+- What a request is sent of a computation is gated by what the program may
+  see of the quotes it is worked from, as a gateway gates it. The
+  underlying's price goes only once every listing of the underlying whose
+  definition the venue has answered this session is subscribed, the venue
+  has stated the access to one of them and none of them is restricted. A
+  restricted listing refuses it to the request for good, told under 10091
+  where a subscription would lift the restriction and 10090 where nothing
+  would, in the service's own words with the contract, the kind of feed and
+  the side or sides named, and whether delayed data is offered; a listing
+  not subscribed, or one nothing has stated yet, leaves the price held and
+  nothing said, and the decision waits. A side's own price goes only once
+  the access to the option's own bid and ask — for a bid's or an ask's — or
+  its last — for a last's — is stated as allowed. A delayed feed is gated by
+  nothing.
+- What a program may see of a quote is what the acknowledgement of its live
+  subscription states on its seventh field: nothing stated is allowed; a
+  list of the subscriptions it takes, by a comma or a hash past its first
+  character, or one by its number, requires one; anything else, a dash
+  included, is refused. A refused bid and ask is no subscription on the
+  listing at all; a withdrawn subscription leaves no listing stated behind,
+  and a connection lost puts every listing back to unstated until it is
+  acknowledged again.
 
 A gateway's option model watches each modelled option's underlying's own
 quote itself, and so does this client, under a request of its own that nothing

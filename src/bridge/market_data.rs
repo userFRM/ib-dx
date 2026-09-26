@@ -78,6 +78,56 @@ pub struct OptionTick {
     pub price_based: bool,
 }
 
+/// What the venue says a program may see of a quote, as its acknowledgement
+/// of the subscription states it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum QuoteAccess {
+    /// Not acknowledged yet.
+    #[default]
+    Unknown,
+    /// Stated as nothing: the program may see it.
+    Allowed,
+    /// Refused to a program, whatever it subscribes to.
+    DisallowedApiOnly,
+    /// The program sees it only with a subscription it does not hold.
+    RequiresSubscription,
+}
+
+impl QuoteAccess {
+    /// The access an acknowledgement states, read as a gateway reads it:
+    /// nothing is allowed; a list of the subscriptions it takes (with a comma
+    /// or a hash past its first character), or one by its number, requires
+    /// one; anything else, a dash included, is refused to a program.
+    pub(crate) fn read(stated: &str) -> Self {
+        if stated.is_empty() {
+            Self::Allowed
+        } else if stated.find(',').is_some_and(|at| at > 0)
+            || stated.find('#').is_some_and(|at| at > 0)
+            || (stated != "-" && stated.parse::<i32>().is_ok())
+        {
+            Self::RequiresSubscription
+        } else {
+            Self::DisallowedApiOnly
+        }
+    }
+
+    /// Whether it keeps the quote from a program.
+    pub(crate) fn restricted(self) -> bool {
+        matches!(self, Self::DisallowedApiOnly | Self::RequiresSubscription)
+    }
+}
+
+/// A quote subscription on a listing, and the access the acknowledgements of
+/// its bid-and-ask and its last entries stated.
+#[derive(Clone, Debug)]
+pub(crate) struct ListingQuote {
+    pub con_id: i64,
+    /// The listing, in the wire's own spelling.
+    pub venue: String,
+    pub bid_ask: QuoteAccess,
+    pub last: QuoteAccess,
+}
+
 pub(crate) const PRICING_BID: u8 = 1;
 pub(crate) const PRICING_ASK: u8 = 2;
 pub(crate) const PRICING_LAST: u8 = 4;
@@ -178,6 +228,8 @@ pub struct MarketDataState {
     /// contract that left a slot from the one that took it.
     generations: super::slot_table::SlotTable<AtomicU64>,
     pricing_quotes: Mutex<std::collections::HashMap<InstrumentId, PricingQuoteViews>>,
+    /// Each slot's live quote subscription, by the listing it is on.
+    listing_quotes: Mutex<std::collections::HashMap<InstrumentId, ListingQuote>>,
     attached_quote_instruments: Mutex<std::collections::HashMap<(i64, String), InstrumentId>>,
     /// InstrumentId counter — set by hot loop on RegisterInstrument.
     instrument_count: AtomicU64,
@@ -405,6 +457,7 @@ impl MarketDataState {
             chain_model_parameters: Mutex::new(std::collections::HashMap::new()),
             snapshot_answers: Mutex::new(std::collections::HashMap::new()),
             pricing_quotes: Mutex::new(std::collections::HashMap::new()),
+            listing_quotes: Mutex::new(std::collections::HashMap::new()),
             attached_quote_instruments: Mutex::new(std::collections::HashMap::new()),
             scanned_strategies: Mutex::new(std::collections::HashMap::new()),
             closing_option_model: Mutex::new(std::collections::HashMap::new()),
@@ -777,6 +830,49 @@ impl MarketDataState {
 
     pub(crate) fn note_attached_quote_instrument(&self, con_id: i64, exchange: &str, instrument: InstrumentId) {
         self.attached_quote_instruments.lock().unwrap().insert((con_id, exchange.into()), instrument);
+    }
+
+    /// A live quote subscription goes out on a listing: nothing is known of
+    /// its access until it is acknowledged.
+    pub(crate) fn note_listing_subscribed(&self, id: InstrumentId, con_id: i64, venue: &str) {
+        self.listing_quotes.lock().unwrap().insert(id, ListingQuote {
+            con_id,
+            venue: venue.to_string(),
+            bid_ask: QuoteAccess::Unknown,
+            last: QuoteAccess::Unknown,
+        });
+    }
+
+    /// What an acknowledgement stated of the access to a subscription's bid
+    /// and ask, or to its last.
+    pub(crate) fn note_listing_access(&self, id: InstrumentId, last: bool, access: QuoteAccess) {
+        if let Some(listing) = self.listing_quotes.lock().unwrap().get_mut(&id) {
+            if last { listing.last = access } else { listing.bid_ask = access }
+        }
+    }
+
+    /// A slot's quote subscription is withdrawn.
+    pub(crate) fn forget_listing(&self, id: InstrumentId) {
+        self.listing_quotes.lock().unwrap().remove(&id);
+    }
+
+    /// The connection the subscriptions were acknowledged on is gone: what
+    /// they may show is not known until they are acknowledged again.
+    pub(crate) fn forget_listing_access(&self) {
+        for listing in self.listing_quotes.lock().unwrap().values_mut() {
+            listing.bid_ask = QuoteAccess::Unknown;
+            listing.last = QuoteAccess::Unknown;
+        }
+    }
+
+    /// A slot's live quote subscription, where it has one.
+    pub(crate) fn listing_quote(&self, id: InstrumentId) -> Option<ListingQuote> {
+        self.listing_quotes.lock().unwrap().get(&id).cloned()
+    }
+
+    /// Every live quote subscription on a contract.
+    pub(crate) fn listing_quotes_of(&self, con_id: i64) -> Vec<ListingQuote> {
+        self.listing_quotes.lock().unwrap().values().filter(|l| l.con_id == con_id).cloned().collect()
     }
 
     pub(crate) fn note_pricing_subscription(&self, id: InstrumentId, mode: i32, confirmed: bool) {
@@ -1925,4 +2021,28 @@ mod venue_clock_tests {
         assert!(market.drain_tbt_mids().is_empty(), "and only once");
     }
 
+    /// The access an acknowledgement states reads as a gateway reads it:
+    /// nothing stated is allowed; a list of the subscriptions it takes, or one
+    /// by its number, requires one; a dash — and anything else it can make no
+    /// subscription of — is refused to a program. A list or a number is named
+    /// past its first character alone: a comma or a hash leading is no list,
+    /// and a dash is no number.
+    #[test]
+    fn an_acknowledgement_field_reads_as_a_gateway_reads_it() {
+        use super::QuoteAccess::{self, Allowed, DisallowedApiOnly, RequiresSubscription};
+        for (stated, wanted) in [
+            ("", Allowed),
+            ("5", RequiresSubscription),
+            ("0", RequiresSubscription),
+            ("+7", RequiresSubscription),
+            ("1,2", RequiresSubscription),
+            ("a#b", RequiresSubscription),
+            ("-", DisallowedApiOnly),
+            (",x", DisallowedApiOnly),
+            ("#x", DisallowedApiOnly),
+            ("abc", DisallowedApiOnly),
+        ] {
+            assert_eq!(QuoteAccess::read(stated), wanted, "{stated:?}");
+        }
+    }
 }

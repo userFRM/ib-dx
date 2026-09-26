@@ -562,8 +562,14 @@ impl EClient {
             // An option computation to every request watching the option
             // that is owed it, with the figures it is owed.
             Record::OptionTick((generation, tick)) => {
-                let (tick_type, to) = self.core.option_tick_owed(generation, &tick);
-                for (req_id, figures) in to {
+                let owed = self.core.option_tick_owed(shared, generation, &tick);
+                let tick_type = owed.tick_type;
+                for (req_id, code, text) in owed.refusals {
+                    say_error!(self, py, shared,
+                        crate::types::model::ErrorOrigin::Request { id: req_id, ends: false },
+                        i64::from(code), &text);
+                }
+                for (req_id, figures) in owed.to {
                     let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] =
                         figures;
                     call_wrapper!(self, py, shared, "tick_option_computation",
@@ -582,15 +588,22 @@ impl EClient {
             // One joining an option already modelled is sent the model as it
             // stands, to it alone.
             Record::MarketDataTaken(taken) => {
-                if let Some((tick_type, req_id, tick)) = self.core.note_mkt_data_taken(shared, &taken) {
-                    let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] =
-                        tick.figures;
-                    call_wrapper!(self, py, shared, "tick_option_computation",
-                        (req_id, tick_type, i32::from(tick.price_based),
-                         or_unstated_price(implied_vol).filter(|v| *v >= 0.0), or_unstated_greek(delta),
-                         or_unstated_price(opt_price), or_unstated_price(pv_dividend),
-                         or_unstated_greek(gamma), or_unstated_greek(vega),
-                         or_unstated_greek(theta), or_unstated_price(und_price)));
+                if let Some((owed, price_based)) = self.core.note_mkt_data_taken(shared, &taken) {
+                    for (req_id, code, text) in owed.refusals {
+                        say_error!(self, py, shared,
+                            crate::types::model::ErrorOrigin::Request { id: req_id, ends: false },
+                            i64::from(code), &text);
+                    }
+                    for (req_id, figures) in owed.to {
+                        let [implied_vol, delta, opt_price, pv_dividend, gamma, vega, theta, und_price] =
+                            figures;
+                        call_wrapper!(self, py, shared, "tick_option_computation",
+                            (req_id, owed.tick_type, i32::from(price_based),
+                             or_unstated_price(implied_vol).filter(|v| *v >= 0.0), or_unstated_greek(delta),
+                             or_unstated_price(opt_price), or_unstated_price(pv_dividend),
+                             or_unstated_greek(gamma), or_unstated_greek(vega),
+                             or_unstated_greek(theta), or_unstated_price(und_price)));
+                    }
                 }
             }
             Record::MarketDataWithdrawn(req_id) => self.core.unregister_mkt_data(req_id),

@@ -1870,6 +1870,95 @@ mod news_tests {
         assert!(shared.market.chain_model_parameters(instrument, 687).is_empty());
     }
 
+    /// What a program may see of a quote is what the acknowledgement of its
+    /// live subscription states on its seventh field, for the side the
+    /// acknowledgement is for: a refused bid and ask — the half that controls
+    /// the quote subscription — leaves no subscription on the listing at all,
+    /// a withdrawal leaves none stated behind, and a connection lost puts
+    /// every listing back to unstated, to be acknowledged again.
+    #[test]
+    fn an_ack_states_what_a_program_may_see_of_its_quote() {
+        use crate::bridge::QuoteAccess;
+        let mut farm = FarmState::new();
+        let mut context = Context::new();
+        let shared = SharedState::new();
+        let instrument = context.market.register(756733);
+        shared.market.note_listing_subscribed(instrument, 756733, "BEST");
+        farm.md_req_to_instrument.extend([(1, instrument), (2, instrument)]);
+        farm.instrument_md_reqs.push((instrument, MdReqRecord {
+            con_id: 756733, sec_type: "CS".into(), mode_9887: 0,
+            entries: vec![
+                MdReqEntry { req_id: 1, request_type: REALTIME_BID_ASK_REQUEST_TYPE, venue: "BEST".into(), precision: "1" },
+                MdReqEntry { req_id: 2, request_type: REALTIME_LAST_REQUEST_TYPE, venue: "BEST".into(), precision: "1" },
+            ],
+        }));
+
+        // An empty field states allowed — for the bid and ask alone, which
+        // is what this acknowledgement answers.
+        farm.handle_subscription_ack(b"35=Q\x0176904,1,0.01,0,3,a6,,1,1", &mut context, &shared);
+        let listing = shared.market.listing_quote(instrument).expect("the subscription stands");
+        assert_eq!(
+            (listing.bid_ask, listing.last),
+            (QuoteAccess::Allowed, QuoteAccess::Unknown),
+        );
+
+        // A dash states refused — for the last, its own side.
+        farm.handle_subscription_ack(b"35=Q\x0176905,2,0.01,0,3,a6,-,1,1", &mut context, &shared);
+        let listing = shared.market.listing_quote(instrument).unwrap();
+        assert_eq!(
+            (listing.bid_ask, listing.last),
+            (QuoteAccess::Allowed, QuoteAccess::DisallowedApiOnly),
+        );
+
+        // A refusal of the bid and ask — the half that controls the quote
+        // subscription — is no subscription on the listing at all. (The
+        // acknowledgements above consumed the request's routing, as each
+        // acknowledgement does; a fresh subscription states it again.)
+        farm.md_req_to_instrument.push((1, instrument));
+        let refused = crate::protocol::fix::fix_build(&[
+            (crate::protocol::fix::TAG_MSG_TYPE, "3"),
+            (262, "1"),
+            (9887, "1"),
+            (58, "Error&BEST/CS/Top"),
+        ], 1);
+        farm.handle_subscription_reject(&refused, &context, &shared);
+        assert!(
+            shared.market.listing_quote(instrument).is_none(),
+            "the listing forgets the refused quote",
+        );
+
+        // A connection lost: the subscription stands, and what it may show
+        // is not known until it is acknowledged again.
+        shared.market.note_listing_subscribed(instrument, 756733, "BEST");
+        shared.market.note_listing_access(instrument, false, QuoteAccess::Allowed);
+        let mut conn: Option<Connection> = None;
+        farm.handle_disconnect(&mut conn, &mut context, &None, &shared);
+        let listing = shared.market.listing_quote(instrument).expect("the listing survives the drop");
+        assert_eq!(
+            (listing.bid_ask, listing.last),
+            (QuoteAccess::Unknown, QuoteAccess::Unknown),
+        );
+    }
+
+    /// A quote subscription withdrawn leaves no listing stated behind: what
+    /// it was acknowledged with went with it, and the next contract on the
+    /// slot is not shown by an access nothing of its own stated.
+    #[test]
+    fn a_withdrawn_quote_leaves_no_listing_stated_behind() {
+        let mut farm = FarmState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        shared.market.note_listing_subscribed(3, 756733, "BEST");
+        assert!(shared.market.listing_quote(3).is_some());
+        farm.send_mktdata_unsubscribe(3, 756733, 0, &[], 0, false, &mut None, &mut hb);
+        assert!(
+            shared.market.listing_quote(3).is_some(),
+            "the listing stands until the engine, which holds the shared state, sweeps it",
+        );
+        farm.forget_withdrawn_listings(&shared);
+        assert!(shared.market.listing_quote(3).is_none(), "and the sweep forgets it");
+    }
+
     /// Each contract reads its exchange masks against the map of venues the
     /// venue stated for its own BBO exchange and security type — named sixth
     /// on every acknowledgement — and a caller names that map the way

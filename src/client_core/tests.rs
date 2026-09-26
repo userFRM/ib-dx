@@ -2564,6 +2564,271 @@ fn a_delayed_snapshot_ends_on_the_venue_too() {
     );
 }
 
+/// Wire a slot as an option a program may see whole: its own live quote
+/// acknowledged as allowed on both sides, its definition naming an underlying
+/// the venue has answered, and the watch on the underlying's listing
+/// acknowledged as allowed too.
+fn wire_quote_access(shared: &SharedState, slot: InstrumentId) {
+    use crate::bridge::QuoteAccess;
+    use crate::control::contracts::SecurityType;
+    let (con_id, under) = (100 + slot, 200 + slot);
+    shared.reference.cache_contract_definition(crate::control::contracts::ContractDefinition {
+        con_id, under_con_id: under, sec_type: SecurityType::Option,
+        exchange: "SMART".into(), ..Default::default()
+    });
+    shared.reference.cache_contract_definition(crate::control::contracts::ContractDefinition {
+        con_id: under, symbol: "UND".into(), sec_type: SecurityType::Stock,
+        exchange: "SMART".into(), primary_exchange: "ISLAND".into(),
+        ..Default::default()
+    });
+    shared.market.note_listing_subscribed(slot, i64::from(con_id), "SMART");
+    shared.market.note_listing_subscribed(slot + 100, i64::from(under), "BEST");
+    for id in [slot, slot + 100] {
+        shared.market.note_listing_access(id, false, QuoteAccess::Allowed);
+        shared.market.note_listing_access(id, true, QuoteAccess::Allowed);
+    }
+}
+
+/// What a request is sent of an option computation is gated by what the
+/// program may see, as a gateway gates it: the underlying's price only once
+/// every listing of the underlying the venue has named is subscribed and none
+/// of them is restricted — one restricted is refused for good under 10091
+/// where a subscription would lift it and 10090 where nothing would, and one
+/// not yet subscribed or acknowledged leaves the price held and nothing said;
+/// a side's own price only once the access to the option's quote on that side
+/// is stated as allowed. A delayed feed is gated by nothing.
+#[test]
+fn a_quote_a_program_may_not_see_is_kept_from_its_option_computations() {
+    use crate::bridge::{OptionTick, OptionTickKind::Model, QuoteAccess};
+    let unstated = f64::MAX;
+    let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
+    let held_und = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, unstated];
+    let requires = "Part of requested market data requires additional subscription for API. \
+                    See link in 'Market Data Connections' dialog for more details.";
+    let not_subscribed = "Part of requested market data is not subscribed. \
+                          Subscription-independent ticks are still active.";
+    let delayed = "Delayed market data is available.";
+
+    // One case: an option slot wired as stated, one request streaming it, and
+    // what the first computation is sent and told.
+    fn case(
+        wire: impl Fn(&SharedState, InstrumentId), slot: InstrumentId, figures: [f64; 8],
+    ) -> crate::client_core::OwedOptionTicks {
+        let shared = SharedState::new();
+        let core = ClientCore::new();
+        core.note_slot_taken(slot, 1);
+        wire(&shared, slot);
+        assert!(core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
+            asked_at: std::time::Instant::now(),
+            req_id: 1, slot, generation: 1, con_id: 0, series: Vec::new(),
+            snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
+            unsent: 0,
+        }).is_none());
+        core.option_tick_owed(&shared, 1, &OptionTick {
+            instrument: slot, kind: Model, figures, price_based: true,
+        })
+    }
+    // The option's own quote acknowledged on both sides; the underlying's
+    // listing as the case states it.
+    let with_underlying = |ba: QuoteAccess, last: QuoteAccess, subscribed: bool| {
+        move |shared: &SharedState, slot: InstrumentId| {
+            wire_quote_access(shared, slot);
+            shared.market.note_listing_access(slot + 100, false, ba);
+            shared.market.note_listing_access(slot + 100, true, last);
+            if !subscribed {
+                shared.market.forget_listing(slot + 100);
+            }
+        }
+    };
+
+    // Allowed on every side: the computation goes whole, nothing is said.
+    let owed = case(with_underlying(QuoteAccess::Allowed, QuoteAccess::Allowed, true), 1, whole);
+    assert_eq!(owed.to, vec![(1, whole)]);
+    assert!(owed.refusals.is_empty(), "{:?}", owed.refusals);
+
+    // A listing a subscription would open: the underlying's price is held
+    // and the request refused under 10091, once.
+    let owed = case(
+        with_underlying(QuoteAccess::RequiresSubscription, QuoteAccess::Allowed, true), 1, whole,
+    );
+    assert_eq!(owed.to, vec![(1, held_und)], "the underlying's price is kept from it");
+    assert_eq!(owed.refusals, vec![(1, 10091, format!("{requires}{delayed}UND NASDAQ/TOP/BID_ASK"))]);
+
+    // A listing nothing would open, restricted on its last: refused under
+    // 10090, naming that side.
+    let owed = case(
+        with_underlying(QuoteAccess::Allowed, QuoteAccess::DisallowedApiOnly, true), 1, whole,
+    );
+    assert_eq!(owed.refusals, vec![(1, 10090, format!("{not_subscribed}{delayed}UND NASDAQ/TOP/LAST"))]);
+
+    // Both sides restricted: named as all of them, under the bid and ask's
+    // own access.
+    let owed = case(
+        with_underlying(QuoteAccess::RequiresSubscription, QuoteAccess::DisallowedApiOnly, true),
+        1, whole,
+    );
+    assert_eq!(owed.refusals, vec![(1, 10091, format!("{requires}{delayed}UND NASDAQ/TOP/ALL"))]);
+
+    // A listing not subscribed yet: the price is held and nothing is said —
+    // the decision waits for the venue.
+    let owed = case(with_underlying(QuoteAccess::Unknown, QuoteAccess::Unknown, false), 1, whole);
+    assert_eq!(owed.to, vec![(1, held_und)]);
+    assert!(owed.refusals.is_empty(), "nothing is said of a listing nothing has answered: {:?}", owed.refusals);
+
+    // Subscribed but acknowledged on neither side yet: the decision waits all
+    // the same — a subscription nothing has answered states nothing.
+    let owed = case(with_underlying(QuoteAccess::Unknown, QuoteAccess::Unknown, true), 1, whole);
+    assert_eq!(owed.to, vec![(1, held_und)]);
+    assert!(owed.refusals.is_empty(), "nothing is said of an access nothing has stated: {:?}", owed.refusals);
+}
+
+/// A decision that waited is made when the venue states what it knows, and
+/// the price follows on the next computation. A restriction refuses the
+/// underlying's price for good: said once, held from then on, even where the
+/// venue later acknowledges the listing as allowed.
+#[test]
+fn a_quote_access_decision_is_made_once() {
+    use crate::bridge::{OptionTick, OptionTickKind::Model, QuoteAccess};
+    let unstated = f64::MAX;
+    let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
+    let register = |core: &ClientCore, shared: &SharedState| {
+        assert!(core.note_mkt_data_taken(shared, &crate::bridge::MarketDataTaken {
+            asked_at: std::time::Instant::now(),
+            req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
+            snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
+            unsent: 0,
+        }).is_none());
+    };
+
+    // Nothing acknowledged on the underlying's listing yet: held, nothing
+    // said, and not decided. The venue acknowledges it: the next computation
+    // decides, and the price follows.
+    let shared = SharedState::new();
+    let core = ClientCore::new();
+    core.note_slot_taken(1, 1);
+    wire_quote_access(&shared, 1);
+    shared.market.forget_listing(101);
+    register(&core, &shared);
+    let owed = |core: &ClientCore, shared: &SharedState, figures| core.option_tick_owed(shared, 1, &OptionTick {
+        instrument: 1, kind: Model, figures, price_based: true,
+    });
+    assert_eq!(owed(&core, &shared, whole).to, vec![(1, [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, unstated])]);
+    shared.market.note_listing_subscribed(101, 201, "BEST");
+    shared.market.note_listing_access(101, false, QuoteAccess::Allowed);
+    shared.market.note_listing_access(101, true, QuoteAccess::Allowed);
+    let moved = [0.21, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 766.0];
+    assert_eq!(owed(&core, &shared, moved).to, vec![(1, moved)], "the price follows the decision");
+
+    // A restriction, decided on the first computation: refused once, held
+    // from then on — the later acknowledgement of the listing decides
+    // nothing again.
+    let shared = SharedState::new();
+    let core = ClientCore::new();
+    core.note_slot_taken(1, 1);
+    wire_quote_access(&shared, 1);
+    shared.market.note_listing_access(101, false, QuoteAccess::RequiresSubscription);
+    register(&core, &shared);
+    assert_eq!(owed(&core, &shared, whole).refusals.len(), 1, "refused once");
+    assert_eq!(owed(&core, &shared, whole).to, Vec::new(), "and held, and it does not move");
+    shared.market.note_listing_access(101, false, QuoteAccess::Allowed);
+    shared.market.note_listing_access(101, true, QuoteAccess::Allowed);
+    let after = owed(&core, &shared, moved);
+    assert!(after.refusals.is_empty(), "the decision stands: {after_refusals:?}", after_refusals = after.refusals);
+    assert_eq!(after.to, vec![(1, [0.21, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, unstated])],
+        "still held, whatever the venue later says");
+}
+
+/// The option's own side, gated by the access its own quote was acknowledged
+/// with: a restricted bid and ask holds the price from the bid's and the
+/// ask's computations, and nothing else; a restricted last would hold it from
+/// the last's. The model's own figures are the side gate's business not at
+/// all.
+#[test]
+fn a_side_a_program_may_not_see_is_kept_from_its_own_computation() {
+    use crate::bridge::{OptionTick, OptionTickKind::{Ask, Bid, Last, Model}, QuoteAccess};
+    let unstated = f64::MAX;
+    let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
+    let held_side = [0.2, 0.55, unstated, 0.0, 0.02, 0.3, -0.1, 765.0];
+
+    let shared = SharedState::new();
+    let core = ClientCore::new();
+    core.note_slot_taken(1, 1);
+    wire_quote_access(&shared, 1);
+    shared.market.note_listing_access(1, false, QuoteAccess::RequiresSubscription);
+    assert!(core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
+        asked_at: std::time::Instant::now(),
+        req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
+        unsent: 0,
+    }).is_none());
+    let owed = |kind, figures| core.option_tick_owed(&shared, 1, &OptionTick {
+        instrument: 1, kind, figures, price_based: true,
+    });
+
+    // The bid's and the ask's own price is held; the last's, acknowledged as
+    // allowed, goes whole; the model's figures are gated by the underlying
+    // alone. Nothing is said of the side: its restriction was the venue's own
+    // refusal of the subscription, told where it arrived.
+    let bid = owed(Bid, whole);
+    assert_eq!(bid.to, vec![(1, held_side)]);
+    assert!(bid.refusals.is_empty(), "{:?}", bid.refusals);
+    assert_eq!(owed(Ask, whole).to, vec![(1, held_side)]);
+    assert_eq!(owed(Last, whole).to, vec![(1, whole)]);
+    assert_eq!(owed(Model, whole).to, vec![(1, whole)]);
+}
+
+/// A frozen feed names itself in the refusal, as a gateway names it; a
+/// delayed feed is gated by nothing and says nothing, as a gateway's delayed
+/// figures answer to no access.
+#[test]
+fn a_frozen_refusal_names_the_frozen_feed_and_a_delayed_one_is_gated_by_nothing() {
+    use crate::bridge::{OptionTick, OptionTickKind::Model, QuoteAccess};
+    let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
+    let requires = "Part of requested market data requires additional subscription for API. \
+                    See link in 'Market Data Connections' dialog for more details.";
+    let delayed = "Delayed market data is available.";
+
+    // Frozen.
+    let shared = SharedState::new();
+    let core = ClientCore::new();
+    core.note_slot_taken(1, 1);
+    wire_quote_access(&shared, 1);
+    shared.market.note_listing_access(101, false, QuoteAccess::RequiresSubscription);
+    core.note_mkt_data_type(1, 2);
+    assert!(core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
+        asked_at: std::time::Instant::now(),
+        req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
+        unsent: 0,
+    }).is_none());
+    let owed = core.option_tick_owed(&shared, 1, &OptionTick {
+        instrument: 1, kind: Model, figures: whole, price_based: true,
+    });
+    assert_eq!(
+        owed.refusals,
+        vec![(1, 10091, format!("{requires}{delayed}UND NASDAQ/FROZEN_TOP/BID_ASK"))],
+    );
+
+    // Delayed: the same wiring, gated by nothing.
+    let shared = SharedState::new();
+    let core = ClientCore::new();
+    core.note_slot_taken(2, 1);
+    wire_quote_access(&shared, 2);
+    shared.market.note_listing_access(102, false, QuoteAccess::RequiresSubscription);
+    core.mark_feed_delayed_for_test(2);
+    assert!(core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
+        asked_at: std::time::Instant::now(),
+        req_id: 1, slot: 2, generation: 1, con_id: 0, series: Vec::new(),
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(1), marked: true,
+        unsent: 0,
+    }).is_none());
+    let owed = core.option_tick_owed(&shared, 1, &OptionTick {
+        instrument: 2, kind: Model, figures: whole, price_based: true,
+    });
+    assert_eq!(owed.to, vec![(1, whole)], "a delayed feed is gated by nothing");
+    assert!(owed.refusals.is_empty(), "{:?}", owed.refusals);
+}
+
 /// A snapshot of a contract a gateway marks as an option also waits for the
 /// option model (13, or 83 on a delayed feed) and the bid's, ask's and last's
 /// computations (10 to 12, or 80 to 82); one of any other type does not. It is
@@ -2587,6 +2852,13 @@ fn an_options_snapshot_is_sent_each_computation_once_and_whole() {
     for slot in [0, 5, 7, 11] {
         core.note_slot_taken(slot, 1);
     }
+    // What each option's program may see, as a gateway's may: the venue has
+    // answered each option's definition and its underlying's, and acknowledged
+    // every live quote — the option's own and the watch on the underlying's
+    // listing — with nothing restricting it.
+    for slot in [0, 7, 11] {
+        wire_quote_access(&shared, slot);
+    }
     let ask_for = |req_id: i64, slot, snapshot| core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id, slot, generation: 1, con_id: 0, series: Vec::new(),
@@ -2596,7 +2868,8 @@ fn an_options_snapshot_is_sent_each_computation_once_and_whole() {
     let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
     let partial = [0.2, 0.55, 5.0, unstated, 0.02, 0.3, -0.1, 765.0];
     let owed = |kind: OptionTickKind, figures: [f64; 8], slot| {
-        core.option_tick_owed(1, &OptionTick { instrument: slot, kind, figures, price_based: true })
+        let owed = core.option_tick_owed(&shared, 1, &OptionTick { instrument: slot, kind, figures, price_based: true });
+        (owed.tick_type, owed.to)
     };
 
     // A stream beside it is sent every change; the snapshot only what is

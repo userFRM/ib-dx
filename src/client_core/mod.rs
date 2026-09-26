@@ -420,17 +420,24 @@ impl ClientCore {
     /// it. A request joining a contract already modelled is sent the model as
     /// it stands when it joins, and the next tick of each other kind.
     ///
+    /// On a live or frozen feed a request is sent the underlying's price only
+    /// where the program may see the underlying's quote, and a side's price
+    /// only where it may see the option's bid and ask, or its last
+    /// ([`quote_shown`](Self::quote_shown)).
+    ///
     /// A snapshot is sent each kind once, and only a computation stating all
     /// eight figures, and on a frozen feed the model once more whatever it
     /// states; what it has not been sent by its end is sent then
     /// (`check_snapshot_done`).
     pub fn option_tick_owed(
-        &self, generation: u64, tick: &crate::bridge::OptionTick,
-    ) -> (i32, Vec<(i64, [f64; 8])>) {
+        &self, shared: &SharedState, generation: u64, tick: &crate::bridge::OptionTick,
+    ) -> OwedOptionTicks {
         use crate::bridge::OptionTickKind::Model;
-        let tick_type = option_tick_type(tick.kind, self.feed_is_delayed(tick.instrument));
+        let delayed = self.feed_is_delayed(tick.instrument);
+        let tick_type = option_tick_type(tick.kind, delayed);
+        let mut refusals = Vec::new();
         if generation != self.generation_held(tick.instrument) {
-            return (tick_type, Vec::new());
+            return OwedOptionTicks { tick_type, to: Vec::new(), refusals };
         }
         if tick.kind == Model {
             self.models_as_they_stand.lock().unwrap().insert(tick.instrument, (generation, *tick));
@@ -442,44 +449,204 @@ impl ClientCore {
         let own = self.ownership();
         let mut sent = self.option_ticks_sent.lock().unwrap();
         let mut snapshots = self.snapshot_reqs.lock().unwrap();
-        let owed: Vec<(i64, [f64; 8])> = own.holders.get(&tick.instrument).copied().into_iter()
+        let requests: Vec<i64> = own.holders.get(&tick.instrument).copied().into_iter()
             .chain(own.following.get(&tick.instrument).into_iter().flatten().copied())
-            .filter_map(|req_id| {
-                let key = (req_id, tick.kind);
-                let snapshot = snapshots.get_mut(&req_id);
-                if tick.kind == Model {
-                    let changed = sent.insert(key, tick.figures) != Some(tick.figures);
-                    let owed = match snapshot {
-                        // A snapshot is sent the model once, stating every
-                        // figure, and on a frozen feed once whatever it
-                        // states.
-                        Some(wait) => changed && owed_to_snapshot(wait, tick.kind, &tick.figures, feed),
-                        None => changed && tick.figures.iter().any(|figure| *figure != f64::MAX),
-                    };
-                    return owed.then_some((req_id, tick.figures));
-                }
-                let last = sent.get(&key).copied().unwrap_or([f64::MAX; 8]);
-                let mut figures = tick.figures;
-                for (figure, before) in figures.iter_mut().zip(last) {
-                    if *figure == f64::MAX {
-                        *figure = before;
-                    }
-                }
-                let changed = figures != last;
-                if changed {
-                    sent.insert(key, figures);
-                }
-                let owed = match snapshot {
-                    // And each side once, stating every figure, whether or
-                    // not it moved.
-                    Some(wait) => owed_to_snapshot(wait, tick.kind, &figures, feed),
-                    None => changed,
-                };
-                owed.then_some((req_id, figures))
-            })
             .collect();
-        (tick_type, owed)
+        let mut to = Vec::new();
+        for req_id in requests {
+            let key = (req_id, tick.kind);
+            let snapshot = snapshots.get_mut(&req_id);
+            let mut figures = tick.figures;
+            if !delayed {
+                let shown = self.quote_shown(shared, req_id, tick, feed, &mut refusals);
+                if !shown.underlying {
+                    figures[7] = f64::MAX;
+                }
+                if !shown.option {
+                    figures[2] = f64::MAX;
+                }
+            }
+            if tick.kind == Model {
+                let changed = sent.insert(key, figures) != Some(figures);
+                let owed = match snapshot {
+                    // A snapshot is sent the model once, stating every
+                    // figure, and on a frozen feed once whatever it states.
+                    Some(wait) => changed && owed_to_snapshot(wait, tick.kind, &figures, feed),
+                    None => changed && figures.iter().any(|figure| *figure != f64::MAX),
+                };
+                if owed {
+                    to.push((req_id, figures));
+                }
+                continue;
+            }
+            let last = sent.get(&key).copied().unwrap_or([f64::MAX; 8]);
+            for (figure, before) in figures.iter_mut().zip(last) {
+                if *figure == f64::MAX {
+                    *figure = before;
+                }
+            }
+            let changed = figures != last;
+            if changed {
+                sent.insert(key, figures);
+            }
+            let owed = match snapshot {
+                // And each side once, stating every figure, whether or
+                // not it moved.
+                Some(wait) => owed_to_snapshot(wait, tick.kind, &figures, feed),
+                None => changed,
+            };
+            if owed {
+                to.push((req_id, figures));
+            }
+        }
+        OwedOptionTicks { tick_type, to, refusals }
     }
+
+    /// What of an option computation a request on a live or frozen feed may
+    /// be sent, as a gateway decides it for the request.
+    ///
+    /// The underlying's price, once every listing of the underlying whose
+    /// definition the venue has answered this session is subscribed and the
+    /// venue has stated the access to one of them, none of them restricted.
+    /// Decided once for the request: a restriction refuses it for good, and is
+    /// reported to the request under 10091 where a subscription would lift it
+    /// and 10090 where nothing would; a listing not subscribed, or nothing
+    /// stated yet, leaves it to be decided on the next computation. An option
+    /// whose underlying names no contract shows none.
+    ///
+    /// A side's price, once the venue has stated the access to the option's
+    /// own bid and ask (10 and 11), or its last (12), as allowed; decided
+    /// once for the request as well.
+    fn quote_shown(
+        &self,
+        shared: &SharedState,
+        req_id: i64,
+        tick: &crate::bridge::OptionTick,
+        feed: i32,
+        refusals: &mut Vec<(i64, i32, String)>,
+    ) -> QuoteShown {
+        use crate::bridge::OptionTickKind::{Ask, Bid, Last, Model};
+        let option = shared.market.listing_quote(tick.instrument);
+        let mut shown = self.quotes_shown.lock().unwrap();
+        let decided = shown.entry(req_id).or_default();
+        if decided.underlying.is_none() {
+            decided.underlying = self.underlying_decided(shared, req_id, option.as_ref(), feed, refusals);
+        }
+        let which = match tick.kind {
+            Bid | Ask => Some(0),
+            Last => Some(1),
+            Model => None,
+        };
+        let own = which.and_then(|at| {
+            if decided.option[at].is_none() {
+                let access = option.as_ref().map_or(crate::bridge::QuoteAccess::Unknown, |listing| {
+                    if at == 0 { listing.bid_ask } else { listing.last }
+                });
+                if access != crate::bridge::QuoteAccess::Unknown {
+                    decided.option[at] = Some(access == crate::bridge::QuoteAccess::Allowed);
+                }
+            }
+            decided.option[at]
+        });
+        QuoteShown {
+            underlying: decided.underlying == Some(true),
+            option: which.is_none() || own == Some(true),
+        }
+    }
+
+    /// Whether a request on an option may be sent its underlying's price, where
+    /// that is decided now.
+    fn underlying_decided(
+        &self,
+        shared: &SharedState,
+        req_id: i64,
+        option: Option<&crate::bridge::ListingQuote>,
+        feed: i32,
+        refusals: &mut Vec<(i64, i32, String)>,
+    ) -> Option<bool> {
+        use crate::bridge::QuoteAccess;
+        let definition = option
+            .and_then(|option| u32::try_from(option.con_id).ok())
+            .and_then(|con_id| shared.reference.contract_definition(con_id, ""))?;
+        if definition.under_con_id == 0 {
+            return Some(false);
+        }
+        let listings = shared.reference.listings_of(definition.under_con_id);
+        // Not decided before the venue has named the underlying.
+        if listings.is_empty() {
+            return None;
+        }
+        let subscribed = shared.market.listing_quotes_of(i64::from(definition.under_con_id));
+        let mut stated = false;
+        for (listing, held) in &listings {
+            let quote = subscribed.iter().find(|quote| quote.venue == *listing);
+            let (bid_ask, last) =
+                quote.map_or((QuoteAccess::Unknown, QuoteAccess::Unknown), |q| (q.bid_ask, q.last));
+            stated |= bid_ask != QuoteAccess::Unknown || last != QuoteAccess::Unknown;
+            if bid_ask.restricted() || last.restricted() {
+                let (access, quoted) = match (bid_ask.restricted(), last.restricted()) {
+                    (true, true) => (bid_ask, "ALL"),
+                    (true, false) => (bid_ask, "BID_ASK"),
+                    _ => (last, "LAST"),
+                };
+                let rule = held.market_rule_id.and_then(|rule| shared.reference.market_rule(rule as i32));
+                if let Some(named) =
+                    crate::engine::hot_loop::ccp::order_message::display_name(held, rule.as_ref(), shared)
+                {
+                    let (code, said) = if access == QuoteAccess::RequiresSubscription {
+                        (10091, UNDERLYING_REQUIRES_SUBSCRIPTION)
+                    } else {
+                        (10090, UNDERLYING_NOT_SUBSCRIBED)
+                    };
+                    let fed = if feed == MDT_FROZEN { "FROZEN_TOP" } else { "TOP" };
+                    refusals.push((
+                        req_id,
+                        code,
+                        format!("{said}Delayed market data is available.{named}/{fed}/{quoted}"),
+                    ));
+                }
+                return Some(false);
+            }
+            quote?;
+        }
+        stated.then_some(true)
+    }
+}
+
+/// What a gateway tells a request whose option's underlying is quoted on a
+/// listing a subscription would open to the program, and on one nothing
+/// would.
+const UNDERLYING_REQUIRES_SUBSCRIPTION: &str = "Part of requested market data requires additional \
+    subscription for API. See link in 'Market Data Connections' dialog for more details.";
+const UNDERLYING_NOT_SUBSCRIBED: &str =
+    "Part of requested market data is not subscribed. Subscription-independent ticks are still active.";
+
+/// What of an option computation a request is sent: the underlying's price,
+/// and the side's own price.
+struct QuoteShown {
+    underlying: bool,
+    option: bool,
+}
+
+/// What a request has been decided to be shown of its option's computations,
+/// once decided: the underlying's price, and the option's bid and ask and its
+/// last.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct QuotesShown {
+    underlying: Option<bool>,
+    option: [Option<bool>; 2],
+}
+
+/// An option computation as it goes out: its number, each request it goes to
+/// with the figures that request is sent, and what the requests are told of
+/// a quote they may not see.
+pub struct OwedOptionTicks {
+    /// The tick number.
+    pub tick_type: i32,
+    /// Each request and what it is sent.
+    pub to: Vec<(i64, [f64; 8])>,
+    /// Each request told of a quote it may not see: the code and the text.
+    pub refusals: Vec<(i64, i32, String)>,
 }
 
 /// Tick type 13: the option model's computation.
@@ -1597,6 +1764,9 @@ pub struct ClientCore {
     /// The last option computation of each kind each request was sent,
     /// figure by figure.
     option_ticks_sent: Mutex<HashMap<(i64, crate::bridge::OptionTickKind), [f64; 8]>>,
+    /// What each request has been decided to be shown of its option's
+    /// computations.
+    quotes_shown: Mutex<HashMap<i64, QuotesShown>>,
     /// Each option's model tick as it stands, under the subscription it was
     /// built for: what a request joining the option is sent at once.
     models_as_they_stand: Mutex<HashMap<InstrumentId, (u64, crate::bridge::OptionTick)>>,
@@ -1823,6 +1993,7 @@ impl ClientCore {
             mdt_sent: Mutex::new(HashMap::new()),
             tick_req_params_sent: Mutex::new(HashSet::new()),
             option_ticks_sent: Mutex::new(HashMap::new()),
+            quotes_shown: Mutex::new(HashMap::new()),
             models_as_they_stand: Mutex::new(HashMap::new()),
             mdt_by_instrument: Mutex::new(HashMap::new()),
             historical_asks: Mutex::new(HashMap::new()),
@@ -1908,6 +2079,7 @@ impl ClientCore {
         self.mdt_sent.lock().unwrap().clear();
         self.tick_req_params_sent.lock().unwrap().clear();
         self.option_ticks_sent.lock().unwrap().clear();
+        self.quotes_shown.lock().unwrap().clear();
         self.models_as_they_stand.lock().unwrap().clear();
         self.mdt_by_instrument.lock().unwrap().clear();
         self.historical_asks.lock().unwrap().clear();
@@ -2105,6 +2277,7 @@ impl ClientCore {
                 self.mdt_sent.lock().unwrap().remove(req_id);
                 self.tick_req_params_sent.lock().unwrap().remove(req_id);
                 self.option_ticks_sent.lock().unwrap().retain(|(sent_to, _), _| sent_to != req_id);
+                self.quotes_shown.lock().unwrap().remove(req_id);
                 // The slot going back ends the request, and a number that
                 // outlives its request with its marks still standing is read as
                 // the request it was: reused for an ordinary stream it was
@@ -2299,8 +2472,8 @@ impl ClientCore {
     /// the model tick as it stands: returned, with the number it goes out
     /// under, for the caller to send that request alone.
     pub fn note_mkt_data_taken(
-        &self, _shared: &SharedState, taken: &crate::bridge::MarketDataTaken,
-    ) -> Option<(i32, i64, crate::bridge::OptionTick)> {
+        &self, shared: &SharedState, taken: &crate::bridge::MarketDataTaken,
+    ) -> Option<(OwedOptionTicks, bool)> {
         let crate::bridge::MarketDataTaken {
             req_id, slot, generation, con_id, ref series, snapshot, asked_at, one_shot, data_type, marked,
             unsent,
@@ -2335,17 +2508,25 @@ impl ClientCore {
             if built_for != self.generation_held(slot) {
                 return None;
             }
-            let stated = tick.figures.iter().any(|figure| *figure != f64::MAX);
+            let delayed = self.feed_is_delayed(slot);
+            let mut refusals = Vec::new();
+            let mut figures = tick.figures;
+            if !delayed && !self.quote_shown(shared, req_id, &tick, self.feed_of(slot), &mut refusals).underlying {
+                figures[7] = f64::MAX;
+            }
+            let stated = figures.iter().any(|figure| *figure != f64::MAX);
             let fresh = self.option_ticks_sent.lock().unwrap()
-                .insert((req_id, crate::bridge::OptionTickKind::Model), tick.figures) != Some(tick.figures);
+                .insert((req_id, crate::bridge::OptionTickKind::Model), figures) != Some(figures);
             let owed = match self.snapshot_reqs.lock().unwrap().get_mut(&req_id) {
-                Some(wait) => fresh && owed_to_snapshot(wait, tick.kind, &tick.figures, self.feed_of(slot)),
+                Some(wait) => fresh && owed_to_snapshot(wait, tick.kind, &figures, self.feed_of(slot)),
                 None => fresh && stated,
             };
-            if !owed {
+            let to = if owed { vec![(req_id, figures)] } else { Vec::new() };
+            if to.is_empty() && refusals.is_empty() {
                 return None;
             }
-            return Some((option_tick_type(tick.kind, self.feed_is_delayed(slot)), req_id, tick));
+            let tick_type = option_tick_type(tick.kind, delayed);
+            return Some((OwedOptionTicks { tick_type, to, refusals }, tick.price_based));
         }
         let _ = self.take_or_follow(slot, req_id, series, generation, con_id);
         self.stamp_registration(req_id);
@@ -2526,6 +2707,7 @@ impl ClientCore {
             own.series.remove(&req_id);
             self.tick_req_params_sent.lock().unwrap().remove(&req_id);
             self.option_ticks_sent.lock().unwrap().retain(|(sent_to, _), _| *sent_to != req_id);
+            self.quotes_shown.lock().unwrap().remove(&req_id);
             if let Some(instrument) = own.by_req.remove(&req_id) {
                 let mut nobody_left = true;
                 if let Some(watchers) = own.following.get_mut(&instrument) {

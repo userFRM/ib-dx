@@ -996,6 +996,21 @@ impl ReferenceState {
             .or_else(|| definitions.get(&(con_id, String::new()))).cloned()
     }
 
+    /// Every listing of a contract whose definition the venue has answered
+    /// this session, by the listing in the wire's own spelling.
+    pub(crate) fn listings_of(&self, con_id: u32) -> Vec<(String, ContractDefinition)> {
+        let mut listings: Vec<(String, ContractDefinition)> = self
+            .contract_definitions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|((held, exchange), _)| *held == con_id && !exchange.is_empty())
+            .map(|((_, exchange), definition)| (exchange.clone(), definition.clone()))
+            .collect();
+        listings.sort_by(|(a, _), (b, _)| a.cmp(b));
+        listings
+    }
+
     pub(crate) fn contract_definition_exact(&self, con_id: u32, exchange: &str) -> Option<ContractDefinition> {
         self.contract_definitions.lock().unwrap().get(&(
             con_id, crate::control::contracts::exchange_to_fix(exchange).to_string(),

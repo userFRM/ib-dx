@@ -799,6 +799,39 @@ fn thousands(quantity: &str) -> String {
     out
 }
 
+/// A contract as a gateway's display names it, where the kind of contract it
+/// is is written here: none for a kind that is not.
+pub(crate) fn display_name(
+    contract: &ContractDefinition,
+    rule: Option<&MarketRule>,
+    shared: &crate::bridge::SharedState,
+) -> Option<String> {
+    let described = Described {
+        side: Side::Buy,
+        quantity: "",
+        ladder: None,
+        cash: None,
+        contract,
+        rule,
+        whole_listing: shared.reference.enables("SEPLSTDIV"),
+        isin_with_cusip: shared.reference.enables("CUSIPD"),
+        order_type: "",
+        algo: None,
+        money: Money {
+            types: "",
+            order_types: "",
+            account: false,
+            refusals_told: false,
+            crypto: false,
+            precise: false,
+            product_defaults: "",
+        },
+        size_fraction: "",
+    };
+    let named = contract.sec_type == SecurityType::Combo || !kind_text(&described).trim().is_empty();
+    named.then(|| contract_text(&described))
+}
+
 /// The contract as a gateway's display names it: its symbol, what kind of
 /// contract it is, and the venue's own name for it in brackets where that is
 /// not the symbol.

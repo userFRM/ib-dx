@@ -1209,6 +1209,9 @@ pub(crate) struct FarmState {
     /// What each quote's record last stated of whether trading has halted,
     /// the lowest bit.
     quote_flags: std::collections::HashMap<InstrumentId, i32>,
+    /// Slots whose quote subscription was withdrawn, for the listing it was
+    /// on to be forgotten where the shared state is in hand.
+    listings_withdrawn: Vec<InstrumentId>,
     /// What generic tick each request asked for, as (req_id, request type).
     /// The venue numbers a generic tick separately from the prices and states
     /// nothing on the frames themselves about which tick they carry, so the
@@ -2527,6 +2530,7 @@ impl FarmState {
             watches_wanted: Vec::new(),
             watches_ended: Vec::new(),
             quote_flags: std::collections::HashMap::new(),
+            listings_withdrawn: Vec::new(),
             generic_tick_reqs: Vec::new(),
             asked_generic_ticks: std::collections::HashMap::new(),
             subscription_asked_on: std::collections::HashMap::new(),
@@ -3237,6 +3241,21 @@ impl FarmState {
                 entry.req_id == req_id && entry.request_type == REALTIME_BID_ASK_REQUEST_TYPE
             })
         });
+        // What a program may see of the quote, as the acknowledgement of the
+        // live bid and ask, or of the live last, states it on its seventh field.
+        let acknowledges_live = |request_type: u32| self.instrument_md_reqs.iter().any(|(id, record)| {
+            *id == instrument && record.mode_9887 == 0 && record.entries.iter().any(|entry| {
+                entry.req_id == req_id && entry.request_type == request_type
+            })
+        });
+        if parts.len() >= 7 {
+            let access = crate::bridge::QuoteAccess::read(parts[6]);
+            if acknowledges_live(REALTIME_BID_ASK_REQUEST_TYPE) {
+                shared.market.note_listing_access(instrument, false, access);
+            } else if acknowledges_live(REALTIME_LAST_REQUEST_TYPE) {
+                shared.market.note_listing_access(instrument, true, access);
+            }
+        }
         self.note_frozen_tag(instrument, req_id, server_tag);
         // Not where the program is served the delayed-frozen quote, which is
         // the type it was last told.
@@ -3434,6 +3453,10 @@ impl FarmState {
                             entry.req_id == rid && entry.request_type == REALTIME_BID_ASK_REQUEST_TYPE
                         })
                     });
+                    // A refused quote is no subscription on its listing.
+                    if refuses_bid_ask {
+                        shared.market.forget_listing(instrument);
+                    }
                     if refuses_bid_ask
                         && delayed_available.get(index) == Some(&"1")
                         && let Some(state) = self.delayed_subscriptions.get_mut(&instrument)
@@ -3754,6 +3777,13 @@ impl FarmState {
         self.status_on_fallback(instrument, farm_conn, context, shared, hb);
     }
 
+    /// Forget the listings of the quote subscriptions withdrawn since.
+    pub(super) fn forget_withdrawn_listings(&mut self, shared: &SharedState) {
+        for instrument in std::mem::take(&mut self.listings_withdrawn) {
+            shared.market.forget_listing(instrument);
+        }
+    }
+
     pub(crate) fn send_mktdata_subscribe(
         &mut self,
         con_id: i64,
@@ -3891,6 +3921,11 @@ impl FarmState {
         // being served.
         let (venue, wire_sec_type) = stated_venue_and_type(sec_type, exchange);
         let venue = venue.to_string();
+        // A live quote on a listing, whose access its acknowledgements state.
+        self.forget_withdrawn_listings(shared);
+        if realtime && con_id > 0 {
+            shared.market.note_listing_subscribed(instrument, con_id, &venue);
+        }
         let precision = quote_precision(
             shared,
             if regulatory_snapshot { REGULATORY_SNAPSHOT_REQUEST_TYPE } else { REALTIME_LAST_REQUEST_TYPE },
@@ -4176,6 +4211,7 @@ impl FarmState {
         // number of shares where the venue has started its day over.
         self.rt_volume_totals.retain(|(watched, _), _| *watched != instrument);
         self.quote_flags.remove(&instrument);
+        self.listings_withdrawn.push(instrument);
         // And what was stated for the option model, whether or not the farm is
         // up: left behind, the next contract on this slot is modelled from it.
         self.option_ticks_due.remove(&instrument);
@@ -5412,6 +5448,7 @@ impl FarmState {
         context.market.clear_server_tags();
         context.market.zero_all_quotes();
         self.quote_flags.clear();
+        shared.market.forget_listing_access();
         // And the copy the caller reads, which is a different one: zeroing the
         // engine's alone left the pre-drop prices standing where
         // `poll_instrument_ticks` looks, so the notice below was followed by

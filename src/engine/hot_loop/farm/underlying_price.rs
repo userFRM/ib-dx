@@ -459,8 +459,8 @@ mod tests {
         }
     }
 
-    /// The mark as a gateway reads it off a quote, row by row, with the
-    /// figures written from the rule a gateway applies.
+    /// The mark as a gateway reads it off a quote, row by row, and each
+    /// figure as the rule a gateway applies works it.
     #[test]
     fn the_underlying_is_marked_as_a_gateway_marks_it() {
         let stock = Kind::of("STK", false);

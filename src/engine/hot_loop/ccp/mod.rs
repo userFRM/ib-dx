@@ -4720,7 +4720,7 @@ mod venue_clock_tests {
 }
 
 pub(crate) mod executions;
-mod order_message;
+pub(crate) mod order_message;
 mod recovery;
 pub(crate) mod positions;
 

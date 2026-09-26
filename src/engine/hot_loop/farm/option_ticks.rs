@@ -403,6 +403,7 @@ impl FarmState {
         shared: &SharedState,
         hb: &mut HeartbeatState,
     ) {
+        self.forget_withdrawn_listings(shared);
         let second = now.div_euclid(1_000) as u64;
         if second != self.option_ticks_built_in {
             self.option_ticks_built_in = second;
