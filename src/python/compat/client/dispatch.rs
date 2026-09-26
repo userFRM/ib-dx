@@ -1477,6 +1477,10 @@ impl EClient {
             }
             for tick in &result.ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
+                    let snapshot = self.core.snapshot_sends(id, tick.tick_type);
+                    if snapshot == Some(false) {
+                        continue;
+                    }
                     if tick.is_price {
                         let attrib_obj = match tick.tick_type {
                             1 | 66 => &bid_attrib,
@@ -1487,16 +1491,25 @@ impl EClient {
                     } else {
                         call_wrapper!(self, py, shared, "tick_size", (id, tick.tick_type, tick.value));
                     }
+                    if let (Some(true), Some((size_tick, size))) =
+                        (snapshot, result.size_beside(tick.tick_type))
+                    {
+                        call_wrapper!(self, py, shared, "tick_size", (id, size_tick, size));
+                    }
                 }
             }
             for tick in &result.generic_ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
-                    call_wrapper!(self, py, shared, "tick_generic", (id, tick.tick_type, tick.value));
+                    if self.core.snapshot_sends(id, tick.tick_type) != Some(false) {
+                        call_wrapper!(self, py, shared, "tick_generic", (id, tick.tick_type, tick.value));
+                    }
                 }
             }
             for st in &result.string_ticks {
                 for id in std::iter::once(st.req_id).chain(watchers.iter().copied()) {
-                    call_wrapper!(self, py, shared, "tick_string", (id, st.tick_type, st.value.as_str()));
+                    if self.core.snapshot_sends(id, st.tick_type) != Some(false) {
+                        call_wrapper!(self, py, shared, "tick_string", (id, st.tick_type, st.value.as_str()));
+                    }
                 }
             }
             if let Some(ts) = &result.timestamp {
@@ -1507,7 +1520,9 @@ impl EClient {
                 // the kinds its snapshot waits for.
                 for id in std::iter::once(ts.req_id).chain(watchers.iter().copied()) {
                     self.core.note_snapshot_tick(id, tick_type);
-                    call_wrapper!(self, py, shared, "tick_string", (id, tick_type, ts_secs.to_string().as_str()));
+                    if self.core.snapshot_sends(id, tick_type) != Some(false) {
+                        call_wrapper!(self, py, shared, "tick_string", (id, tick_type, ts_secs.to_string().as_str()));
+                    }
                 }
             }
             // The answer to a chargeable snapshot, to the snapshot's own

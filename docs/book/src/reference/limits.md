@@ -247,12 +247,6 @@ gateway follows the strike of a derivative whose underlying trades in another
 currency with that currency, once it has looked the underlying up; here the
 strike is written alone.
 
-## A snapshot's ticks
-
-A snapshot here is sent every change to its ticks until it ends. A gateway
-sends a snapshot each kind of tick once, the first it holds, and a bid's, an
-ask's or a last's size only beside its price.
-
 ## Callbacks nothing fires
 
 Two callbacks exist so a program written against the TWS API compiles and

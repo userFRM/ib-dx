@@ -281,6 +281,66 @@ pub fn marked_as_option(sec_type: &str) -> bool {
     matches!(sec_type, "OPT" | "FOP" | "IOPT" | "WAR" | "EC")
 }
 
+/// Whether a gateway tracks a tick of this number for a snapshot, and so
+/// sends one each kind once, the first it holds: the prices and figures its
+/// quote is published with, but for the bid's, the ask's and the last's sizes,
+/// which a snapshot is sent only beside their prices.
+fn tracked_by_a_snapshot(tick_type: i32) -> bool {
+    matches!(
+        tick_type,
+        1 | 2 | 4 | 6..=14 | 32 | 33 | 45 | 49..=52 | 66..=68 | 72..=76 | 80..=84 | 88 | 90 | 103
+            | 104
+    )
+}
+
+/// The size a gateway sends beside a price, which a program hears as a size
+/// right after the price: the bid's, the ask's and the last's.
+pub fn size_beside(tick_type: i32) -> Option<i32> {
+    match tick_type {
+        1 => Some(0),
+        2 => Some(3),
+        4 => Some(5),
+        66 => Some(69),
+        67 => Some(70),
+        68 => Some(71),
+        _ => None,
+    }
+}
+
+/// The ticks a gateway never sends a snapshot of a contract of this type, and
+/// so does not wait for, as a bit per tick number: the open, where the type's
+/// quote has no session of its own to open (every type but shares, futures,
+/// commodities and crypto); the volume and the last's size, where its quote
+/// carries no volume; and the last with where it traded, where its quote
+/// carries no last. A contract whose definition says it is quoted at its
+/// midpoint carries neither a volume nor a last.
+///
+/// A type this does not name is taken to carry them all.
+pub fn never_sent_to_a_snapshot(sec_type: &str, quoted_at_midpoint: bool) -> u128 {
+    let (opens, volume, last) = match sec_type {
+        "STK" | "FUT" | "CONTFUT" | "CRYPTO" => (true, true, true),
+        "CMDTY" => (true, false, false),
+        "CFD" | "OPT" | "FOP" | "WAR" | "IOPT" | "FWD" | "BOND" | "BILL" | "SLB" => {
+            (false, true, true)
+        }
+        "IND" | "FUND" => (false, false, true),
+        "CASH" | "FIXED" | "EC" | "NEWS" | "BSK" | "ICU" | "ICS" | "PHYSS" => (false, false, false),
+        _ => return 0,
+    };
+    let ticks = |numbers: &[i32]| numbers.iter().fold(0u128, |bits, n| bits | 1 << n);
+    let mut unsent = 0;
+    if !opens {
+        unsent |= ticks(&[14, 76]);
+    }
+    if !volume || quoted_at_midpoint {
+        unsent |= ticks(&[8, 5, 74, 71]);
+    }
+    if !last || quoted_at_midpoint {
+        unsent |= ticks(&[4, 84, 68, 71]);
+    }
+    unsent
+}
+
 /// A snapshot a caller is waiting on.
 #[derive(Clone, Copy, Debug)]
 pub struct SnapshotWait {
@@ -292,12 +352,28 @@ pub struct SnapshotWait {
     pub slot: InstrumentId,
     /// Whether its contract is of a type a gateway marks as an option.
     pub marked: bool,
+    /// The ticks it has been sent, or is never sent, a bit per tick number.
+    pub sent: u128,
 }
 
 impl SnapshotWait {
     /// One asked for now, nothing stated yet.
     pub fn new(slot: InstrumentId, marked: bool) -> Self {
-        Self { asked_at: std::time::Instant::now(), stated: 0, slot, marked }
+        Self { asked_at: std::time::Instant::now(), stated: 0, slot, marked, sent: 0 }
+    }
+
+    /// One on a contract whose quote a gateway never sends a snapshot some
+    /// ticks of (`unsent`, from [`never_sent_to_a_snapshot`]): it is not sent
+    /// them, and waits for neither an open nor a last it will not be sent.
+    fn never_sent(mut self, unsent: u128) -> Self {
+        self.sent = unsent;
+        if unsent & (1 << 14) != 0 {
+            self.stated |= 8;
+        }
+        if unsent & (1 << 4) != 0 {
+            self.stated |= 4;
+        }
+        self
     }
 }
 
@@ -446,6 +522,22 @@ pub struct QuotePollResult {
     /// The same answer's text: where each side is quoted, and the moment it
     /// was read.
     pub snapshot_strings: Vec<StringTickEvent>,
+    /// The bid's, the ask's and the last's sizes as the quote stands, which a
+    /// snapshot is sent beside their prices.
+    pub sizes: [f64; 3],
+}
+
+impl QuotePollResult {
+    /// The size a price of this number is sent beside, as the quote stands.
+    pub fn size_beside(&self, tick_type: i32) -> Option<(i32, f64)> {
+        let at = match tick_type {
+            1 | 66 => 0,
+            2 | 67 => 1,
+            4 | 68 => 2,
+            _ => return None,
+        };
+        Some((size_beside(tick_type)?, self.sizes[at]))
+    }
 }
 
 /// PnL update (account-level).
@@ -2211,6 +2303,7 @@ impl ClientCore {
     ) -> Option<(i32, i64, crate::bridge::OptionTick)> {
         let crate::bridge::MarketDataTaken {
             req_id, slot, generation, con_id, ref series, snapshot, asked_at, one_shot, data_type, marked,
+            unsent,
         } = *taken;
         self.cache_instrument(con_id, slot);
         // Written down before it can be followed: what it asked for decides
@@ -2220,7 +2313,7 @@ impl ClientCore {
         }
         if snapshot {
             self.snapshot_reqs.lock().unwrap().insert(req_id, SnapshotWait {
-                asked_at, ..SnapshotWait::new(slot, marked)
+                asked_at, ..SnapshotWait::new(slot, marked).never_sent(unsent)
             });
         }
         // A contract already being watched needs no second subscription: this
@@ -4199,6 +4292,7 @@ impl ClientCore {
             snapshot_ticks, snapshot_strings,
             eligible_mask,
             quote_state_mask,
+            sizes: [q.bid_size, q.ask_size, q.last_size].map(|size| size as f64 / QTY_SCALE as f64),
         }
     }
 
@@ -4233,6 +4327,32 @@ impl ClientCore {
         if let Some(wait) = self.snapshot_reqs.lock().unwrap().get_mut(&req_id) {
             wait.stated |= bit;
         }
+    }
+
+    /// Whether a request is sent a tick of a kind the venue has just stated:
+    /// `None` for a stream, which is sent every one; for a snapshot, whether
+    /// it is sent this one, as a gateway sends a snapshot each kind it tracks
+    /// once, the first it holds, and a bid's, an ask's or a last's size only
+    /// beside its price, never on its own. What is sent is noted.
+    ///
+    /// A chargeable snapshot is answered by the venue's own message, and a
+    /// kind a gateway tracks no snapshot for is left as it is.
+    pub fn snapshot_sends(&self, req_id: i64, tick_type: i32) -> Option<bool> {
+        if self.chargeable_snapshot_reqs.lock().unwrap().contains(&req_id) {
+            return None;
+        }
+        let mut waiting = self.snapshot_reqs.lock().unwrap();
+        let wait = waiting.get_mut(&req_id)?;
+        if matches!(tick_type, 0 | 3 | 5 | 69 | 70 | 71) {
+            return Some(false);
+        }
+        if !tracked_by_a_snapshot(tick_type) {
+            return None;
+        }
+        let bit = 1u128 << tick_type;
+        let first = wait.sent & bit == 0;
+        wait.sent |= bit;
+        Some(first)
     }
 
     /// A snapshot ends when it has been sent every kind one is made of, or

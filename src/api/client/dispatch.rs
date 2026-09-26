@@ -1206,6 +1206,10 @@ impl EClient {
             }
             for tick in &result.ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
+                    let snapshot = self.core.snapshot_sends(id, tick.tick_type);
+                    if snapshot == Some(false) {
+                        continue;
+                    }
                     if tick.is_price {
                         let attrib = crate::types::quote_attributes(
                             tick.tick_type, result.eligible_mask, result.quote_state_mask,
@@ -1214,16 +1218,25 @@ impl EClient {
                     } else {
                         wrapper.tick_size(id, tick.tick_type, tick.value);
                     }
+                    if let (Some(true), Some((size_tick, size))) =
+                        (snapshot, result.size_beside(tick.tick_type))
+                    {
+                        wrapper.tick_size(id, size_tick, size);
+                    }
                 }
             }
             for tick in &result.generic_ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
-                    wrapper.tick_generic(id, tick.tick_type, tick.value);
+                    if self.core.snapshot_sends(id, tick.tick_type) != Some(false) {
+                        wrapper.tick_generic(id, tick.tick_type, tick.value);
+                    }
                 }
             }
             for st in &result.string_ticks {
                 for id in std::iter::once(st.req_id).chain(watchers.iter().copied()) {
-                    wrapper.tick_string(id, st.tick_type, &st.value);
+                    if self.core.snapshot_sends(id, st.tick_type) != Some(false) {
+                        wrapper.tick_string(id, st.tick_type, &st.value);
+                    }
                 }
             }
             if let Some(ts) = &result.timestamp {
@@ -1234,7 +1247,9 @@ impl EClient {
                 // is one of the kinds its snapshot waits for.
                 for id in std::iter::once(ts.req_id).chain(watchers.iter().copied()) {
                     self.core.note_snapshot_tick(id, tick_type);
-                    wrapper.tick_string(id, tick_type, &ts_secs.to_string());
+                    if self.core.snapshot_sends(id, tick_type) != Some(false) {
+                        wrapper.tick_string(id, tick_type, &ts_secs.to_string());
+                    }
                 }
             }
             // The answer to a chargeable snapshot, to the snapshot's own
@@ -1462,6 +1477,89 @@ mod delivered_size_tests {
         client.process_msgs(&mut heard);
         assert_eq!(heard.times, [(2, 88)], "the time on a delayed feed is 88");
         assert_eq!(heard.ended, [2], "and it was the last of it");
+    }
+
+    /// A gateway sends a snapshot each kind of tick once, the first it holds,
+    /// and a bid's, an ask's or a last's size only beside its price, as the
+    /// size a program hears right after the price. What a gateway never sends
+    /// a snapshot of a contract of the type, it does not wait for either: the
+    /// open of an option, the last and the volume of a currency pair.
+    #[test]
+    fn a_snapshot_is_sent_each_kind_once_and_a_size_beside_its_price() {
+        #[derive(Default)]
+        struct Heard { said: Vec<(char, i32, f64)> }
+        impl Wrapper for Heard {
+            fn tick_price(&mut self, _: i64, tick_type: i32, value: f64, _: &crate::types::model::TickAttrib) {
+                self.said.push(('p', tick_type, value));
+            }
+            fn tick_size(&mut self, _: i64, tick_type: i32, value: f64) {
+                self.said.push(('s', tick_type, value));
+            }
+            fn tick_snapshot_end(&mut self, _: i64) {
+                self.said.push(('e', -1, 0.0));
+            }
+        }
+        let price = |p: f64| (p * PRICE_SCALE as f64) as i64;
+        let first = crate::types::Quote {
+            bid: price(100.0), bid_size: 5 * QTY_SCALE,
+            ask: price(101.0), ask_size: 6 * QTY_SCALE,
+            last: price(100.5), last_size: 7 * QTY_SCALE,
+            high: price(102.0), low: price(97.0), open: price(99.0), volume: 1000 * QTY_SCALE,
+            ..Default::default()
+        };
+        // The bid and its size move and the close arrives: only the close is
+        // new to the snapshot.
+        let then = crate::types::Quote {
+            bid: price(100.25), bid_size: 9 * QTY_SCALE, close: price(98.0), ..first
+        };
+        let share = crate::api::client::tests::spy();
+        let option = crate::api::client::Contract {
+            con_id: 700_001, symbol: "SPY".into(), sec_type: "OPT".into(),
+            exchange: "SMART".into(), currency: "USD".into(),
+            last_trade_date_or_contract_month: "20261218".into(), strike: 500.0,
+            right: "C".into(), multiplier: "100".into(),
+            ..Default::default()
+        };
+        let pair = crate::api::client::Contract {
+            con_id: 12_087_792, symbol: "EUR".into(), sec_type: "CASH".into(),
+            exchange: "IDEALPRO".into(), currency: "USD".into(),
+            ..Default::default()
+        };
+        // A currency pair's quote here states no open, which its snapshot
+        // does not wait for.
+        let cases = [
+            ("a share", &share, true, vec![
+                ('p', 1, 100.0), ('s', 0, 5.0), ('p', 2, 101.0), ('s', 3, 6.0),
+                ('p', 4, 100.5), ('s', 5, 7.0), ('p', 6, 102.0), ('p', 7, 97.0),
+                ('p', 14, 99.0), ('s', 8, 1000.0), ('p', 9, 98.0), ('e', -1, 0.0),
+            ]),
+            // Its model and its sides are what it waits for beyond the close.
+            ("an option", &option, true, vec![
+                ('p', 1, 100.0), ('s', 0, 5.0), ('p', 2, 101.0), ('s', 3, 6.0),
+                ('p', 4, 100.5), ('s', 5, 7.0), ('p', 6, 102.0), ('p', 7, 97.0),
+                ('s', 8, 1000.0), ('p', 9, 98.0),
+            ]),
+            ("a currency pair", &pair, false, vec![
+                ('p', 1, 100.0), ('s', 0, 5.0), ('p', 2, 101.0), ('s', 3, 6.0),
+                ('p', 6, 102.0), ('p', 7, 97.0), ('p', 9, 98.0), ('e', -1, 0.0),
+            ]),
+        ];
+        for (named, contract, opened, expected) in cases {
+            let stated = |quote: crate::types::Quote| crate::types::Quote {
+                open: if opened { quote.open } else { 0 },
+                ..quote
+            };
+            let (client, rx, shared) = crate::api::client::tests::test_client();
+            client.try_req_mkt_data(1, contract, "", true, false).expect("taken");
+            crate::api::client::tests::settled(&client, &rx);
+            let slot = client.core.watching(1).expect("the engine took it");
+            let mut heard = Heard::default();
+            shared.market.push_quote(slot, &stated(first));
+            client.process_msgs(&mut heard);
+            shared.market.push_quote(slot, &stated(then));
+            client.process_msgs(&mut heard);
+            assert_eq!(heard.said, expected, "{named}");
+        }
     }
 
     /// News and model publications belong to whoever still watches the

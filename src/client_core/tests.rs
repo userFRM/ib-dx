@@ -2590,7 +2590,7 @@ fn an_options_snapshot_is_sent_each_computation_once_and_whole() {
     let ask_for = |req_id: i64, slot, snapshot| core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id, slot, generation: 1, con_id: 0, series: Vec::new(),
-        snapshot, one_shot: false, data_type: data_type_for_mode(0), marked: true,
+        snapshot, one_shot: false, data_type: data_type_for_mode(0), marked: true, unsent: 0,
     });
     let unstated = f64::MAX;
     let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
@@ -3466,7 +3466,7 @@ fn a_forgotten_baseline_states_the_quote_as_it_stands() {
     core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 756733, series: Vec::new(),
-        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false,
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
     });
     assert_eq!(core.followers_of(iid), [2], "the same contract, so it followed rather than took one");
     assert!(
@@ -3503,7 +3503,7 @@ fn registering_a_joiner_leaves_its_refusal_to_the_engine() {
     core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 756733, series: Vec::new(),
-        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false,
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
     });
     assert!(shared.market.drain_subscription_failures_direct().is_empty());
     assert_eq!(shared.market.failure_for_follower(iid).map(|refusal| refusal.message).as_deref(), Some("no entitlement"));
@@ -3718,7 +3718,7 @@ fn registering_a_named_joiner_resets_its_baseline_without_pushing_records() {
     core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 0, series: Vec::new(),
-        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false,
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
     });
 
     assert!(shared.market.drain_tick_req_params_direct().is_empty());
@@ -3739,7 +3739,7 @@ fn followers_keep_the_subscriptions_market_data_type() {
     let subscribe = |req_id| core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(),
         req_id, slot: 0, generation: req_id as u64, con_id: 756733, series: Vec::new(),
-        snapshot: false, one_shot: false, data_type: data_type_for_mode(core.subscription_mode()), marked: false,
+        snapshot: false, one_shot: false, data_type: data_type_for_mode(core.subscription_mode()), marked: false, unsent: 0,
     });
 
     core.set_market_data_type(MDT_DELAYED);
@@ -4585,7 +4585,7 @@ fn a_snapshot_keeps_its_deadline_while_its_registration_waits_to_be_read() {
     let core = ClientCore::new();
     core.note_mkt_data_taken(&shared, &crate::bridge::MarketDataTaken {
         req_id: 5, slot: 0, generation: 1, con_id: 756733, series: Vec::new(),
-        snapshot: true, one_shot: false, data_type: data_type_for_mode(0), marked: false,
+        snapshot: true, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
         asked_at: std::time::Instant::now() - std::time::Duration::from_secs(12),
     });
     assert!(core.check_snapshot_done(5).is_some(), "a late read does not restart the wait");

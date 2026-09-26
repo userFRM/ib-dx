@@ -174,19 +174,25 @@ is limited to the whole-contract position captured before waiting. Shutdown
 refuses an exercise still waiting for that figure. The alternate exercise
 transport is not implemented.
 
-Snapshot registration follows contract naming, including options given only
-by contract id. Its eleven-second bound starts when the engine takes the named
-subscription. The snapshot waits for bid, ask, last, open and close; OPT, FOP,
-IOPT, WAR and EC also wait for model computation 13 and the bid's, ask's and
-last's computations 10 to 12, or 83 and 80 to 82 for delayed data. Delayed
-snapshots also wait for tick string 88. Each computation is sent to a snapshot
-once and only with all eight figures stated; at the end it is sent each one it
-has not been sent where any figure is stated. On a frozen or delayed-frozen
-feed the model is also sent once whatever it states, and at the end a side only
-with all eight figures stated and the model again where it was not sent that
-way. A snapshot of an option on an index or a future, or of one whose definition
-the venue has not answered, is sent no 10 to 12 here and so runs the full
-eleven seconds.
+Snapshot registration follows contract naming, including options given only by
+contract id. Its eleven-second bound starts when the engine takes the named
+subscription. A snapshot is sent each kind of tick once, the first the quote
+states, and the bid's, ask's and last's sizes only beside their prices, each
+right after its price. The snapshot waits for bid, ask, last, open and close;
+OPT, FOP, IOPT, WAR and EC also wait for model computation 13 and the bid's,
+ask's and last's computations 10 to 12, or 83 and 80 to 82 for delayed data.
+Delayed snapshots also wait for tick string 88. As a gateway does, a snapshot
+is sent no open, and does not wait for one, on any type but STK, FUT, CMDTY and
+CRYPTO; no volume or last size on CASH, IND, FUND, CMDTY, FIXED and EC; and no
+last or last exchange on CASH, CMDTY, FIXED and EC; nor, where a contract's
+definition says it is quoted at its midpoint, a volume or a last. Each
+computation is sent to a snapshot once and only with all eight figures stated;
+at the end it is sent each one it has not been sent where any figure is stated.
+On a frozen or delayed-frozen feed the model is also sent once whatever it
+states, and at the end a side only with all eight figures stated and the model
+again where it was not sent that way. A snapshot of an option on an index or a
+future, or of one whose definition the venue has not answered, is sent no 10 to
+12 here and so runs the full eleven seconds.
 
 ## Lower-level Rust users
 

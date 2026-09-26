@@ -324,6 +324,9 @@ pub struct MarketDataTaken {
     /// Whether its contract is of a type a gateway marks as an option, whose
     /// snapshot also waits for the option model.
     pub marked: bool,
+    /// The ticks a gateway never sends a snapshot of its contract, a bit per
+    /// tick number.
+    pub unsent: u128,
 }
 
 /// A bar request the engine has taken, as its caller's side writes down what

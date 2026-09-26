@@ -12264,7 +12264,7 @@ fn feed_changes_reach_watchers_in_record_order() {
     let taken = |req_id, generation, data_type| crate::bridge::Record::MarketDataTaken(Box::new(crate::bridge::MarketDataTaken {
         asked_at: std::time::Instant::now(), req_id, slot: 0, generation,
         con_id: 756733, series: Vec::new(), snapshot: false, one_shot: false,
-        data_type, marked: false,
+        data_type, marked: false, unsent: 0,
     }));
     shared.market.set_generation(0, 11);
     shared.push_call_record(crate::bridge::Record::SlotTaken { slot: 0, generation: 11 });

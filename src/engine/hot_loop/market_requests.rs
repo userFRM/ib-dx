@@ -303,7 +303,7 @@ impl HotLoop {
                 for_calculation: calculation.is_some(),
             },
         );
-        let (stated_type, _) = self.described_as(con_id, &sec_type, &exchange);
+        let (stated_type, stated_exchange) = self.described_as(con_id, &sec_type, &exchange);
         // One the engine opened for itself is served to nobody, so nothing
         // is said of it.
         if !super::intake::engine_owned(req_id) {
@@ -319,6 +319,10 @@ impl HotLoop {
                 data_type: self.shared.market.subscription_data_type(id, crate::client_core::data_type_for_mode(mode_9887))
                     .load(std::sync::atomic::Ordering::Relaxed),
                 marked: crate::client_core::marked_as_option(&stated_type),
+                unsent: crate::client_core::never_sent_to_a_snapshot(
+                    &stated_type,
+                    self.quoted_at_midpoint(con_id, &stated_exchange),
+                ),
             })));
         }
         if con_id > 0 {
@@ -391,6 +395,19 @@ impl HotLoop {
                 &mut self.hb,
             );
         }
+    }
+
+    /// Whether a contract's definition, where it is held, says its quote is
+    /// taken at its midpoint, which a gateway reads off the order types the
+    /// definition names for the listing.
+    fn quoted_at_midpoint(&self, con_id: i64, exchange: &str) -> bool {
+        u32::try_from(con_id)
+            .ok()
+            .and_then(|con_id| self.shared.reference.contract_definition(con_id, exchange))
+            .and_then(|definition| {
+                definition.order_type_rules.iter().find(|(name, _)| name == "USEMID").map(|(_, code)| *code != 4)
+            })
+            .unwrap_or(false)
     }
 
     /// Keep a calculation on the slot its request is served on, and answer it

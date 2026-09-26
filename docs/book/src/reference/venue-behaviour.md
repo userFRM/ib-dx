@@ -357,8 +357,8 @@ gateway takes, as [Limits](./limits.md) says.
 
 A snapshot of an option is held, as a gateway holds it, until it has been sent
 the model and the bid's, the ask's and the last's computations as well as the
-five kinds a snapshot is made of, or until eleven seconds after it was asked
-for. It is sent each computation once, and only one stating all eight figures,
+bid, the ask, the last and the close, or until eleven seconds after it was
+asked for: an option's snapshot is sent no open, and does not wait for one. It is sent each computation once, and only one stating all eight figures,
 whether or not it moved; at its end it is sent each one it has not been sent,
 as it last stood for it, where any figure is stated: the bid's, the ask's and
 the last's, then the model. On a frozen or a delayed-frozen feed it is also
