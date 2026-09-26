@@ -357,13 +357,28 @@ pub enum OrderBook {
     /// A revision the engine kept and then withdrew. It never reached the
     /// venue, so the record goes back to the terms the venue holds.
     RevisionForgotten(u64),
-    /// A revision the venue refused. Restore the order before delivering the
-    /// error that carries the venue's reason.
-    RevisionRefused(crate::types::CancelReject),
+    /// A revision the venue refused, stated on a report, with the terms that
+    /// report states for the order where a gateway takes them from it. Said
+    /// before the error that carries the venue's reason.
+    RevisionRefused(crate::types::CancelReject, Option<Box<StatedTerms>>),
     /// A cancel went out. The order reads as being withdrawn to a caller
     /// asking for the open orders, and nothing is said of it until the venue
     /// reports on it, as a gateway says nothing.
     CancelSent(crate::types::OrderUpdate),
+}
+
+/// The terms a report states for an order, as a gateway takes them into its
+/// own statement of the order.
+#[derive(Clone, Debug)]
+pub struct StatedTerms {
+    /// The type, where the report names one.
+    pub order_type: Option<String>,
+    /// The limit, unset where the report states none.
+    pub lmt_price: f64,
+    /// The trigger, for an order of a type whose trigger the report restates.
+    pub aux_price: Option<f64>,
+    /// What has filled and what is left of the order's own size.
+    pub total_quantity: f64,
 }
 
 /// An answer the dispatcher composes from its own side of the session when it
@@ -498,9 +513,8 @@ pub enum Record {
     RestatedExecution(Box<(api::Contract, api::Execution)>),
     /// The venue took an order's outstanding replacement.
     ReplacementTaken(u64),
-    /// A refused cancel or modify, and when the venue sent the report it
-    /// comes from, where it said.
-    CancelReject((CancelReject, Option<i64>)),
+    /// A change refused on this side of the wire.
+    CancelReject(CancelReject),
     /// Why an order stopped working, or why it was refused, the operation on
     /// it that it answers, and when the venue sent the message it comes from,
     /// where it said.
@@ -795,7 +809,7 @@ impl super::SharedState {
         );
         o.cancel_rejects.take_below(
             cut,
-            |(r, _)| kept_back(None, order(r.order_id)),
+            |r| kept_back(None, order(r.order_id)),
             Record::CancelReject,
             &mut out,
         );
@@ -1124,7 +1138,7 @@ fn call_owner(record: &Record) -> Option<Owner> {
         Record::MarketDataTaken(taken) => Some(Owner::Request(taken.req_id)),
         Record::MarketDataWithdrawn(req_id) => Some(Owner::Request(*req_id)),
         Record::OrderBook(OrderBook::Taken(taken)) => Some(Owner::Order(taken.order_id as i64)),
-        Record::OrderBook(OrderBook::RevisionRefused(reject)) => Some(Owner::Order(reject.order_id as i64)),
+        Record::OrderBook(OrderBook::RevisionRefused(reject, _)) => Some(Owner::Order(reject.order_id as i64)),
         Record::OrderBook(OrderBook::CancelSent(update)) => Some(Owner::Order(update.order_id as i64)),
         Record::OrderBook(OrderBook::Forgotten(id) | OrderBook::RevisionForgotten(id)) => {
             Some(Owner::Order(*id as i64))

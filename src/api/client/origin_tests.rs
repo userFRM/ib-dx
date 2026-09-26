@@ -102,14 +102,10 @@ fn an_internal_lookups_error_and_an_orders_error_under_one_number_say_which_they
 #[test]
 fn every_error_carries_a_clock_reading() {
     let refused: &[(u32, &str)] = &[(150, "8"), (39, "8")];
-    // A change the venue restates as refused: its message, and the refusal of
-    // the change.
-    let restated: &[(u32, &str)] = &[(150, "D"), (39, "0"), (378, "102")];
     // `None` where the time is the clock's.
     for (report, sent, told, stamped) in [
         (refused, None, &[201][..], None),
         (refused, Some("20260926-10:15:10.250"), &[201], Some(1_790_417_710_000)),
-        (restated, Some("20260926-10:15:10.250"), &[399, 10148], Some(1_790_417_710_000)),
     ] {
         let (client, _rx, shared) = test_client();
         client.place_order(9, &spy(), &Order { order_type: "NOT A TYPE".into(), ..limit() });

@@ -3569,8 +3569,8 @@ impl ClientCore {
                 self.open_orders.lock().unwrap().remove(&order_id);
             }
             crate::bridge::OrderBook::RevisionForgotten(order_id) => self.undo_restatement(order_id),
-            crate::bridge::OrderBook::RevisionRefused(reject) => {
-                self.restore_refused(&reject);
+            crate::bridge::OrderBook::RevisionRefused(reject, stated) => {
+                self.take_the_refusal(&reject, stated.as_deref());
             }
             crate::bridge::OrderBook::CancelSent(update) => self.update_order_status(
                 shared, update.order_id, update.status, update.filled_qty, update.remaining_qty,
@@ -3691,50 +3691,62 @@ impl ClientCore {
         )
     }
 
-    /// Put the client's record of an order back where a refusal leaves it,
-    /// and say what that refusal reports.
+    /// Put the client's record of an order back where a change refused on this
+    /// side of the wire leaves it, and say what that refusal reports.
     ///
-    /// No refusal retires the record, whatever reason it states: a gateway
-    /// retires no order on one, and the engine keeps its own.
-    ///
-    /// The code says the cancel was refused. 202 means an order that was
-    /// cancelled, so reporting it for a refused cancel states the opposite and
-    /// invites a replacement against an order still working.
+    /// The record took the change ahead of the engine building it, and the
+    /// change never went: the order stands on the terms the venue holds and in
+    /// the state the engine's own book has it in. No refusal retires the record.
+    /// The venue's own refusals are not these: one on its cancel-reject message
+    /// is told to nobody, as a gateway tells it, and one on a report is taken as
+    /// [`take_the_refusal`](Self::take_the_refusal) takes it.
     pub(crate) fn restore_refused(&self, reject: &CancelReject) -> (i64, String) {
         if let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&reject.order_id) {
-            // The record took the cancel ahead of the venue's answer, and
-            // the answer is that the order stands. Left as it was, the
-            // order read as leaving for the rest of the session —
-            // `req_open_orders` said so — while the venue went on working
-            // it, and no later message corrected it, because a refusal is
-            // the last thing this order draws. What it goes back to is the
-            // engine's own book, not a guess from a status this record has
-            // already overwritten.
             if let Some(status) = reject.still_working {
                 tracked.status =
                     crate::types::order_status::order_status_str(status).into();
             }
-            // And the terms, where it was the modification that was
-            // refused. The record took the attempt ahead of the answer, so
-            // a refusal that put back only the status left it stating a
-            // price nothing had accepted — and every later cancel and
-            // replace restates from the record. Independent of the status
-            // above: a refusal from this side of the wire knows the change
-            // did not go without knowing where the order stands. A refused
-            // cancellation changed no terms, and rolling them back on one
-            // undid a replacement the venue may since have taken — and a
-            // refusal of a change the venue has already answered is not
-            // about the change now outstanding, so it puts nothing back.
+            // And the terms, where it was a modification: every later cancel
+            // and replace restates from the record. A refusal of a change
+            // already answered is not about the change now outstanding, so it
+            // puts nothing back.
             if reject.reject_type == 2 && reject.answers_a_live_change {
                 put_back_the_terms(tracked);
             }
         }
-        // No refusal here states a reason of the venue's: the venue's own
-        // cancel-reject message is told to nobody, as a gateway tells it, and
-        // a refusal stated on a report, or made on this side of the wire,
-        // carries none.
         let what = if reject.reject_type == 1 { "cancel" } else { "modify" };
         (10148, format!("Order {} {what} rejected", reject.order_id))
+    }
+
+    /// Where a revision the venue refused on a report leaves this client's
+    /// record of the order.
+    ///
+    /// A gateway puts no terms back on a refusal: its statement of the order
+    /// keeps the terms it sent, and takes the terms and the size a refusal
+    /// states only where the refusal is a report it takes them from. The
+    /// status goes back to where the engine's own book stands.
+    pub(crate) fn take_the_refusal(&self, reject: &CancelReject, stated: Option<&crate::bridge::StatedTerms>) {
+        let mut orders = self.open_orders.lock().unwrap();
+        let Some(tracked) = orders.get_mut(&reject.order_id) else { return };
+        if let Some(status) = reject.still_working {
+            tracked.status = crate::types::order_status::order_status_str(status).into();
+        }
+        if reject.answers_a_live_change {
+            tracked.before_the_replace = None;
+        }
+        if let Some(stated) = stated {
+            // A volatility order keeps its own type, as a gateway keeps it.
+            if tracked.order.order_type != "VOL"
+                && let Some(named) = &stated.order_type
+            {
+                tracked.order.order_type = named.clone();
+            }
+            tracked.order.lmt_price = stated.lmt_price;
+            if let Some(trigger) = stated.aux_price {
+                tracked.order.aux_price = trigger;
+            }
+            tracked.order.total_quantity = stated.total_quantity;
+        }
     }
 
     /// Take the total a gateway states an order at from the report delivered

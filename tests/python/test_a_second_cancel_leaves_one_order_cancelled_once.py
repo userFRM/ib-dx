@@ -5,9 +5,10 @@ cancelled and allowed outside regular hours, which the venue takes at any hour.
 Once it is working it is cancelled twice, back to back. Both cancels go to the
 venue, the second naming itself apart from the first. The order ends cancelled
 once. A refusal of the second cancel on the venue's own cancel-reject message
-is told to nobody, as on a gateway; one a report states is answered under
-10148. Which of those the venue does, if either, is what a run records. Either
-way the order is gone from the open orders afterwards.
+is told to nobody, as on a gateway; one a report naming the cancel states is
+answered under 201 with the venue's words. Which of those the venue does, if
+either, is what a run records. Either way the order is gone from the open orders
+afterwards.
 
 Run: pytest tests/python/test_a_second_cancel_leaves_one_order_cancelled_once.py -v
 """
@@ -25,9 +26,9 @@ pytestmark = pytest.mark.skipif(
     reason="IB_USERNAME and IB_PASSWORD not set",
 )
 
-#: What a cancel refused on a report that states the refusal is reported
-#: under. One refused on the venue's cancel-reject message says nothing.
-CANCEL_REJECTED = (10148,)
+#: What a cancel refused on a report naming the cancel is reported under. One
+#: refused on the venue's cancel-reject message says nothing.
+CANCEL_REJECTED = (201,)
 #: This client's own answer to a cancel of an order it has already seen end,
 #: where the first cancel's end arrived before the second was sent.
 NOT_CANCELLABLE = 161

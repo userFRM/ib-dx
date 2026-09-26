@@ -3546,12 +3546,13 @@ fn naming_a_contract_keeps_the_hedge_and_the_legs_the_caller_stated() {
     );
 }
 
-/// A replacement the venue refuses does not leave its terms in the record.
+/// A replacement refused on this side of the wire does not leave its terms in
+/// the record.
 ///
-/// The record takes the attempt ahead of the venue's answer, because every
-/// later cancel and replace restates from it. Where the answer is a refusal
-/// and only the status was put back, the record went on stating a price the
-/// venue had said no to — and the next thing sent for that order carried it.
+/// The record takes the attempt ahead of the engine building it, because every
+/// later cancel and replace restates from it. Where the change never went and
+/// only the status was put back, the record went on stating a price the venue
+/// was never sent — and the next thing sent for that order carried it.
 #[test]
 fn a_refused_replacement_leaves_the_terms_the_venue_holds() {
     let (client, rx, shared) = test_client();
@@ -3575,9 +3576,9 @@ fn a_refused_replacement_leaves_the_terms_the_venue_holds() {
         "the attempt stands while the venue has not answered",
     );
 
-    // The venue refuses it, and says the order still stands.
+    // It is refused before it goes, and the order still stands.
     shared.orders.push_cancel_reject(CancelReject {
-        order_id: 66, instrument: 0, reject_type: 2, reason_code: 0,
+        order_id: 66, instrument: 0, reject_type: 2, reason_code: -1,
         answers_a_live_change: true, still_working: Some(crate::types::OrderStatus::Submitted), timestamp_ns: 0,
     });
     client.process_msgs(&mut RecordingWrapper::default());
@@ -6199,65 +6200,6 @@ fn an_order_is_stated_as_a_gateway_holds_it_before_the_venue_answers() {
         (91, "LMT".to_string(), "DU123".to_string(), 91, "PendingSubmit".to_string()),
         (91, "PendingSubmit".to_string(), "0/1".to_string(), 91, String::new()),
     ]);
-}
-
-/// A cancel the venue refused leaves the order working, and the record says so.
-///
-/// The record takes the cancel ahead of the venue's answer. Where the answer is
-/// a refusal, the order stands — and left as it was, it read as leaving for the
-/// rest of the session while the venue went on working it. Nothing later
-/// corrects it: a refusal is the last message that order draws.
-#[test]
-fn a_refused_cancel_leaves_the_order_reading_as_working() {
-    let (client, _rx, shared) = test_client();
-    let mut order = ApiOrder {
-        order_id: 44,
-        action: "BUY".into(),
-        total_quantity: 100.0,
-        order_type: "LMT".into(),
-        lmt_price: 100.0,
-        tif: "DAY".into(),
-        ..Default::default()
-    };
-    order.transmit = true;
-    client.core.track_order(44, spy(), order, 0);
-    client.core.update_order_status(
-        &shared, 44, crate::types::OrderStatus::PendingCancel, 0.0, 100.0, 0,
-    );
-    assert_eq!(
-        client.core.open_orders.lock().unwrap().get(&44).map(|o| o.status.clone()),
-        Some("PendingCancel".to_string()),
-    );
-
-    shared.orders.push_cancel_reject(CancelReject {
-        order_id: 44, instrument: 0, reject_type: 1, reason_code: 0,
-        answers_a_live_change: true, still_working: Some(crate::types::OrderStatus::Submitted), timestamp_ns: 0,
-    });
-    client.process_msgs(&mut RecordingWrapper::default());
-
-    assert_eq!(
-        client.core.open_orders.lock().unwrap().get(&44).map(|o| o.status.clone()),
-        Some("Submitted".to_string()),
-        "the record holds what the venue says it is working",
-    );
-}
-
-#[test]
-fn process_msgs_dispatches_cancel_reject_type_1() {
-    let (client, _rx, shared) = test_client();
-    // Reason 0 is too-late-to-cancel: the venue found the order and would not
-    // act on it. Reported as 202 this read as "Order Cancelled" — the opposite
-    // of what happened, and a caller would replace an order still working.
-    shared.orders.push_cancel_reject(CancelReject {
-        order_id: 44, instrument: 0, reject_type: 1, reason_code: 0, answers_a_live_change: true, still_working: None, timestamp_ns: 0,
-    });
-    let mut w = RecordingWrapper::default();
-    client.process_msgs(&mut w);
-    assert!(
-        w.events.iter().any(|e| e.starts_with("error:44:10148:")),
-        "{:?}", w.events,
-    );
-    assert!(!w.events.iter().any(|e| e.starts_with("error:44:202:")));
 }
 
 #[test]

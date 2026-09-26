@@ -84,7 +84,7 @@ class SessionWrapper(EWrapper):
         self.got_exec_end.set()
 
     def error(self, req_id, error_time, error_code, error_string, advanced_order_reject_json=""):
-        if error_code not in (2104, 2106, 2158, 202, 10147):
+        if error_code not in (2104, 2106, 2158, 202):
             print(f"  [error] reqId={req_id} code={error_code}: {error_string}")
 
     def reset(self):

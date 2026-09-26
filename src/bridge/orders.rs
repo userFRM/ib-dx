@@ -118,9 +118,8 @@ pub struct OrderState {
     /// the only thing that does. A caller asking for the API orders alone is
     /// answered with these.
     api_numbered: Mutex<std::collections::HashSet<u64>>,
-    /// Refused cancels and changes, each with when the venue sent the report
-    /// it comes from, where it said.
-    pub(super) cancel_rejects: Queue<(CancelReject, Option<i64>)>,
+    /// Changes refused on this side of the wire.
+    pub(super) cancel_rejects: Queue<CancelReject>,
     /// What each fill cost, as the venue states it on a record of its own.
     pub(super) charges: Queue<crate::types::model::CommissionAndFeesReport>,
     /// Executions the venue restated rather than announced: replayed at logon
@@ -424,7 +423,7 @@ impl OrderState {
 
     /// Take every cancel rejects waiting, leaving none.
     pub fn drain_cancel_rejects(&self) -> Vec<CancelReject> {
-        self.cancel_rejects.drain().into_iter().map(|(reject, _)| reject).collect()
+        self.cancel_rejects.drain()
     }
 
     /// Take what the venue has said its fills cost, leaving none.
@@ -808,13 +807,7 @@ impl OrderState {
     }
 
     #[doc(hidden)] pub fn push_cancel_reject(&self, reject: CancelReject) {
-        self.push_cancel_reject_sent(reject, None);
-    }
-
-    /// The same, said on a report of the venue's, with the time the venue
-    /// sent that report where it stated one.
-    #[doc(hidden)] pub fn push_cancel_reject_sent(&self, reject: CancelReject, sent: Option<i64>) {
-        self.cancel_rejects.push((reject, sent));
+        self.cancel_rejects.push(reject);
     }
 
     /// The venue has taken the replacement outstanding on this order.

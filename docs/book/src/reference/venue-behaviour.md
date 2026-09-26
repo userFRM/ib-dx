@@ -533,18 +533,27 @@ orders with a change on its way reads `PreSubmitted`, as a gateway restores it.
 
 ## Refused modifications
 
+A gateway writes a modification's terms into the order it holds before it
+sends the modification, and puts nothing back when the venue refuses it. So
+the open-orders view keeps the terms a refused modification sent, and the
+engine's own book goes back to the terms the venue holds, so a cancel names
+those.
+
 A rejection that names the original order reports error 201 under that order's
-ID and leaves its last accepted terms and prior state in the open-orders view.
-Fills and cancellation progress already received are retained. That refusal
-reports a rejected modification; it does not declare the original cancelled
-or inactive. After the error, the order is restated through `open_order` and
-`order_status` with those terms and that state, as a gateway restates it.
+ID with the venue's words. It reports a rejected modification; it does not
+declare the original cancelled or inactive, and fills and cancellation progress
+already received are retained. The venue states it on an ordinary report that
+states the terms it holds, and where such a report states some of the order
+left, the open-orders view takes the type, the limit, the trigger of a stop or
+a touch, and the size from it, as a gateway does; the time in force stays the
+one sent. A rejection on a status report, or one stating nothing left, changes
+none of the terms. After the error, the order is restated through `open_order`
+and `order_status` in the state it held before the modification went out, as a
+gateway restates it.
 
 A modification refused on the venue's own cancel-reject message is told to
-nobody, as a cancellation refused there is (below). The open-orders view keeps
-the terms the modification asked for until the venue states the order again;
-the engine's own book goes back to the terms the venue holds, so a cancel names
-those.
+nobody, as a cancellation refused there is (below), and the terms it sent
+stand in the open-orders view.
 
 Replacement carries `useAutoPriceForHedge` under the same order type, hedge,
 opt-out and `HDGLMT` feature conditions as placement. Changing `hedgeMaxSize`
@@ -579,15 +588,24 @@ An order the venue answers at once goes from its working status straight to
 `Cancelled`. The event channel `connect_with_events` returns, which a gateway
 does not have, still carries the engine's `Event::OrderUpdate` as the cancel
 goes out.
+## A report's reason for restating an order
+
+A report can state a reason the venue restates an order, among them a revision
+or a cancel it will not make. A gateway reads no reason on a report, and nothing
+of it reaches the program: no error, no refusal. A report of the order replaced
+is taken as the replacement, whatever reason it gives. An ordinary report
+restating the order is skipped and moves nothing of an order the session holds;
+a status report restating it is read as any status report is.
+
 ## An order's total
 
 `open_order` states an order's total quantity as a gateway states it: what has
 filled, and what is left of the order's own size. The size is the one the order
 was placed or last replaced with, and a gateway takes it again from the leaves
-quantity of an ordinary report of the order pending, filled, replaced, refused
-with some of it left, or new in a one-cancels-all group, and from the report an
-order it did not place is first stated from; a report of a cash quantity that
-states no leaves states none left. Every other report, status reports among
+quantity of an ordinary report of the order pending, filled, replaced at the
+revision last sent, refused with some of it left, or new in a one-cancels-all
+group, and from the report an order it did not place is first stated from; a
+report of a cash quantity that states no leaves states none left. Every other report, status reports among
 them, leaves the size as it was, whatever quantity it states for the order, so
 a status report stating more filled states a larger total.
 

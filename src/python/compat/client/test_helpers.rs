@@ -765,14 +765,14 @@ impl EClient {
         Ok(())
     }
 
-    /// Push a cancel reject into SharedState.
+    /// Push a change refused on this side of the wire into SharedState.
     #[doc(hidden)]
     fn _test_push_cancel_reject(&self, order_id: u64, instrument: u32, reason_code: i32) -> PyResult<()> {
         let shared = self.shared_state()?;
         shared.orders.push_cancel_reject(CancelReject {
-            order_id, instrument, reject_type: 1, reason_code,
-            // The venue's own word on whether the order still stands rides on
-            // the refusal; this helper states a refusal without one.
+            order_id, instrument, reject_type: 2, reason_code,
+            // Where the order stands rides on the refusal; this helper states
+            // a refusal without it.
             answers_a_live_change: true, still_working: None,
             timestamp_ns: 100,
         });

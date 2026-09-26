@@ -277,10 +277,10 @@ impl EClient {
             // a refusal of it, in its place: an acceptance and a stale refusal
             // leave the record on what the venue holds.
             Record::ReplacementTaken(order_id) => self.core.settle_replacement(order_id),
-            Record::CancelReject((reject, sent)) => {
+            Record::CancelReject(reject) => {
                 let (code, msg) = self.core.restore_refused(&reject);
                 let origin = ErrorOrigin::Order { id: self.core.api_order_id(reject.order_id), op: reject.refuses() };
-                wrapper.error_from(origin, sent.unwrap_or_else(raised_now), code, &msg, "");
+                wrapper.error_from(origin, raised_now(), code, &msg, "");
             }
             // Why an order stopped working. The status already said Inactive;
             // this says why.

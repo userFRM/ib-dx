@@ -432,10 +432,10 @@ impl EClient {
             // A replacement the venue has taken spends the terms kept against
             // a refusal of it, in its place.
             Record::ReplacementTaken(order_id) => self.core.settle_replacement(order_id),
-            Record::CancelReject((reject, sent)) => {
+            Record::CancelReject(reject) => {
                 let (code, msg) = self.core.restore_refused(&reject);
                 let origin = crate::types::model::ErrorOrigin::Order { id: self.core.api_order_id(reject.order_id), op: reject.refuses() };
-                say_error!(self, py, shared, origin, code, &msg, sent.unwrap_or_else(raised_now));
+                say_error!(self, py, shared, origin, code, &msg, raised_now());
             }
             Record::OrderInactive((order_id, code, msg, op, sent)) => {
                 // A refusal is the end of a preview: it states what an order

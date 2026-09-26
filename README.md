@@ -1065,16 +1065,17 @@ for fields, refusals and the remaining venue evidence.
 
 Individually placed children with `parentId` / `parent_id` share the known
 parent's cancellation group, including children added to a bracket helper's
-family. A modification refused on a report leaves the original working order
-and its last accepted terms intact, and a cancellation refused on a report
-leaves the order in the state it held before the cancel went out. A refusal of
-either on the venue's own cancel-reject message reaches no callback, as on a
-gateway, and the order keeps what the program was last told of it until the
-venue states it again: after a refused modification, the open-orders view
-states the terms the modification asked for. `open_order` states an order's
-total as a gateway does: what has filled, and what is left of the order's own
-size, which only the reports a gateway takes a size from restate. Hedge
-pricing instructions are retained on replacement.
+family. A modification the venue refuses leaves the original working order
+and what has filled on it, and a cancellation refused on a report leaves the
+order in the state it held before the cancel went out. As on a gateway, the
+open-orders view keeps the terms a refused modification sent, and takes the
+terms and the size a refusal states only where the refusal is an ordinary
+report stating some of the order left. A refusal on the venue's own
+cancel-reject message reaches no callback, and neither does a report's reason
+for restating an order. `open_order` states an order's total as a gateway
+does: what has filled, and what is left of the order's own size, which only
+the reports a gateway takes a size from restate. Hedge pricing instructions are
+retained on replacement.
 See [order behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html#orders).
 
 ## Testing
@@ -1083,7 +1084,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,203 | No |
+| Rust, unit and integration | 3,199 | No |
 | Python | 1,191 | No |
 | Rust, live | 9 | Yes |
 | Python, live | 123 | Yes |

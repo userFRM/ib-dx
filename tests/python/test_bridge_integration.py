@@ -589,7 +589,7 @@ class TestCancelRejectDispatch:
         errors = [e for e in w.events if e[0] == "error"]
         assert len(errors) == 1
         assert errors[0][1] == 42  # order_id
-        # A refused cancel, not the code meaning "cancelled".
+        # A change refused on this side, not the code meaning "cancelled".
         assert errors[0][2] == 10148
 
 

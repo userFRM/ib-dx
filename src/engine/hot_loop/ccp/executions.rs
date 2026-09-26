@@ -2158,7 +2158,14 @@ impl CcpState {
         }
 
         // A rejection naming an original order refuses its revision. The
-        // original remains working on the terms the venue last accepted.
+        // original remains working on the terms the venue last accepted, and
+        // the engine's own book goes back to them.
+        //
+        // What the order is stated as is a gateway's own statement of it,
+        // which puts nothing back: it keeps the terms it sent, and takes the
+        // terms and the size the refusal states only where the refusal is an
+        // ordinary report stating some of the order left, as it takes them
+        // from any such report.
         if parsed.get(&150).map(String::as_str) == Some("8")
             && parsed.get(&39).map(String::as_str) == Some("8")
             && parsed.get(&41).is_some_and(|name| !name.is_empty())
@@ -2167,11 +2174,26 @@ impl CcpState {
             let answers_a_live_change = context.pre_replace.contains_key(&(clord_id, revision));
             context.restore_pre_replace(clord_id, revision);
             shared.orders.note_the_venue_named(clord_id);
-            // What is left of the order's own size after the refusal, as a
-            // gateway states it.
-            if let Some(total) = stated_total(parsed, clord_id, false, false, context, shared) {
+            let total = stated_total(parsed, clord_id, false, false, context, shared);
+            if let Some(total) = total {
                 shared.orders.note_the_stated_total(clord_id, total);
             }
+            let stated = total.filter(|_| takes_the_size(parsed, false, 0)).map(|total| {
+                let order_type = parsed.get(&40).map(|named| crate::types::ord_type_api_name(
+                    named, parsed.get(&18).map(String::as_str).unwrap_or_default(),
+                ).to_string());
+                // The trigger is restated for a stop or a touch, and for no
+                // other kind: a trailing order's rides elsewhere.
+                let triggered = order_type.as_deref()
+                    .is_some_and(|named| matches!(named, "STP" | "STP LMT" | "STP PRT" | "MIT" | "LIT"));
+                let price = |tag| parsed.get(&tag).and_then(|s| s.parse::<f64>().ok()).unwrap_or(f64::MAX);
+                Box::new(crate::bridge::StatedTerms {
+                    order_type,
+                    lmt_price: price(44),
+                    aux_price: triggered.then(|| price(99)),
+                    total_quantity: total,
+                })
+            });
             let order = context.order(clord_id).copied();
             let reject = crate::types::CancelReject {
                 order_id: clord_id,
@@ -2183,7 +2205,7 @@ impl CcpState {
                 timestamp_ns: context.now_ns(),
             };
             shared.push_call_record(crate::bridge::Record::OrderBook(
-                crate::bridge::OrderBook::RevisionRefused(reject),
+                crate::bridge::OrderBook::RevisionRefused(reject, stated),
             ));
             shared.orders.push_order_inactive_sent(
                 clord_id, api::OrderOp::Modify, ORDER_REJECTED_ERROR_CODE, stated_reason(parsed), sent(parsed),
@@ -2230,6 +2252,12 @@ impl CcpState {
         let ord_status = parsed.get(&39).map(|s| s.as_str()).unwrap_or("");
         let exec_type = parsed.get(&150).map(|s| s.as_str()).unwrap_or("");
         let status_report = parsed.get(&20).map(String::as_str) == Some("3");
+        // A restatement of an order (150=D) on an ordinary report is skipped
+        // as a gateway skips it: it moves nothing of an order held here,
+        // whatever it states beside it.
+        let skipped = matches!(parsed.get(&20).map(String::as_str), None | Some("0"))
+            && exec_type == "D"
+            && context.order(clord_id).is_some();
         // A cancel takes the order to a revision of its own, past every one the
         // order was named under, and a gateway ignores a status report stating
         // a lower revision unless it states the order cancelled: the order
@@ -2270,7 +2298,7 @@ impl CcpState {
         // hold an order it has sent inactive on the venue's word, so one this
         // session placed is taken as working again.
         let status = match context.order(clord_id) {
-            Some(held) if below_the_cancel => held.status,
+            Some(held) if below_the_cancel || skipped => held.status,
             Some(_) if acknowledges_a_change => crate::types::OrderStatus::PreSubmitted,
             Some(held) if exec_type == "6" && held.status != crate::types::OrderStatus::Uncertain => held.status,
             Some(held) if !status_report && matches!(ord_status, "0" | "5" | "A")
@@ -2328,14 +2356,7 @@ impl CcpState {
         // the book — so when this session withdrew it, the venue's cancelled
         // report matched nothing and no caller heard the order was gone.
         //
-        // And not from a refusal. A drop marks every order uncertain, and a
-        // refusal of the revision outstanding at the drop arrives as a
-        // non-terminal report on an uncertain order; taken as the venue
-        // naming what it holds, it reconciled the revision — dropping the
-        // fallback kept against exactly this refusal — before the handler
-        // below could put the terms back, so the record kept the refused
-        // terms and the name moved to the refused revision.
-        let revision_refused = matches!(parsed.get(&378).map(String::as_str), Some("102" | "103"));
+        // Not from a restatement on an ordinary report, which a gateway skips.
         // A trade cancel or correction restates an execution already reported,
         // so it is the one report that may legitimately return a completed
         // order to a working quantity. The record a caller reads already
@@ -2366,7 +2387,7 @@ impl CcpState {
         // booking and has no business reopening anything.
         let restated_twice =
             restates_a_trade && self.already_recorded_exec_id(&execution_key(parsed, clord_id));
-        let recovering = !status.is_terminal() && !marked_resend && !revision_refused && !restated_twice
+        let recovering = !status.is_terminal() && !marked_resend && !skipped && !restated_twice
             && clord_id != 0 && (!already_finished || restates_a_trade)
             && (context.order(clord_id).is_none() || unknown);
         if recovering {
@@ -2563,7 +2584,7 @@ impl CcpState {
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(last_px);
 
-        if ord_status == "8" {
+        if ord_status == "8" && !skipped {
             // The venue says why it refused an order, and that was written to a
             // log where no caller could read it, leaving the caller with the
             // order not working and no reason to act on.
@@ -2599,19 +2620,17 @@ impl CcpState {
         // Applied under the guard, not forced past it: an acknowledgement
         // arriving behind a fill must not move a finished order back to
         // working.
-        // A report can carry the reason it restates the order, and two of those
-        // reasons are refusals: a revision the venue will not make and a cancel
-        // it will not make arrive on the same message shape as a successful one.
-        // Read as an acknowledgement, a refused revision left
-        // the caller believing an order had been changed that had not been.
+        //
+        // Whatever reason the report states for restating the order: a gateway
+        // reads no reason on a report, and takes a replacement's terms from
+        // the report that states it replaced.
         // Which revision this report answers. The venue takes a second
         // revision before it has answered the first, so an acknowledgement or
         // a refusal belongs to the one it names and not simply to the order.
         let reported_revision = parsed.get(&11)
             .map(|c| revision_of(c))
             .unwrap_or_else(|| *context.modify_versions.get(&clord_id).unwrap_or(&0));
-        let restatement_reason = parsed.get(&378).map(|s| s.as_str()).unwrap_or("");
-        let is_replace_ack = ord_status == "5" && !revision_refused;
+        let is_replace_ack = ord_status == "5" && !skipped;
         if is_replace_ack {
             // The venue holds what the attempt stated, so the fallback kept
             // against a refusal is spent. A stale refusal arriving behind the
@@ -2646,74 +2665,6 @@ impl CcpState {
                 shared.orders.note_replacement_taken(clord_id);
             }
         }
-        // Whether the caller had withdrawn this order before the refusal put
-        // its terms back. Read here, because the restore below writes the
-        // snapshot's status into the book and every later read sees that one.
-        let withdrawn_before_the_refusal = revision_refused
-            && context.order(clord_id)
-                .is_some_and(|o| o.status == crate::types::OrderStatus::PendingCancel);
-        if revision_refused {
-            // A revision the venue will not make leaves the order on the terms
-            // it had, and the record must follow: it took the attempt ahead of
-            // the answer. The refusal of a cancellation is not touched — it
-            // changed no terms, and the revision it may be waiting on has its
-            // own answer coming.
-            let mut answered_a_live_revision = false;
-            if restatement_reason == "102" {
-                answered_a_live_revision =
-                    context.pre_replace.contains_key(&(clord_id, reported_revision));
-                context.restore_pre_replace(clord_id, reported_revision);
-            }
-            // The order stands as it was, so it has no new status to report —
-            // but the caller asked for a change and has to learn it did not
-            // happen. Reported the way a refused order is, on the channel a
-            // caller already watches, rather than only to a log.
-            let reason = stated_reason(parsed);
-            log::warn!(
-                "Order {clord_id}: the venue refused the request (378={restatement_reason}) — \
-                 the order stands as it was: {reason}",
-            );
-            let told = if reason.is_empty() {
-                "the venue refused the change and the order stands as it was".to_string()
-            } else {
-                reason
-            };
-            // 102 refuses the revision, 103 the cancellation.
-            let refused = if restatement_reason == "102" {
-                crate::types::model::OrderOp::Modify
-            } else {
-                crate::types::model::OrderOp::Cancel
-            };
-            shared.orders.push_order_inactive_sent(clord_id, refused, ORDER_INACTIVE_ERROR_CODE, told, sent(parsed));
-            // And on the channel a refusal already travels on, so the record
-            // the surfaces read goes back with the engine's. Said only in the
-            // message above, the surfaces kept the terms of an attempt the
-            // venue had turned down: the caller was told the change did not
-            // happen and their own book went on stating that it had.
-            // Where the order stands, as the engine's own book has it after
-            // the restore above — not guessed from what it usually is. An
-            // order the caller had already withdrawn stands at pending cancel,
-            // and reporting it as working said the withdrawal had come undone.
-            let stood = context.order(clord_id).map(|order| (order.instrument, order.status));
-            if let Some((instrument, status)) = stood {
-                let reject = crate::types::CancelReject {
-                    order_id: clord_id,
-                    instrument,
-                    // 102 refuses the revision, 103 the cancellation.
-                    reject_type: if restatement_reason == "102" { 2 } else { 1 },
-                    // The report carries no tag 102, and this says as much.
-                    reason_code: -1,
-                    still_working: Some(status),
-                    // The revision it names is the one the restore above acted
-                    // on, or none was outstanding and there is nothing to put
-                    // back either way.
-                    answers_a_live_change: answered_a_live_revision,
-                    timestamp_ns: context.now_ns(),
-                };
-                shared.orders.push_cancel_reject_sent(reject, sent(parsed));
-                emit(event_tx, Event::CancelReject(reject));
-            }
-        }
         // The gateway marks a report that restates history: 97=Y is PossResend
         // and 43=Y is PossDupFlag. Neither was read anywhere, and the only
         // thing standing between a replayed execution and a second booking was
@@ -2728,22 +2679,8 @@ impl CcpState {
             || ["Y", "y"].contains(&parsed.get(&43).map(|v| v.as_str()).unwrap_or(""));
 
         // The guard's verdict doubles as the change flag: a frame it rejects
-        // surfaces no order_status. A refusal states no new status; the order
-        // stands on the terms it has. Any execution on the report is still read
-        // below.
-        // A refusal of the CHANGE says nothing about a cancel sent over it, and
-        // the status it carries is the order's terms as they stand — which the
-        // guard reads as the order working again, because that is what it means
-        // everywhere else. So the report resumed a withdrawal the venue still
-        // owes a verdict on, and the flag that suppresses the announcement left
-        // the book saying it too.
-        //
-        // The same rule the cancel-reject path keeps. That one is `35=9`; this
-        // is the execution report carrying the refusal, and it was the other
-        // half of the same defect.
-        let applied = if withdrawn_before_the_refusal && restatement_reason == "102" {
-            false
-        } else if acknowledges_a_change {
+        // surfaces no order_status.
+        let applied = if acknowledges_a_change {
             context.set_order_status_forced(clord_id, status);
             true
         } else {
@@ -2766,7 +2703,7 @@ impl CcpState {
         };
         let acknowledged_in_place =
             is_replace_ack && context.order(clord_id).is_some_and(|o| says_the_same(o.status));
-        let status_changed = !revision_refused && (applied || acknowledged_in_place);
+        let status_changed = applied || acknowledged_in_place;
 
         // A report can also undo or restate an execution rather than announce a
         // new one: a busted trade and a corrected one both arrive as executions,
@@ -2892,9 +2829,10 @@ impl CcpState {
         // against the one shape this took first: the cache is answering what
         // the order is, and that is the same question the guard just settled.
         // An order this session does not hold is not one the guard has an
-        // opinion on, and is left to the two rules below it.
-        let states_the_order =
-            context.order(clord_id).is_none_or(|o| says_the_same(o.status));
+        // opinion on, and is left to the two rules below it. Nor is a report a
+        // gateway skips the order's state.
+        let states_the_order = !skipped
+            && context.order(clord_id).is_none_or(|o| says_the_same(o.status));
         let over = matches!(status,
             crate::types::OrderStatus::Filled
                 | crate::types::OrderStatus::Cancelled

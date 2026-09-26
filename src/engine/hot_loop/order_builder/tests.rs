@@ -5684,7 +5684,7 @@ fn what_was_refused(shared: &SharedState) -> Vec<(i64, crate::types::model::Orde
         .into_iter()
         .filter_map(|(_, record)| match record {
             crate::bridge::Record::OrderInactive((id, _, _, op, _)) => Some((id as i64, op)),
-            crate::bridge::Record::CancelReject((reject, _)) => Some((reject.order_id as i64, reject.refuses())),
+            crate::bridge::Record::CancelReject(reject) => Some((reject.order_id as i64, reject.refuses())),
             crate::bridge::Record::HistoricalError((ErrorOrigin::Session, ..)) => {
                 Some((-1, crate::types::model::OrderOp::Venue))
             }
