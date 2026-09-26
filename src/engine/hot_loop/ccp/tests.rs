@@ -444,6 +444,8 @@ fn the_total_an_order_is_stated_at_is_a_gateways_after_each_report() {
         ("named at connect", false, false, vec![&[(150, "0"), (39, "0"), (20, "3"), (14, "10"), (151, "40")][..]], 50.0),
         ("named at connect by its cash", false, false,
             vec![&[(150, "0"), (39, "0"), (20, "3"), (14, "0"), (152, "5000")][..]], 0.0),
+        ("pending, stated by its cash", true, false,
+            vec![&[(150, "A"), (39, "A"), (20, "0"), (14, "0"), (152, "5000")][..]], 0.0),
     ] {
         let mut context = Context::new();
         let instrument = context.register_instrument(756733);
@@ -471,6 +473,38 @@ fn the_total_an_order_is_stated_at_is_a_gateways_after_each_report() {
         }
         let stated = shared.orders.get_order_info(42).unwrap_or_else(|| panic!("{what}: not stated"));
         assert_eq!(stated.order.total_quantity, total, "{what}");
+    }
+}
+
+/// What a status states as the order's remaining is what is left of its own
+/// size, as a gateway states it: a cancel's report states none left of what
+/// the venue holds, and the order's size is not what its report states.
+#[test]
+fn a_status_states_the_remaining_of_the_orders_own_size() {
+    for (what, reports, remaining) in [
+        ("cancelled", vec![&[(150u32, "4"), (39, "4"), (20, "0"), (14, "0"), (151, "0")][..]], 100.0),
+        ("cancelled after a fill", vec![
+            &[(150u32, "1"), (39, "1"), (20, "0"), (17, "E1"), (32, "30"), (31, "1"), (14, "30"), (151, "70")][..],
+            &[(150u32, "4"), (39, "4"), (20, "0"), (14, "30"), (151, "0")][..],
+        ], 70.0),
+    ] {
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        let mut order = crate::types::Order::new(
+            42, instrument, Side::Buy, 100 * QTY_SCALE, 100 * PRICE_SCALE, b'2', b'0', 0,
+        );
+        order.status = crate::types::OrderStatus::Submitted;
+        context.insert_order(order);
+        let shared = SharedState::new();
+        let mut ccp = CcpState::new();
+        for report in reports {
+            let mut frame = exec_report_frame(&[(6008, "756733"), (54, "1"), (38, "100"), (40, "2"), (44, "100")]);
+            frame.extend(report.iter().map(|(tag, value)| (*tag, value.to_string())));
+            ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "DU1");
+        }
+        let updates = shared.orders.drain_order_updates();
+        let last = updates.last().unwrap_or_else(|| panic!("{what}: the status is announced"));
+        assert_eq!(last.remaining_qty, remaining, "{what}");
     }
 }
 
@@ -4401,8 +4435,13 @@ fn a_report_that_fills_an_order_also_says_the_order_is_filled() {
     );
 }
 
+/// A report stating an order inactive moves nothing of an order held here:
+/// a gateway keeps the status it holds and says nothing of the report's
+/// reason, and the order is working again once the venue routes it. An order
+/// first learned of from such a report is held inactive, as a gateway holds
+/// it.
 #[test]
-fn ord_status_inactive_reason_reaches_inactive_queue() {
+fn a_report_stating_an_order_inactive_keeps_the_status_it_holds() {
     let (mut ccp, mut context, shared) = ord_status_test_state();
     let frame = exec_report_frame(&[
         (39, "I"), (150, "0"),
@@ -4410,15 +4449,10 @@ fn ord_status_inactive_reason_reaches_inactive_queue() {
     ]);
     ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
 
-    assert_eq!(context.order(42).unwrap().status, crate::types::OrderStatus::Inactive);
-
-    let inactive = shared.orders.drain_order_inactive();
-    assert_eq!(inactive.len(), 1);
-    assert_eq!(inactive[0].0, 42);
-    assert_eq!(inactive[0].2, "Order held pending margin check (reason code 0)");
-
-    let info = shared.orders.get_order_info(42).unwrap();
-    assert!(info.order_state.completed_status.is_empty());
+    assert_eq!(context.order(42).unwrap().status, crate::types::OrderStatus::PendingSubmit,
+        "the status the book holds stays");
+    assert!(shared.orders.drain_order_inactive().is_empty(),
+        "nothing is told of the report's reason");
 
     // Placed by this session, the order is working again once the venue
     // routes it: a gateway never held it inactive.
@@ -4426,6 +4460,18 @@ fn ord_status_inactive_reason_reaches_inactive_queue() {
     let routed = exec_report_frame(&[(39, "0"), (150, "0"), (20, "0"), (100, "ARCA"), (198, "ARCA:1")]);
     ccp.handle_exec_report(&routed, b"", &mut context, &shared, &None, "");
     assert_eq!(context.order(42).unwrap().status, crate::types::OrderStatus::Submitted);
+
+    // An order first learned of from such a report is built inactive.
+    let unknown = exec_report_frame(&[
+        (11, "43"), (39, "I"), (150, "0"), (6008, "756733"),
+        (58, "Order held pending margin check"), (103, "0"),
+    ]);
+    ccp.handle_exec_report(&unknown, b"", &mut context, &shared, &None, "");
+    let info = shared.orders.get_order_info(43).expect("an order first named held is filed");
+    assert_eq!(info.order_state.status, "Inactive",
+        "an order first named held is held inactive");
+    assert!(shared.orders.drain_order_inactive().is_empty(),
+        "and nothing is told of that report's reason either");
 }
 
 /// The venue's message beside an order's status reaches the program that
@@ -8851,11 +8897,12 @@ fn a_refused_replace_puts_back_the_terms_the_venue_holds() {
     );
 }
 
-/// A cancellation states the quantity off the record. After a refused replace
-/// the record holds what the venue holds, so the cancellation names the
-/// quantity that is working, not the one the venue refused.
+/// A cancellation states what is left of the order's own size off the
+/// record. After a replace the venue refused restating nothing, that is the
+/// size the replace went out with, as a gateway states it — not the one from
+/// before the attempt, whatever its own book goes back to.
 #[test]
-fn a_cancel_after_a_refused_replace_names_the_quantity_the_venue_holds() {
+fn a_cancel_after_a_refused_replace_states_the_size_the_order_is_stated_at() {
     use std::io::Read;
     let (mut context, shared) = working_order_state();
     let mut ccp = CcpState::new();
@@ -8880,8 +8927,8 @@ fn a_cancel_after_a_refused_replace_names_the_quantity_the_venue_holds() {
     let cancel = String::from_utf8_lossy(&buf[..n]).to_string();
     assert!(cancel.contains("35=F"), "a cancel went out: {cancel}");
     assert!(
-        cancel.split('\u{1}').any(|f| f == "38=100"),
-        "it names the quantity the venue holds, not the one it refused: {cancel}",
+        cancel.split('\u{1}').any(|f| f == "38=200"),
+        "it states the size the order is stated at, not the one before the attempt: {cancel}",
     );
 }
 
@@ -8973,7 +9020,9 @@ fn a_recovered_orders_replace_rejection_restores_its_terms_and_name() {
     let cancel = fix::fix_parse(&buf[..n]);
     assert_eq!(cancel.get(&35).map(String::as_str), Some("F"));
     assert_eq!(cancel.get(&41).map(String::as_str), Some("9000.0"));
-    assert_eq!(cancel.get(&38).map(String::as_str), Some("100"));
+    // The size the order is stated at: the replace went out with 200, and a
+    // refusal restating nothing leaves a gateway stating that on its cancel.
+    assert_eq!(cancel.get(&38).map(String::as_str), Some("200"));
 }
 
 /// A second refusal for the same cancel does not reach past the order it was
@@ -11409,17 +11458,19 @@ fn a_refusal_of_an_order_never_acknowledged_answers_its_placement() {
     assert_eq!(operations_answered(&shared), [(42, crate::types::model::OrderOp::Place)]);
 }
 
-/// Refusing one it had working, or parking one, is its own word on it.
+/// Refusing one it had working is its own word on it. Parking one is not:
+/// a gateway keeps the status it holds for an order a report states inactive,
+/// and says nothing of the report's reason (owned by
+/// `a_report_stating_an_order_inactive_keeps_the_status_it_holds`).
 #[test]
-fn a_refusal_or_a_parking_of_a_working_order_is_the_venues_own_word_on_it() {
+fn a_refusal_of_a_working_order_is_the_venues_own_word_on_it() {
     use crate::types::model::OrderOp::Venue;
-    for (status, reason) in [("8", "Rejected by the exchange"), ("I", "Order held pending margin check")] {
-        let (mut ccp, mut context, shared) = ord_status_test_state();
-        assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
-        let frame = exec_report_frame(&[(39, status), (150, status), (58, reason), (103, "0")]);
-        ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
-        assert_eq!(operations_answered(&shared), [(42, Venue)], "39={status}");
-    }
+    let (status, reason) = ("8", "Rejected by the exchange");
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
+    let frame = exec_report_frame(&[(39, status), (150, status), (58, reason), (103, "0")]);
+    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    assert_eq!(operations_answered(&shared), [(42, Venue)], "39={status}");
 }
 
 /// A report stating why the venue restates an order tells the program nothing
@@ -11432,7 +11483,9 @@ fn a_restatement_reason_on_a_report_tells_the_program_nothing() {
     for reason in ["102", "103"] {
         // The report type, the status it states, and whether the revision is
         // still owed an answer afterwards.
-        for (exec_type, stated, owed) in [("5", "5", false), ("D", "0", true), ("8", "0", true)] {
+        for (exec_type, stated, owed) in
+            [("5", "5", false), ("D", "0", true), ("D", "4", true), ("6", "6", true), ("8", "0", true)]
+        {
             let mut ccp = CcpState::new();
             let mut context = Context::new();
             let shared = SharedState::new();
@@ -11457,14 +11510,17 @@ fn a_restatement_reason_on_a_report_tells_the_program_nothing() {
             ccp.handle_exec_report(&report, b"", &mut context, &shared, &None, "DU1");
 
             let row = format!("150={exec_type} 378={reason}");
+            let restated: Vec<_> = shared.orders.drain_order_updates()
+                .into_iter().map(|update| update.status).collect();
             assert_eq!(operations_answered(&shared), [], "{row}");
             assert!(shared.orders.drain_cancel_rejects().is_empty(), "{row}");
             assert_eq!(context.replace_is_outstanding(42), owed, "{row}");
             let order = context.order(42).expect("the order stands");
             assert_eq!(order.price, 151 * crate::types::PRICE_SCALE, "no terms go back: {row}");
-            if exec_type == "D" {
+            if exec_type == "D" || exec_type == "6" {
                 assert_eq!(order.status, PendingReplace, "a skipped report moves nothing: {row}");
-                assert!(shared.orders.drain_order_updates().is_empty(), "{row}");
+                assert_eq!(restated, [PendingReplace],
+                    "and the order is restated to the program as the book holds it: {row}");
             }
         }
     }

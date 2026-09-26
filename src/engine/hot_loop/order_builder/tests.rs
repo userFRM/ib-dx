@@ -5425,6 +5425,37 @@ mod as_a_gateway_sends_it {
         assert_eq!(one(&cancel, 1).as_deref(), Some("U3"), "{cancel}");
     }
 
+    /// A cancel states what is left of the order's own size, as a gateway's
+    /// cancel states it: not the total the order once had.
+    #[test]
+    fn a_cancel_states_the_size_the_order_is_stated_at() {
+        use std::io::Read;
+        let (conn, mut peer) = crate::protocol::connection::Connection::for_test();
+        let mut conn = Some(conn);
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        context.set_symbol(instrument, "SPY".to_string());
+        let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+        let shared = std::sync::Arc::new(SharedState::new());
+        let mut order = crate::types::Order::new(
+            42, instrument, Side::Buy, 100 * crate::types::QTY_SCALE, P, b'2', b'0', 0,
+        );
+        order.status = crate::types::OrderStatus::Submitted;
+        context.insert_order(order);
+        // A fill adopted 70 as what is left of its own size.
+        context.stated_sizes.insert(42, 70 * crate::types::QTY_SCALE);
+        context.pending_orders.push(OrderRequest::Cancel { order_id: 42, stated: Default::default() });
+        drain_and_send_orders(&mut conn, &mut context, "DU1", &mut hb, false, &shared, false, &None, &mut 64);
+        let mut buf = vec![0u8; 16384];
+        let mut text = String::new();
+        while !text.contains("35=F") {
+            let n = peer.read(&mut buf).unwrap();
+            text.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
+        let cancel = &text[text.find("35=F").unwrap()..];
+        assert_eq!(one(cancel, 38).as_deref(), Some("70"), "{cancel}");
+    }
+
     /// A cancel states who is withdrawing the order and whether a person
     /// entered the withdrawal, from the withdrawal and not from the placement:
     /// a gateway replaces the order's own with the cancel's, and one the cancel

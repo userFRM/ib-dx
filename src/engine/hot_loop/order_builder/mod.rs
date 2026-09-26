@@ -1132,10 +1132,20 @@ fn send_cancel(
     // quantity and the contract. Naming only the order left the venue to look
     // both up.
     // Stated as the decimal the order was sent with, so a cancel for a
-    // fractional order names the quantity it is actually cancelling. An order
-    // whose quantity is not tracked omits tag 38 rather than sending `38=0`,
-    // which claims a cancel of nothing.
-    let qty_str = tracked.filter(|o| o.qty > 0).map(|o| format_qty(o.qty).to_string());
+    // fractional order names the quantity it is actually cancelling. What it
+    // states is what is left of the order's own size — the size its latest
+    // placement or replace went out with, and after that the leaves quantity
+    // of the reports a gateway takes it from, which is what its cancel states
+    // after a fill or a refused modification. An order whose size is not
+    // tracked omits tag 38 rather than sending `38=0`, which claims a cancel
+    // of nothing.
+    let qty_str = context
+        .stated_sizes
+        .get(&order_id)
+        .copied()
+        .or_else(|| tracked.map(|o| o.qty.saturating_sub(o.filled)))
+        .filter(|qty| *qty > 0)
+        .map(|qty| format_qty(qty).to_string());
     let con_id_str = context.submitted.get(&order_id)
         .and_then(|placed| placed.attrs.attached.as_ref()?.contract_id)
         .or_else(|| tracked.and_then(|o| context.market.con_id(o.instrument)))

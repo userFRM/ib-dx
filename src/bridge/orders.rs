@@ -806,6 +806,17 @@ impl OrderState {
         self.order_updates.push(UpdateRecord { update, state, client_id });
     }
 
+    /// Push an update restating what the book already holds: a report a
+    /// gateway skips still restates the order to the program, whatever it
+    /// last heard of it.
+    #[doc(hidden)] pub fn push_order_restated(&self, update: OrderUpdate) {
+        self.note_what_the_status_says(&update);
+        let (state, client_id) = self.order_cache.lock().unwrap().get(&update.order_id)
+            .map(|info| (Some(Arc::clone(info)), info.order.client_id))
+            .unwrap_or_default();
+        self.order_updates.push(UpdateRecord { update, state, client_id });
+    }
+
     #[doc(hidden)] pub fn push_cancel_reject(&self, reject: CancelReject) {
         self.cancel_rejects.push(reject);
     }

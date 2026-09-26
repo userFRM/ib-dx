@@ -15,12 +15,6 @@ use super::{HeartbeatState, emit, parse_price_tag, decode_tif, EventSink};
 use crate::engine::hot_loop::parse_qty_tag;
 use crate::types::qty_to_f64;
 
-/// Synthetic ibapi error code for a parked (39=I) order's reason, delivered
-/// through `Wrapper::error` since ibapi has no callback dedicated to an order
-/// held with a reason. Mirrors IB's generic order-message code (399) rather
-/// than the reject code (201) — an Inactive order is not rejected, it can
-/// still reactivate.
-const ORDER_INACTIVE_ERROR_CODE: i32 = 399;
 
 /// IB error code 201: the venue refused the order. Distinct from the generic
 /// order-message code above, so a caller can classify a refusal apart from a
@@ -349,7 +343,9 @@ fn takes_the_size(parsed: &std::collections::HashMap<u32, String>, in_a_group: b
 }
 
 /// The order's total as a gateway states it after this report: what has
-/// filled, and what is left of its own size beside that.
+/// filled, and what is left of its own size beside that — with what has
+/// filled beside the total, for the status to state the size alone as the
+/// remaining.
 ///
 /// The size is taken from the leaves quantity of a report `takes_the_size`
 /// names, and of the report an order is first built from. Otherwise it is the
@@ -363,7 +359,7 @@ fn stated_total(
     over: bool,
     context: &mut Context,
     shared: &SharedState,
-) -> Option<f64> {
+) -> Option<(f64, f64)> {
     let viewed = shared.orders.get_order_info(clord_id);
     let in_a_group = match context.submitted.get(&clord_id) {
         Some(placed) => !placed.attrs.oca_group_str.is_empty() || placed.attrs.oca_group != 0,
@@ -382,7 +378,17 @@ fn stated_total(
             ) => left,
         _ if newly_held => 0,
         _ => match context.stated_sizes.get(&clord_id).copied()
-            .or_else(|| held.map(|order| order.qty - order.filled))
+            .or_else(|| {
+                // Leaves not stated at all: the report's own quantity less
+                // what it states has filled is the size as the report states
+                // it, and a size of nought states nothing and falls through.
+                (parsed.get(&151).is_none() && parsed.get(&152).is_none()).then(|| {
+                    let done = parsed.get(&14).and_then(|s| s.parse::<f64>().ok())
+                        .map_or(0, crate::types::qty_from_f64);
+                    parse_qty_tag(parsed.get(&38)).unwrap_or(0).saturating_sub(done)
+                }).filter(|size| *size > 0)
+            })
+            .or_else(|| held.map(|order| (order.qty - order.filled).max(0)))
         {
             Some(size) => size,
             None => match &viewed {
@@ -395,7 +401,7 @@ fn stated_total(
     if held.is_some() {
         context.stated_sizes.insert(clord_id, size);
     }
-    Some(filled + qty_to_f64(size))
+    Some((filled + qty_to_f64(size), filled))
 }
 
 /// The venue's stated reason for a parked or rejected order: the tag 58 text
@@ -2124,7 +2130,7 @@ impl CcpState {
             );
             // What is left of the order's own size after the refusal, as a
             // gateway states it.
-            if let Some(total) = stated_total(parsed, clord_id, false, false, context, shared) {
+            if let Some((total, _)) = stated_total(parsed, clord_id, false, false, context, shared) {
                 shared.orders.note_the_stated_total(clord_id, total);
             }
             // And the order as it stands, after the error, as a gateway
@@ -2174,7 +2180,7 @@ impl CcpState {
             let answers_a_live_change = context.pre_replace.contains_key(&(clord_id, revision));
             context.restore_pre_replace(clord_id, revision);
             shared.orders.note_the_venue_named(clord_id);
-            let total = stated_total(parsed, clord_id, false, false, context, shared);
+            let total = stated_total(parsed, clord_id, false, false, context, shared).map(|(total, _)| total);
             if let Some(total) = total {
                 shared.orders.note_the_stated_total(clord_id, total);
             }
@@ -2252,11 +2258,13 @@ impl CcpState {
         let ord_status = parsed.get(&39).map(|s| s.as_str()).unwrap_or("");
         let exec_type = parsed.get(&150).map(|s| s.as_str()).unwrap_or("");
         let status_report = parsed.get(&20).map(String::as_str) == Some("3");
-        // A restatement of an order (150=D) on an ordinary report is skipped
-        // as a gateway skips it: it moves nothing of an order held here,
-        // whatever it states beside it.
+        // A restatement of an order (150=D) and an acknowledgement of a
+        // cancel (150=6) on an ordinary report are skipped as a gateway skips
+        // them: neither moves anything of an order held here, whatever it
+        // states beside it. The order is restated to the program as every
+        // report with an order restates it, in the state the book holds.
         let skipped = matches!(parsed.get(&20).map(String::as_str), None | Some("0"))
-            && exec_type == "D"
+            && matches!(exec_type, "D" | "6")
             && context.order(clord_id).is_some();
         // A cancel takes the order to a revision of its own, past every one the
         // order was named under, and a gateway ignores a status report stating
@@ -2301,6 +2309,11 @@ impl CcpState {
             Some(held) if below_the_cancel || skipped => held.status,
             Some(_) if acknowledges_a_change => crate::types::OrderStatus::PreSubmitted,
             Some(held) if exec_type == "6" && held.status != crate::types::OrderStatus::Uncertain => held.status,
+            // A report stating an order inactive moves nothing of an order
+            // held here: a gateway keeps the status it holds for it, and says
+            // nothing of the report's reason. An order first learned of from
+            // such a report is built inactive below, as a gateway builds it.
+            Some(held) if ord_status == "I" => held.status,
             Some(held) if !status_report && matches!(ord_status, "0" | "5" | "A")
                 && (held.status == crate::types::OrderStatus::PendingCancel
                     || (held.status == crate::types::OrderStatus::Inactive
@@ -2703,7 +2716,7 @@ impl CcpState {
         };
         let acknowledged_in_place =
             is_replace_ack && context.order(clord_id).is_some_and(|o| says_the_same(o.status));
-        let status_changed = applied || acknowledged_in_place;
+        let status_changed = applied || acknowledged_in_place || skipped;
 
         // A report can also undo or restate an execution rather than announce a
         // new one: a busted trade and a corrected one both arrive as executions,
@@ -2748,6 +2761,33 @@ impl CcpState {
             None
         };
 
+        // The state filed under an order is the state the engine holds for it.
+        //
+        // A report the status guard refused states some other one, and there
+        // are several ways to arrive at that: a rejection that answers a
+        // replace rather than the cancel it raced, and history replayed behind
+        // a cancel that the order has since moved past. Filed anyway, the
+        // engine went on working the order — the guard says so — while what a
+        // caller asking for its working orders read carried the refused
+        // report's status and its reason.
+        //
+        // Read against the order as it stands after the guard, rather than
+        // against the one shape this took first: the cache is answering what
+        // the order is, and that is the same question the guard just settled.
+        // An order this session does not hold is not one the guard has an
+        // opinion on, and is left to the two rules below it. Nor is a report a
+        // gateway skips the order's state.
+        let states_the_order = !skipped
+            && context.order(clord_id).is_none_or(|o| says_the_same(o.status));
+        let over = matches!(status,
+            crate::types::OrderStatus::Filled
+                | crate::types::OrderStatus::Cancelled
+                | crate::types::OrderStatus::Rejected
+        );
+        let stated_total = stated_total(
+            parsed, clord_id, !held_before && context.order(clord_id).is_some(), over, context, shared,
+        );
+
         // A report that fills an order states its new status on the same
         // report, and suppressing the status because the fill was on it meant
         // the one transition that matters most was the one never announced: a
@@ -2785,62 +2825,35 @@ impl CcpState {
                     instrument: order.instrument,
                     status,
                     filled_qty: qty_to_f64(order.filled),
-                    remaining_qty: qty_to_f64(leaves_qty),
-                    avg_price: crate::types::price_from_f64(order_avg_px),
+                    // What is left of the order's own size, as a gateway
+                    // states it: the report's leaves where it takes the size
+                    // from none, the size it holds where it does — a cancel
+                    // states none left of what the venue holds, and the
+                    // order's size is not what its report states.
+                    remaining_qty: stated_total
+                        .map(|(total, filled)| (total - filled).max(0.0))
+                        .unwrap_or_else(|| qty_to_f64(leaves_qty)),
+                    // A skipped report restates the order as the book holds
+                    // it; its own figures move nothing, the average among
+                    // them.
+                    avg_price: crate::types::price_from_f64(if skipped {
+                        shared.orders.get_order_info(clord_id)
+                            .map_or(order_avg_px, |viewed| viewed.last_exec.avg_price)
+                    } else {
+                        order_avg_px
+                    }),
                     perm_id,
                     parent_id,
                     timestamp_ns: context.now_ns(),
                 };
                 announce = Some(update);
 
-                // A parked (39=I) order carries its reason on the same tags
-                // 58/103 as a reject, but OrderState.completedStatus stays
-                // empty for Inactive — it is not completed and may
-                // reactivate, so there is no snapshot field to carry the
-                // reason on. Route it through the same error() path a
-                // cancel/modify reject already uses instead.
-                if status == crate::types::OrderStatus::Inactive && ord_status == "I" {
-                    let reason = stated_reason(parsed);
-                    if !reason.is_empty() {
-                        shared.orders.push_order_inactive_sent(
-                            clord_id, crate::types::model::OrderOp::Venue, ORDER_INACTIVE_ERROR_CODE,
-                            reason, sent(parsed),
-                        );
-                    }
-                }
             }
 
         // The report the fill below was booked off, kept for it. Read back off
         // the order afterwards instead, a pass carrying two prints of one order
         // reported both under the later print's execution.
         let booked_off: Option<RichOrderInfo>;
-
-        // The state filed under an order is the state the engine holds for it.
-        //
-        // A report the status guard refused states some other one, and there
-        // are several ways to arrive at that: a rejection that answers a
-        // replace rather than the cancel it raced, and history replayed behind
-        // a cancel that the order has since moved past. Filed anyway, the
-        // engine went on working the order — the guard says so — while what a
-        // caller asking for its working orders read carried the refused
-        // report's status and its reason.
-        //
-        // Read against the order as it stands after the guard, rather than
-        // against the one shape this took first: the cache is answering what
-        // the order is, and that is the same question the guard just settled.
-        // An order this session does not hold is not one the guard has an
-        // opinion on, and is left to the two rules below it. Nor is a report a
-        // gateway skips the order's state.
-        let states_the_order = !skipped
-            && context.order(clord_id).is_none_or(|o| says_the_same(o.status));
-        let over = matches!(status,
-            crate::types::OrderStatus::Filled
-                | crate::types::OrderStatus::Cancelled
-                | crate::types::OrderStatus::Rejected
-        );
-        let stated_total = stated_total(
-            parsed, clord_id, !held_before && context.order(clord_id).is_some(), over, context, shared,
-        );
 
         // Enrich order/contract caches block
         {
@@ -2965,7 +2978,7 @@ impl CcpState {
                 // What has filled and what is left of the order's own size,
                 // as a gateway states it: the quantity the report states
                 // stands only for an order first stated as already over.
-                total_quantity: stated_total.unwrap_or(total_qty),
+                total_quantity: stated_total.map(|(total, _)| total).unwrap_or(total_qty),
                 order_type: if order_type_str.is_empty() { fb_ord_type.to_string() } else { order_type_str.to_string() },
                 lmt_price: limit_price,
                 aux_price: stop_px,
@@ -3227,7 +3240,11 @@ impl CcpState {
                 emit(event_tx, Event::Fill(fill));
             }
             (None, Some(update)) => {
-                shared.orders.push_order_update(update);
+                if skipped {
+                    shared.orders.push_order_restated(update);
+                } else {
+                    shared.orders.push_order_update(update);
+                }
                 emit(event_tx, Event::OrderUpdate(update));
             }
             (None, None) => {}

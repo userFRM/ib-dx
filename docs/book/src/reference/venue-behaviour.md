@@ -536,8 +536,9 @@ orders with a change on its way reads `PreSubmitted`, as a gateway restores it.
 A gateway writes a modification's terms into the order it holds before it
 sends the modification, and puts nothing back when the venue refuses it. So
 the open-orders view keeps the terms a refused modification sent, and the
-engine's own book goes back to the terms the venue holds, so a cancel names
-those.
+engine's own book goes back to the terms the venue holds. A cancel states the
+size the order is stated at — after a modification the venue refused restating
+nothing, the one the modification went out with — as a gateway's cancel does.
 
 A rejection that names the original order reports error 201 under that order's
 ID with the venue's words. It reports a rejected modification; it does not
@@ -594,8 +595,10 @@ A report can state a reason the venue restates an order, among them a revision
 or a cancel it will not make. A gateway reads no reason on a report, and nothing
 of it reaches the program: no error, no refusal. A report of the order replaced
 is taken as the replacement, whatever reason it gives. An ordinary report
-restating the order is skipped and moves nothing of an order the session holds;
-a status report restating it is read as any status report is.
+restating the order, and an acknowledgement of a cancel on one, are skipped and
+move nothing of an order the session holds; each still restates the order to
+the program in the state the book holds, as every report with an order restates
+it. A status report restating an order is read as any status report is.
 
 ## An order's total
 
@@ -607,7 +610,17 @@ revision last sent, refused with some of it left, or new in a one-cancels-all
 group, and from the report an order it did not place is first stated from; a
 report of a cash quantity that states no leaves states none left. Every other report, status reports among
 them, leaves the size as it was, whatever quantity it states for the order, so
-a status report stating more filled states a larger total.
+a status report stating more filled states a larger total. `order_status`
+states as the remaining what is left of the order's own size, as a gateway
+states it — not the report's leaves quantity, which a cancel states as none.
+
+## A report stating an order inactive
+
+A report stating an order inactive moves nothing of an order this session
+holds: a gateway keeps the status it holds for it, and says nothing of the
+report's reason. An order first learned of from such a report is held inactive,
+as a gateway holds it, and is left out of the open orders unless this session
+placed it.
 
 ## Reports behind a withdrawal
 
