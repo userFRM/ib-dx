@@ -244,7 +244,7 @@ fn a_refused_bar_request_is_told_the_error_alone() {
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].0, 11);
     assert_eq!(errors[0].1, 162);
-    assert_eq!(errors[0].2, "Invalid time length");
+    assert_eq!(errors[0].2, "Historical Market Data Service error message:Invalid time length");
 
     assert!(shared.reference.drain_historical_data().is_empty(), "and no end follows it");
     assert_eq!(over(&shared), [11], "the request is over");
@@ -349,7 +349,10 @@ fn query_error_releases_head_timestamp_without_sentinel() {
 
     assert!(hmds.pending_head_ts.is_empty());
     let errors = shared.reference.drain_historical_errors();
-    assert_eq!(errors, vec![(42, 162, "No head timestamp".to_string())]);
+    assert_eq!(
+        errors,
+        vec![(42, 162, "Historical Market Data Service error message:No head timestamp".to_string())],
+    );
     // Head-ts is not a bar request — no historical_data sentinel should fire.
     assert!(shared.reference.drain_historical_data().is_empty());
 }
@@ -901,7 +904,8 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
             Err(why) => {
                 assert!(series.is_empty(), "{what}: no bar and no end: {series:?}");
                 assert_eq!(errors.len(), 1, "{what}: {errors:?}");
-                assert_eq!((errors[0].0, errors[0].1, errors[0].2.as_str()), (42, 162, why), "{what}");
+                let told = format!("Historical Market Data Service error message:{why}");
+                assert_eq!((errors[0].0, errors[0].1, errors[0].2.as_str()), (42, 162, told.as_str()), "{what}");
             }
         }
         assert!(
@@ -2315,7 +2319,7 @@ mod hmds_correlation_tests {
         let mut hb = HeartbeatState::new();
         let mut conn: Option<Connection> = None;
         let named = crate::control::fundamental::fundamentals_query_id(1);
-        hmds.pending_fundamental.push((named.clone(), 51));
+        hmds.pending_fundamental.push((named.clone(), 51, format!("<FundamentalsRequest><id>{named}</id></FundamentalsRequest>")));
 
         // Tag 95 states the length, which frames a payload containing SOH
         // bytes. The answer names the request that asked, which is how it is
@@ -2345,7 +2349,7 @@ mod hmds_correlation_tests {
         let shared = SharedState::new();
         let mut hb = HeartbeatState::new();
         let mut conn: Option<Connection> = None;
-        hmds.pending_articles.push(("art_1".to_string(), 61));
+        hmds.pending_articles.push(("art_1".to_string(), 61, "<article/>".to_string()));
 
         let xml = "<NewsResponse><id>art_1-article_file;;NewsQuery;;0;;true;;0;;U</id></NewsResponse>";
         let mut msg = Vec::new();
@@ -2460,9 +2464,46 @@ mod hmds_correlation_tests {
             shared.reference.drain_histogram_data().is_empty(),
             "there were no entries to deliver",
         );
-        assert!(
-            shared.reference.drain_historical_errors_for_dispatch(|_| false).iter().any(|(id, _, _)| *id == 71),
-            "and the caller is told, rather than left waiting",
+        assert_eq!(
+            shared.reference.drain_historical_errors_for_dispatch(|_| false),
+            vec![(
+                71, 10188,
+                "Failed to request histogram data:the venue's answer arrived but could not be read"
+                    .to_string(),
+            )],
+            "and the caller is told, in the words a histogram failure is told in",
+        );
+    }
+
+    /// A tick segment that does not read is the request's answer all the
+    /// same, and is told under the number and the words a historical-ticks
+    /// failure is told in — not under the service's general number.
+    #[test]
+    fn an_unreadable_tick_segment_is_told_in_the_words_ticks_failures_are() {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let mut conn: Option<Connection> = None;
+        hmds.pending_ticks.push(("tk_1007".to_string(), 45, "TRADES".to_string()));
+
+        // A row never closed: the parse refuses the whole of it.
+        let xml = "<ResultSetTick><id>tk_1007</id><eoq>true</eoq><Events>\
+                   <Tick><time>20260312-14:30:01</time><price>150.25</price>";
+        let mut msg = Vec::new();
+        msg.extend_from_slice(b"35=W\x016118=");
+        msg.extend_from_slice(xml.as_bytes());
+        msg.push(0x01);
+        hmds.process_hmds_message(&msg, &mut conn, &shared, &None, &mut hb);
+
+        assert!(hmds.pending_ticks.is_empty(), "the request is spent either way");
+        assert_eq!(
+            shared.reference.drain_historical_errors(),
+            vec![(
+                45, 10187,
+                "Failed to request historical ticks:a tick segment did not read, so the series it \
+                 belongs to cannot be completed"
+                    .to_string(),
+            )],
         );
     }
 
@@ -2474,8 +2515,8 @@ mod hmds_correlation_tests {
         let shared = SharedState::new();
         let mut hb = HeartbeatState::new();
         let mut conn: Option<Connection> = None;
-        hmds.pending_news.push(("news_1".to_string(), 51));
-        hmds.pending_news.push(("news_2".to_string(), 52));
+        hmds.pending_news.push(("news_1".to_string(), 51, "<news_1/>".to_string()));
+        hmds.pending_news.push(("news_2".to_string(), 52, "<news_2/>".to_string()));
 
         // The second request's response arrives first, under the id its own
         // query went out with.
@@ -2490,7 +2531,7 @@ mod hmds_correlation_tests {
         assert_eq!(answered.len(), 1, "one answer reached a caller");
         assert_eq!(answered[0].0, 52, "and it is the caller the reply names");
         assert_eq!(
-            hmds.pending_news.iter().map(|(q, _)| q.as_str()).collect::<Vec<_>>(),
+            hmds.pending_news.iter().map(|(q, _, _)| q.as_str()).collect::<Vec<_>>(),
             vec!["news_1"],
             "the other request is still outstanding",
         );
@@ -2513,11 +2554,11 @@ mod hmds_correlation_tests {
             peer.set_read_timeout(Some(std::time::Duration::from_millis(50))).unwrap();
             let mut conn = Some(conn);
             let reply = if news {
-                hmds.pending_news.push(("news_1".into(), 51));
+                hmds.pending_news.push(("news_1".into(), 51, "<news/>".into()));
                 "35=U\x016040=10032\x016118=<NewsResponse><id>news_1-headlines;;NewsQuery;;0;;true;;0;;U</id>\
                  </NewsResponse>\x01".to_string()
             } else {
-                hmds.pending_fundamental.push((fundamentals.clone(), 51));
+                hmds.pending_fundamental.push((fundamentals.clone(), 51, format!("<FundamentalsRequest><id>{fundamentals}</id></FundamentalsRequest>")));
                 format!("35=U\x016040=10012\x016118=<FundamentalsResponse><id>{fundamentals}</id>\
                          </FundamentalsResponse>\x01")
             };
@@ -3119,8 +3160,11 @@ fn a_refused_batch_takes_the_kept_up_to_date_stream_with_it() {
 /// nothing, and once it is back it is told so and asked again from the start,
 /// the scan under the name it ran under. A bar stream of its own that is still
 /// wanted is asked for again. A head timestamp, a histogram and historical
-/// ticks are told nothing and go on waiting, as a gateway leaves them; a
-/// fundamentals request is still failed.
+/// ticks are told nothing and go on waiting, as a gateway leaves them. A news
+/// query, an article query, a fundamentals query and a question for the
+/// scanner's parameters go on waiting as well — a gateway asks them on
+/// connections of their own, so this connection's drop tells them nothing —
+/// and each is asked again once the connection is back.
 ///
 /// All were failed alike, under this client's own words, and one kept up to
 /// date had its stream asked for again with nothing left to fold it into.
@@ -3180,7 +3224,11 @@ fn a_drop_ends_a_kept_bar_request_and_asks_the_others_again() {
     hmds.pending_head_ts.push(("hts".to_string(), 14, 1, std::time::Instant::now()));
     hmds.pending_histogram.push(("hgm".to_string(), 15));
     hmds.pending_ticks.push(("tk".to_string(), 16, "TRADES".to_string()));
-    hmds.pending_fundamental.push(("fund".to_string(), 17));
+    hmds.pending_fundamental.push(("fund".to_string(), 17, "<fund/>".to_string()));
+    hmds.pending_news.push(("news".to_string(), 18, "<news/>".to_string()));
+    hmds.pending_articles.push(("art".to_string(), 19, "<art/>".to_string()));
+    hmds.pending_scanner_params = true;
+    hmds.scanner_params_queued = 1;
 
     hmds.disconnect(&mut conn, &shared, &None);
 
@@ -3196,18 +3244,20 @@ fn a_drop_ends_a_kept_bar_request_and_asks_the_others_again() {
             (notice(13), 165, went),
         ],
     );
-    assert!(
-        matches!(&errors[4..], [(ErrorOrigin::Request { id: 17, ends: true }, 504, _)]),
-        "only the fundamentals request is failed: {errors:?}",
-    );
+    assert!(errors[4..].is_empty(), "nothing else is failed: {errors:?}");
     assert_eq!(over, [9], "the request kept up to date is over, and the others are not");
     assert!(hmds.rtbar_resub.iter().all(|r| r.req_id != 9), "nothing asks for its stream again");
     assert!(hmds.forming_bars.iter().all(|f| f.req_id != 9));
     assert!(hmds.rtbar_resub.iter().any(|r| r.req_id == 10), "a stream still wanted survives the drop");
     assert_eq!(
-        (hmds.pending_head_ts.len(), hmds.pending_histogram.len(), hmds.pending_ticks.len()),
-        (1, 1, 1),
+        (hmds.pending_head_ts.len(), hmds.pending_histogram.len(), hmds.pending_ticks.len(),
+         hmds.pending_news.len(), hmds.pending_articles.len(), hmds.pending_fundamental.len()),
+        (1, 1, 1, 1, 1, 1),
         "the one-shot queries go on waiting",
+    );
+    assert!(
+        !hmds.pending_scanner_params && hmds.scanner_params_queued == 2,
+        "the question the drop took off the wire waits to be asked again, with the one behind it",
     );
 
     let (second, mut peer) = Connection::for_test();
@@ -3222,15 +3272,96 @@ fn a_drop_ends_a_kept_bar_request_and_asks_the_others_again() {
     assert!(hmds.rtbar_subs.iter().all(|(_, rid, ..)| *rid != 9), "the ended request's stream is not asked for");
     assert!(hmds.rtbar_subs.iter().any(|(_, rid, ..)| *rid == 10), "and the wanted one is");
     let mut sent = String::new();
-    while !(sent.contains("<contractID>12087792</contractID>") && sent.contains("sched_") && sent.contains(&scan_id)) {
+    while !(sent.contains("<contractID>12087792</contractID>") && sent.contains("sched_")
+        && sent.contains(&scan_id) && sent.contains("<news/>") && sent.contains("<art/>")
+        && sent.contains("<fund/>") && sent.contains("6040=10001"))
+    {
         let more = read_frame(&mut peer);
-        assert!(!more.is_empty(), "the history, the schedule and the scan are asked again: {sent:?}");
+        assert!(
+            !more.is_empty(),
+            "the history, the schedule, the scan, the kept queries and one scanner-parameters \
+             question are asked again: {sent:?}",
+        );
         sent.push_str(&String::from_utf8_lossy(&more));
     }
     assert!(sent.contains("<timeLength>1 d</timeLength>"), "from the start: {sent:?}");
+    assert!(
+        hmds.pending_scanner_params && hmds.scanner_params_queued == 1,
+        "one question went out — the answer names none, so one is on the wire at a time",
+    );
     assert!(hmds.held.iter().any(|h| h.req_id == 11), "and held for again");
     assert!(hmds.pending_schedule.iter().any(|(_, rid, _)| *rid == 12), "and the schedule asked again");
     assert_eq!(hmds.pending_scanner.len(), 1, "and the scan runs on under its number");
+}
+
+/// A connection this session stops trying for fails the queries it kept
+/// waiting through the drop: each under its caller's number, and the
+/// questions for the scanner's parameters, which carry no number of their
+/// own, under the refusal of the question. Once — a later sweep finds
+/// nothing left to fail.
+#[test]
+fn giving_up_on_the_connection_fails_the_queries_it_kept_waiting() {
+    let mut hmds = HmdsState::new();
+    let shared = SharedState::new();
+    hmds.pending_news.push(("news".to_string(), 18, "<news/>".to_string()));
+    hmds.pending_articles.push(("art".to_string(), 19, "<art/>".to_string()));
+    hmds.pending_fundamental.push(("fund".to_string(), 17, "<fund/>".to_string()));
+    hmds.pending_scanner_params = true;
+    hmds.scanner_params_queued = 1;
+
+    assert!(!hmds.give_up_those_asked_again(&shared), "no scan was waiting");
+
+    let errors = shared.reference.drain_historical_errors();
+    let mut told: Vec<_> = errors.iter().map(|(id, code, _)| (*id, *code)).collect();
+    told.sort();
+    let no_request = crate::bridge::ReferenceState::NO_REQUEST;
+    assert_eq!(
+        told,
+        [(17, 504), (18, 504), (19, 504), (no_request, 504), (no_request, 504)],
+        "{errors:?}",
+    );
+    assert!(
+        errors.iter().filter(|(id, _, _)| *id == no_request)
+            .all(|(_, _, text)| text == crate::engine::hot_loop::HMDS_UNAVAILABLE),
+        "the questions are refused with the connection they would have gone out on: {errors:?}",
+    );
+
+    assert!(!hmds.give_up_those_asked_again(&shared));
+    assert!(
+        shared.reference.drain_historical_errors().is_empty(),
+        "a later sweep fails nothing twice",
+    );
+}
+
+/// A refusal of a histogram query is told under the number and the words a
+/// histogram failure is told in, and one of a historical-ticks query under
+/// its own, as a gateway tells either — not under the service's general
+/// number for a difficulty it reports.
+#[test]
+fn a_query_error_is_told_under_the_kind_of_request_it_refused() {
+    for (kind, expected) in [
+        ("histogram", (43, 10188, "Failed to request histogram data:bad period".to_string())),
+        ("ticks", (44, 10187, "Failed to request historical ticks:bad window".to_string())),
+    ] {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let mut conn: Option<Connection> = None;
+        let (qid, error) = match kind {
+            "histogram" => {
+                hmds.pending_histogram.push(("hgm_1005".to_string(), 43));
+                ("hgm_1005", "bad period")
+            }
+            _ => {
+                hmds.pending_ticks.push(("tk_1006".to_string(), 44, "TRADES".to_string()));
+                ("tk_1006", "bad window")
+            }
+        };
+        let msg = make_query_error_msg(qid, error);
+        hmds.process_hmds_message(&msg, &mut conn, &shared, &None, &mut hb);
+        assert!(hmds.pending_histogram.is_empty() && hmds.pending_ticks.is_empty(), "{kind}: spent");
+        assert_eq!(shared.reference.drain_historical_errors(), vec![expected], "{kind}");
+    }
 }
 
 /// A number already answering a historical query does not take a second one.

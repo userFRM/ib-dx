@@ -188,15 +188,25 @@ with every one of them, as a gateway does.
   nothing, and the calls that wait for an answer wait through it. A head
   timestamp, a histogram and historical ticks are told nothing, as a gateway
   tells them nothing; a histogram and ticks asked on the connection that went
-  are not answered, as on a gateway. A connection this client stops trying for
-  fails the requests waiting to be asked again, and the scans, under 504. A
-  fundamentals, news or article request, the scanner's parameters and a
-  contract's corporate actions are still failed at the drop under 504: a
-  gateway asks the first four on connections of their own, which this client
-  carries on the historical one, and the last is this client's own question.
+  are not answered, as on a gateway. A fundamentals, news or article request
+  and a question for the scanner's parameters are not on a gateway's
+  historical connection, so its drop tells them nothing either: each goes on
+  waiting and is asked again, as it was asked, once the connection is back —
+  a question for the scanner's parameters one at a time, as always. A
+  contract's corporate actions are this client's own question and are failed
+  at the drop under 504. A connection this client stops trying for fails the
+  requests waiting to be asked again, the scans, the queries kept waiting
+  through the drop and the scanner's questions, under 504.
 - A head timestamp the venue has not answered in five seconds ends on 162,
   *Historical Market Data Service error message:Request Timed Out*, as a
   gateway ends it.
+- A difficulty stated for a historical query is told under the number and
+  the words the kind of request is told in, as a gateway tells it: 162 with
+  *Historical Market Data Service error message:* prefixed, whether the
+  service refused the query or its answer did not read; a histogram failure
+  under 10188, *Failed to request histogram data:* followed by the
+  difficulty; and a historical-ticks failure under 10187, *Failed to request
+  historical ticks:*.
 - A fundamental report is asked about a stock alone. A gateway refuses one on
   a contract stated as any other type, or stating none, before looking it up,
   with *Please enter a valid security type* under 321; so does this client.

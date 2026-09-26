@@ -4142,9 +4142,39 @@ fn con_id_beyond_the_wire(cmd: &ControlCommand) -> Option<i64> {
 
 /// Surface an HMDS-side request failure: error 162, which ends a bar request
 /// as a refusal ends it.
+///
+/// The message is told under the service's own words for a difficulty it
+/// reports, which prefix every text stated under its number, as a gateway
+/// states them.
 pub(crate) fn push_hmds_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
     const HMDS_ERROR_CODE: i32 = 162;
-    push_hmds_refusal(shared, req_id, HMDS_ERROR_CODE, message, from_historical);
+    push_hmds_refusal(
+        shared, req_id, HMDS_ERROR_CODE,
+        format!("Historical Market Data Service error message:{message}"),
+        from_historical,
+    );
+}
+
+/// The same, for a histogram failure: a gateway states one under a number
+/// and a prefix of its own, whatever the difficulty was.
+pub(crate) fn push_hmds_histogram_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const HISTOGRAM_ERROR_CODE: i32 = 10188;
+    push_hmds_refusal(
+        shared, req_id, HISTOGRAM_ERROR_CODE,
+        format!("Failed to request histogram data:{message}"),
+        from_historical,
+    );
+}
+
+/// The same, for a historical-ticks failure, which a gateway states under a
+/// number and a prefix of its own as well.
+pub(crate) fn push_hmds_ticks_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const TICKS_ERROR_CODE: i32 = 10187;
+    push_hmds_refusal(
+        shared, req_id, TICKS_ERROR_CODE,
+        format!("Failed to request historical ticks:{message}"),
+        from_historical,
+    );
 }
 
 /// The same, under a number of its own rather than the service's.
