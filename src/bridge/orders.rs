@@ -674,6 +674,14 @@ impl OrderState {
         }
     }
 
+    /// Write the total a gateway states an order at into the entry kept for
+    /// it, from a report that is not otherwise its statement of the order.
+    #[doc(hidden)] pub fn note_the_stated_total(&self, order_id: u64, total: f64) {
+        if let Some(info) = self.order_cache.lock().unwrap().get_mut(&order_id) {
+            Arc::make_mut(info).order.total_quantity = total;
+        }
+    }
+
     // ── Hot-loop-side writers ──
 
     /// A fill with no report behind it. What the order's record states at

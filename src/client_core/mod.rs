@@ -3737,6 +3737,15 @@ impl ClientCore {
         (10148, format!("Order {} {what} rejected", reject.order_id))
     }
 
+    /// Take the total a gateway states an order at from the report delivered
+    /// beside what it says of the order.
+    pub fn take_the_stated_total(&self, order_id: u64, stated: Option<&crate::bridge::RichOrderInfo>) {
+        let Some(stated) = stated else { return };
+        if let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&order_id) {
+            tracked.order.total_quantity = stated.order.total_quantity;
+        }
+    }
+
     /// Update a tracked order status from an order update event.
     ///
     /// Takes the pre-stringification `OrderStatus` rather than the ibapi string

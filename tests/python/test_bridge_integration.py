@@ -593,6 +593,21 @@ class TestCancelRejectDispatch:
         assert errors[0][2] == 10148
 
 
+class TestTheTotalAnOrderIsStatedAt:
+
+    def test_an_order_is_stated_at_the_total_its_report_states(self):
+        """An order this client placed is stated at the total a gateway
+        states it at after the report delivered with it."""
+        w, c = make_test_client()
+        c._test_track_order(42, 0, "SPY", "BUY", 100.0, 400.0)
+        c._test_push_venue_order(42, "SPY", "BUY", 130.0, 400.0)
+        c._test_push_order_update(42, 0, "Submitted", 30.0, 100.0)
+        c._test_dispatch_once()
+
+        opened = [e for e in w.events if e[0] == "open_order"]
+        assert [e[3].total_quantity for e in opened] == [130.0]
+
+
 class TestReqOpenOrdersOrderState:
     """Regression: req_open_orders must deliver an OrderState object (not a dict)."""
 

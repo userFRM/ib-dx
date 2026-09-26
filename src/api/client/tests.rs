@@ -6274,6 +6274,52 @@ fn process_msgs_dispatches_cancel_reject_type_2() {
     );
 }
 
+/// An order this client placed is stated at the total a gateway states it at
+/// after the report delivered with it, not the one the caller placed.
+#[test]
+fn an_order_is_stated_at_the_total_its_report_states() {
+    #[derive(Default)]
+    struct Totals(Vec<f64>);
+    impl Wrapper for Totals {
+        fn open_order(&mut self, _: i64, _: &Contract, order: &Order, _: &crate::types::model::OrderState) {
+            self.0.push(order.total_quantity);
+        }
+    }
+    for filled in [false, true] {
+        let (client, _rx, shared) = test_client();
+        let placed = Order {
+            order_id: 44, action: "BUY".into(), total_quantity: 100.0, order_type: "LMT".into(),
+            lmt_price: 100.0, tif: "DAY".into(), transmit: true, ..Default::default()
+        };
+        client.core.track_order(44, spy(), placed.clone(), 0);
+        let stated = crate::bridge::RichOrderInfo {
+            contract: spy(),
+            order: Order { total_quantity: 130.0, filled_quantity: 30.0, ..placed },
+            order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+            last_exec: Default::default(),
+        };
+        shared.orders.push_order_info(44, stated.clone());
+        if filled {
+            shared.orders.push_fill_reported(crate::types::Fill {
+                instrument: 0, order_id: 44, side: crate::types::Side::Buy, cum_qty: 30 * crate::types::QTY_SCALE,
+                avg_price: 100 * crate::types::PRICE_SCALE, price: 100 * crate::types::PRICE_SCALE,
+                qty: 30 * crate::types::QTY_SCALE, remaining: 100 * crate::types::QTY_SCALE, timestamp_ns: 0,
+            }, stated);
+        } else {
+            shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: 44, instrument: 0, status: crate::types::OrderStatus::Submitted,
+                filled_qty: 30.0, remaining_qty: 100.0, avg_price: 0, perm_id: 44, parent_id: 0, timestamp_ns: 0,
+            });
+        }
+        let mut told = Totals::default();
+        client.process_msgs(&mut told);
+        if !filled {
+            assert_eq!(told.0, [130.0], "the order is stated as the report states it");
+        }
+        assert_eq!(client.core.tracked_order(44).map(|o| o.total_quantity), Some(130.0), "filled: {filled}");
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  process_msgs — quote polling
 // ═══════════════════════════════════════════════════════════════════

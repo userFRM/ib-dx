@@ -142,6 +142,11 @@ pub struct Context {
     /// refusal has to put the whole record back, or the next replace restates
     /// terms the venue never held.
     pub(crate) pre_replace: HashMap<(OrderId, u32), PreReplace>,
+    /// What is left of each order's own size, as a gateway states it beside
+    /// what has filled: the size its latest placement or replace went out
+    /// with, and after that the leaves quantity of the latest report a gateway
+    /// takes the size from. A refusal does not put it back.
+    pub(crate) stated_sizes: HashMap<OrderId, Qty>,
     /// Timestamp when the last farm socket recv returned data (for decode latency
     /// measurement).
     pub(crate) recv_at: Instant,
@@ -187,6 +192,7 @@ impl Context {
             before_the_cancel: HashMap::new(),
             ladder_sizes: HashMap::new(),
             pre_replace: HashMap::new(),
+            stated_sizes: HashMap::new(),
             account: AccountState::default(),
             clock: Clock::new(),
             // Settled on first use, against what the venue names as working.
@@ -632,6 +638,7 @@ impl Context {
         self.before_the_cancel.remove(&order_id);
         self.ladder_sizes.remove(&order_id);
         self.pre_replace.retain(|(id, _), _| *id != order_id);
+        self.stated_sizes.remove(&order_id);
     }
 
     /// Take the venue's own account of where an order's naming stands.

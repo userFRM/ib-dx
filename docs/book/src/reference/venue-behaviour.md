@@ -579,6 +579,17 @@ An order the venue answers at once goes from its working status straight to
 `Cancelled`. The event channel `connect_with_events` returns, which a gateway
 does not have, still carries the engine's `Event::OrderUpdate` as the cancel
 goes out.
+## An order's total
+
+`open_order` states an order's total quantity as a gateway states it: what has
+filled, and what is left of the order's own size. The size is the one the order
+was placed or last replaced with, and a gateway takes it again from the leaves
+quantity of an ordinary report of the order pending, filled, replaced, refused
+with some of it left, or new in a one-cancels-all group, and from the report an
+order it did not place is first stated from; a report of a cash quantity that
+states no leaves states none left. Every other report, status reports among
+them, leaves the size as it was, whatever quantity it states for the order, so
+a status report stating more filled states a larger total.
 
 ## Reports behind a withdrawal
 

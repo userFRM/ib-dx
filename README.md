@@ -1071,8 +1071,10 @@ leaves the order in the state it held before the cancel went out. A refusal of
 either on the venue's own cancel-reject message reaches no callback, as on a
 gateway, and the order keeps what the program was last told of it until the
 venue states it again: after a refused modification, the open-orders view
-states the terms the modification asked for. Hedge pricing instructions are
-retained on replacement.
+states the terms the modification asked for. `open_order` states an order's
+total as a gateway does: what has filled, and what is left of the order's own
+size, which only the reports a gateway takes a size from restate. Hedge
+pricing instructions are retained on replacement.
 See [order behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html#orders).
 
 ## Testing
@@ -1081,8 +1083,8 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,204 | No |
-| Python | 1,189 | No |
+| Rust, unit and integration | 3,203 | No |
+| Python | 1,191 | No |
 | Rust, live | 9 | Yes |
 | Python, live | 123 | Yes |
 | Paper compatibility, 154 phases | 51 | Yes |

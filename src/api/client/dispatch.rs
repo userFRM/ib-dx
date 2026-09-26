@@ -695,6 +695,7 @@ impl EClient {
     /// `exec_details`, each with what the report stated.
     fn deliver_fill(&self, record: FillRecord, wrapper: &mut impl Wrapper) {
         let FillRecord { fill, report, status } = record;
+        self.core.take_the_stated_total(fill.order_id, report.as_deref());
         let price_f = fill.price as f64 / PRICE_SCALE_F;
         // Status as the report states it, derived from `remaining` only when
         // the report carries none.
@@ -799,6 +800,8 @@ impl EClient {
         // the order it holds. Copied out before the callback rather than read
         // across it: a wrapper that reaches the order cache from the callback
         // would wait on a lock its own caller holds.
+        // At the total a gateway states the order at, as the report says it.
+        self.core.take_the_stated_total(update.order_id, state.as_deref());
         let tracked = self.core.open_orders.lock().unwrap().get(&update.order_id).cloned();
         let client = tracked
             .as_ref()

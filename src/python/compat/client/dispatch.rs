@@ -927,6 +927,7 @@ impl EClient {
     /// `exec_details`, each with what the report stated.
     fn deliver_fill(&self, py: Python<'_>, shared: &Arc<SharedState>, record: FillRecord) -> PyResult<()> {
         let FillRecord { fill, report: rich_info, status: with_it } = record;
+        self.core.take_the_stated_total(fill.order_id, rich_info.as_deref());
         // A fill nobody asked for is numbered -1. The reference wrapper
         // decides a fill is live by the request id not matching one it is
         // waiting on, so any other id files the fill as the answer to that
@@ -1036,8 +1037,10 @@ impl EClient {
         let parent_id = self.core.tracked_parent_id(update.order_id)
             .unwrap_or(update.parent_id);
         let avg = update.avg_price as f64 / crate::types::PRICE_SCALE as f64;
-        // The order as this client sent it, beside the status it is now in.
-        // Copied out before the callback rather than read across it.
+        // The order as this client sent it, beside the status it is now in, at
+        // the total a gateway states it at. Copied out before the callback
+        // rather than read across it.
+        self.core.take_the_stated_total(update.order_id, stated_state.as_deref());
         let tracked = self.core.open_orders.lock().unwrap().get(&update.order_id).cloned();
         let client = tracked
             .as_ref()

@@ -410,6 +410,70 @@ fn leaves_qty_is_still_reported_as_the_remainder() {
     assert_eq!(fills[0].0.remaining, 70 * QTY_SCALE, "the fill reports what is still working");
 }
 
+/// The order's total is stated as a gateway states it after each report:
+/// what has filled and what is left of its own size, where the size is taken
+/// from the leaves quantity of an ordinary report of the order pending, filled,
+/// replaced at the revision last sent, refused with some left, or new in a
+/// one-cancels-all group, and from the report an order is first built from.
+/// Every other report keeps the size the order holds, whatever quantity it
+/// states.
+#[test]
+fn the_total_an_order_is_stated_at_is_a_gateways_after_each_report() {
+    // What the row is, whether the order is held here and in a group, the
+    // reports, and the total stated after the last of them.
+    let new: &[(u32, &str)] = &[(150, "0"), (39, "0"), (20, "0"), (14, "0"), (151, "100")];
+    for (what, held, grouped, reports, total) in [
+        ("pending", true, false, vec![&[(150u32, "A"), (39, "A"), (20, "0"), (14, "0"), (151, "80")][..]], 80.0),
+        ("pending, on a status report", true, false,
+            vec![&[(150, "A"), (39, "A"), (20, "3"), (14, "0"), (151, "80")][..]], 100.0),
+        ("filled in part", true, false,
+            vec![&[(150, "1"), (39, "1"), (20, "0"), (17, "E1"), (32, "30"), (31, "1"), (14, "30"), (151, "60")][..]], 90.0),
+        ("a fill on a status report", true, false,
+            vec![&[(150, "1"), (39, "1"), (20, "3"), (14, "30"), (151, "60")][..]], 130.0),
+        ("replaced", true, false, vec![&[(150, "5"), (39, "5"), (20, "0"), (14, "0"), (151, "80")][..]], 80.0),
+        ("replaced at a revision behind the one sent", true, false,
+            vec![&[(11, "42.1"), (150, "5"), (39, "5"), (20, "0"), (14, "0"), (151, "80")][..]], 100.0),
+        ("refused with some left", true, false,
+            vec![&[(150, "8"), (39, "8"), (20, "0"), (14, "0"), (151, "80")][..]], 80.0),
+        ("refused with none left", true, false,
+            vec![&[(150, "8"), (39, "8"), (20, "0"), (14, "0"), (151, "0")][..]], 100.0),
+        ("new", true, false, vec![&[(150, "0"), (39, "0"), (20, "0"), (14, "0"), (151, "80")][..]], 100.0),
+        ("new in a group", true, true, vec![&[(150, "0"), (39, "0"), (20, "0"), (14, "0"), (151, "80")][..]], 80.0),
+        ("cancelled", true, false, vec![&[(150, "4"), (39, "4"), (20, "0"), (14, "0"), (151, "0")][..]], 100.0),
+        ("restated", true, false, vec![new, &[(150, "D"), (39, "0"), (20, "0"), (14, "0"), (151, "80")]], 100.0),
+        ("named at connect", false, false, vec![&[(150, "0"), (39, "0"), (20, "3"), (14, "10"), (151, "40")][..]], 50.0),
+        ("named at connect by its cash", false, false,
+            vec![&[(150, "0"), (39, "0"), (20, "3"), (14, "0"), (152, "5000")][..]], 0.0),
+    ] {
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        if held {
+            context.insert_order(crate::types::Order::new(
+                42, instrument, Side::Buy, 100 * QTY_SCALE, 100 * PRICE_SCALE, b'2', b'0', 0,
+            ));
+        }
+        // The order has been replaced twice, where a row names a revision.
+        if reports[0].iter().any(|(tag, _)| *tag == 11) {
+            context.modify_versions.insert(42, 2);
+        }
+        if grouped {
+            context.submitted.insert(42, Box::new(crate::types::OrderSpec {
+                kind: crate::types::OrderKind::Limit { price: 100 * PRICE_SCALE },
+                attrs: crate::types::OrderAttrs { oca_group_str: "g".into(), ..Default::default() },
+            }));
+        }
+        let shared = SharedState::new();
+        let mut ccp = CcpState::new();
+        for report in reports {
+            let mut frame = exec_report_frame(&[(6008, "756733"), (54, "1"), (38, "100"), (40, "2"), (44, "100")]);
+            frame.extend(report.iter().map(|(tag, value)| (*tag, value.to_string())));
+            ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "DU1");
+        }
+        let stated = shared.orders.get_order_info(42).unwrap_or_else(|| panic!("{what}: not stated"));
+        assert_eq!(stated.order.total_quantity, total, "{what}");
+    }
+}
+
 /// `filled_quantity` was taken from tag 151 (LeavesQty), the *unfilled*
 /// remainder, rather than tag 14 (CumQty). The two are complements, so a
 /// partially filled order reported the wrong number and a completed one —
@@ -481,9 +545,6 @@ fn filled_quantity_is_the_filled_amount_not_the_remainder() {
         info.order.filled_quantity, 30.0,
         "a report without tag 14 keeps the filled quantity, it does not zero it",
     );
-
-    // And the remainder is still the remainder, on the same reports.
-    assert_eq!(info.order.total_quantity, 100.0);
 }
 /// The midnight seed carries the same quantity tag and had the same
 /// defect: reading an absent one as zero makes the day's P&L look as

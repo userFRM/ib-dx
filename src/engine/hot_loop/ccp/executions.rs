@@ -8,7 +8,7 @@ use crate::protocol::connection::{Connection, Frame};
 use crate::protocol::fix;
 use crate::protocol::fixcomp;
 use crate::types::{
-    CompletedOrder, Fill, InstrumentId, Side, PRICE_SCALE,
+    CompletedOrder, Fill, InstrumentId, Qty, Side, PRICE_SCALE,
 };
 
 use super::{HeartbeatState, emit, parse_price_tag, decode_tif, EventSink};
@@ -309,6 +309,93 @@ fn sent(parsed: &std::collections::HashMap<u32, String>) -> Option<i64> {
         .get(&52)
         .and_then(|stamped| crate::protocol::datetime::ib_datetime_to_unix(stamped))
         .map(|seconds| seconds.saturating_mul(1_000))
+}
+
+/// What a report states is left of an order's own size: its leaves quantity,
+/// or nothing where it states the order's size as a cash amount and no leaves
+/// quantity beside it.
+fn stated_leaves(parsed: &std::collections::HashMap<u32, String>) -> Option<Qty> {
+    parse_qty_tag(parsed.get(&151)).or_else(|| {
+        parsed
+            .get(&152)
+            .and_then(|stated| stated.trim().parse::<f64>().ok())
+            .filter(|amount| amount.is_finite())
+            .map(|_| 0)
+    })
+}
+
+/// Whether a gateway takes an order's size from this report: an ordinary
+/// report of the order pending, filled, replaced at the revision it last sent
+/// or a later one, refused with some of it left, or new in a one-cancels-all
+/// group, and a report correcting a fill. A status report, a report of
+/// anything else, and a report stating an execution the venue made up leave
+/// the size where it stood.
+fn takes_the_size(parsed: &std::collections::HashMap<u32, String>, in_a_group: bool, revision: u32) -> bool {
+    if parsed.get(&17).is_some_and(|id| id.starts_with("F-") || id.starts_with("U+")) {
+        return false;
+    }
+    let exec_type = parsed.get(&150).map(String::as_str).unwrap_or("");
+    match parsed.get(&20).map(String::as_str) {
+        Some("3") => false,
+        Some("1" | "2") => matches!(exec_type, "1" | "2"),
+        _ => match exec_type {
+            "A" | "1" | "2" => true,
+            "5" => parsed.get(&11).is_none_or(|named| revision_of(named) >= revision),
+            "8" => parse_qty_tag(parsed.get(&151)).is_some_and(|left| left > 0),
+            "0" => in_a_group,
+            _ => false,
+        },
+    }
+}
+
+/// The order's total as a gateway states it after this report: what has
+/// filled, and what is left of its own size beside that.
+///
+/// The size is taken from the leaves quantity of a report `takes_the_size`
+/// names, and of the report an order is first built from. Otherwise it is the
+/// size already held: what the order's latest placement or replace went out
+/// with, until a report changes it. Nothing for an order first stated as
+/// already over, which states no working order.
+fn stated_total(
+    parsed: &std::collections::HashMap<u32, String>,
+    clord_id: u64,
+    newly_held: bool,
+    over: bool,
+    context: &mut Context,
+    shared: &SharedState,
+) -> Option<f64> {
+    let viewed = shared.orders.get_order_info(clord_id);
+    let in_a_group = match context.submitted.get(&clord_id) {
+        Some(placed) => !placed.attrs.oca_group_str.is_empty() || placed.attrs.oca_group != 0,
+        None => viewed.as_ref().map(|v| &v.order.oca_group).or(parsed.get(&583))
+            .is_some_and(|group| !group.is_empty()),
+    };
+    let filled = parsed.get(&14).and_then(|s| s.parse::<f64>().ok())
+        .or_else(|| viewed.as_ref().map(|v| v.order.filled_quantity))
+        .unwrap_or(0.0);
+    let held = context.order(clord_id).copied();
+    let leaves = stated_leaves(parsed);
+    let size = match leaves {
+        Some(left) if newly_held
+            || takes_the_size(
+                parsed, in_a_group, context.modify_versions.get(&clord_id).copied().unwrap_or(0),
+            ) => left,
+        _ if newly_held => 0,
+        _ => match context.stated_sizes.get(&clord_id).copied()
+            .or_else(|| held.map(|order| order.qty - order.filled))
+        {
+            Some(size) => size,
+            None => match &viewed {
+                Some(v) => crate::types::qty_from_f64(v.order.total_quantity - v.order.filled_quantity),
+                None if over => return None,
+                None => leaves.unwrap_or(0),
+            },
+        },
+    };
+    if held.is_some() {
+        context.stated_sizes.insert(clord_id, size);
+    }
+    Some(filled + qty_to_f64(size))
 }
 
 /// The venue's stated reason for a parked or rejected order: the tag 58 text
@@ -2035,6 +2122,11 @@ impl CcpState {
             shared.orders.push_order_inactive_sent(
                 clord_id, api::OrderOp::Cancel, ORDER_REJECTED_ERROR_CODE, reason, sent(parsed),
             );
+            // What is left of the order's own size after the refusal, as a
+            // gateway states it.
+            if let Some(total) = stated_total(parsed, clord_id, false, false, context, shared) {
+                shared.orders.note_the_stated_total(clord_id, total);
+            }
             // And the order as it stands, after the error, as a gateway
             // restates the order a report names.
             if let Some(order) = context.order(clord_id).copied() {
@@ -2075,6 +2167,11 @@ impl CcpState {
             let answers_a_live_change = context.pre_replace.contains_key(&(clord_id, revision));
             context.restore_pre_replace(clord_id, revision);
             shared.orders.note_the_venue_named(clord_id);
+            // What is left of the order's own size after the refusal, as a
+            // gateway states it.
+            if let Some(total) = stated_total(parsed, clord_id, false, false, context, shared) {
+                shared.orders.note_the_stated_total(clord_id, total);
+            }
             let order = context.order(clord_id).copied();
             let reject = crate::types::CancelReject {
                 order_id: clord_id,
@@ -2209,6 +2306,7 @@ impl CcpState {
         // anything. The push states what the broker has and omits the rest —
         // tag 59 among them — so an unstated field keeps what was known rather
         // than taking a default meant for an order this session never saw.
+        let held_before = context.order(clord_id).is_some();
         let prior = context.order(clord_id)
             .filter(|o| o.status == crate::types::OrderStatus::Uncertain)
             .copied();
@@ -2797,6 +2895,14 @@ impl CcpState {
         // opinion on, and is left to the two rules below it.
         let states_the_order =
             context.order(clord_id).is_none_or(|o| says_the_same(o.status));
+        let over = matches!(status,
+            crate::types::OrderStatus::Filled
+                | crate::types::OrderStatus::Cancelled
+                | crate::types::OrderStatus::Rejected
+        );
+        let stated_total = stated_total(
+            parsed, clord_id, !held_before && context.order(clord_id).is_some(), over, context, shared,
+        );
 
         // Enrich order/contract caches block
         {
@@ -2918,7 +3024,10 @@ impl CcpState {
                 // instead of going live at once.
                 conditions: decode_conditions(raw),
                 action: action.to_string(),
-                total_quantity: total_qty,
+                // What has filled and what is left of the order's own size,
+                // as a gateway states it: the quantity the report states
+                // stands only for an order first stated as already over.
+                total_quantity: stated_total.unwrap_or(total_qty),
                 order_type: if order_type_str.is_empty() { fb_ord_type.to_string() } else { order_type_str.to_string() },
                 lmt_price: limit_price,
                 aux_price: stop_px,

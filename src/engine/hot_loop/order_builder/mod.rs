@@ -1020,6 +1020,16 @@ pub(crate) fn drain_and_send_orders(
                 // undoing where it was.
                 for id in &written {
                     shared.orders.note_the_order_went_out(*id);
+                    // An order sent, placed or replaced, is what a gateway
+                    // states it at from here, beside what has filled: it keeps
+                    // the terms it sent, whatever the venue answers. A size
+                    // below what has filled is not one it takes.
+                    if (placing || restating)
+                        && let Some(sent) = context.order(*id).copied()
+                        && sent.qty >= sent.filled
+                    {
+                        context.stated_sizes.insert(*id, sent.qty - sent.filled);
+                    }
                 }
                 // And, for an order placed, when on the venue's clock and what
                 // the venue had counted by then: until the venue names it, a
