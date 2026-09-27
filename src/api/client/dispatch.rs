@@ -785,6 +785,12 @@ impl EClient {
         // What the order has paid, as the report that changed its status
         // stated it.
         let avg = update.avg_price as f64 / crate::types::PRICE_SCALE as f64;
+        // And what its last fill went at, as the order holds it: a gateway
+        // keeps the last print from every execution report and states it on
+        // every status it sends, so a report of its own states none — the
+        // cancel behind a fill among them — the held print is what goes out.
+        // Nought where no record of the order is held: nothing has filled.
+        let last_fill = state.as_ref().map_or(0.0, |held| held.last_exec.price);
         // The order as this client sent it, beside the status it is now in.
         // The reference client answers an order's every change with both, from
         // the order it holds. Copied out before the callback rather than read
@@ -815,7 +821,7 @@ impl EClient {
         }
         wrapper.order_status(
             self.core.api_order_id(update.order_id), status, update.filled_qty,
-            update.remaining_qty, avg, update.perm_id, parent_id, 0.0,
+            update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
             i64::from(client), "", 0.0,
         );
         self.core.update_order_status(
@@ -1874,6 +1880,99 @@ mod delivered_size_tests {
         assert!(client.deferred_evictions.lock().unwrap().contains(&7));
         client.process_msgs(&mut wrapper);
         assert!(shared.orders.get_order_info(7).is_none(), "a terminal row is still reclaimed");
+    }
+
+    /// What each status was told the order had paid, and what its last fill
+    /// went at.
+    #[derive(Default)]
+    struct Prints(Vec<(String, f64, f64)>);
+
+    impl Wrapper for Prints {
+        fn order_status(
+            &mut self, _order_id: i64, status: &str, _filled: f64, _remaining: f64,
+            avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
+            last_fill_price: f64, _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
+        ) {
+            self.0.push((status.to_string(), avg_fill_price, last_fill_price));
+        }
+    }
+
+    /// A report stating no fill restates the fill the order holds.
+    ///
+    /// An order holds the last print from every execution report, as a
+    /// gateway's order holds it, and states it on every status it sends: the
+    /// cancel behind a partial fill states the print, not nought. A report
+    /// with no print of its own states nought on its tags, so the held print
+    /// has to survive it — and an order nothing has filled states nought,
+    /// which is the value that means unstated.
+    #[test]
+    fn a_status_alone_restates_the_print_the_order_holds() {
+        use crate::engine::{context::Context, hot_loop::ccp::CcpState};
+
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        let mut ccp = CcpState::new();
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        context.set_symbol(instrument, "SPY".into());
+        for order_id in [7, 8] {
+            context.insert_order(crate::types::Order::new(
+                order_id, instrument, crate::types::Side::Buy,
+                300 * QTY_SCALE, 400 * PRICE_SCALE, b'2', b'0', 0,
+            ));
+        }
+        client.core.track_order(
+            7,
+            crate::types::model::Contract {
+                con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+                exchange: "SMART".into(), ..Default::default()
+            },
+            crate::types::model::Order {
+                order_id: 7, action: "BUY".into(), total_quantity: 300.0,
+                order_type: "LMT".into(), lmt_price: 400.0, ..Default::default()
+            },
+            0,
+        );
+        let report = |id, status, kind, exec_id, print, last, cum, left, avg| {
+            [(11, id), (39, status), (150, kind), (17, exec_id),
+             (54, "1"), (6008, "756733"), (38, "300"), (14, cum),
+             (32, last), (31, print), (151, left), (6, avg)]
+                .into_iter().map(|(tag, value)| (tag, value.to_string())).collect()
+        };
+        // Two prints on 300, then the venue cancels what is left: its report
+        // states no print of its own, as the wire states one.
+        ccp.handle_exec_report(
+            &report("7", "1", "F", "fill-1", "40", "100", "100", "200", "40"),
+            b"", &mut context, &shared, &None, "",
+        );
+        ccp.handle_exec_report(
+            &report("7", "1", "F", "fill-2", "60", "100", "200", "100", "50"),
+            b"", &mut context, &shared, &None, "",
+        );
+        ccp.handle_exec_report(
+            &report("7", "4", "4", "cancel-1", "0.00", "0", "200", "0", "50"),
+            b"", &mut context, &shared, &None, "",
+        );
+        // A restatement of an order nothing has filled: no record of it here,
+        // and nothing held to state.
+        ccp.handle_exec_report(
+            &report("8", "0", "D", "restate-1", "0.00", "0", "0", "300", "0"),
+            b"", &mut context, &shared, &None, "",
+        );
+        let mut prints = Prints::default();
+        client.process_msgs(&mut prints);
+        assert_eq!(
+            prints.0,
+            vec![
+                // A partly filled working order is reported as submitted;
+                // the quantities carry the distinction.
+                ("Submitted".to_string(), 40.0, 40.0),
+                ("Submitted".to_string(), 50.0, 60.0),
+                // The cancel states the order: what it paid, and the last
+                // print it holds — not the nought its own report states.
+                ("Cancelled".to_string(), 50.0, 60.0),
+                ("PendingSubmit".to_string(), 0.0, 0.0),
+            ],
+        );
     }
 
     /// What each order callback was told, in the order it was told.

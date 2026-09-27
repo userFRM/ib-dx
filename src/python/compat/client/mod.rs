@@ -4518,4 +4518,57 @@ w.orderStatus = status
             assert_eq!(said, (1..=N).collect::<Vec<_>>());
         });
     }
+
+    /// A status stating no print states the print the order holds — the
+    /// record beside it carries the last one from every execution report, as
+    /// a gateway's order carries it — and an order no record is held for
+    /// states nought, the value that means unstated.
+    #[test]
+    fn a_status_alone_states_the_print_the_order_holds() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, _rx, shared, w) = wired_client(py);
+            // The order's record as a fill left it: the last print at 60,
+            // what the order has paid at 50.
+            shared.orders.push_order_info(7, crate::bridge::RichOrderInfo {
+                contract: crate::types::model::Contract {
+                    con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+                    exchange: "SMART".into(), currency: "USD".into(),
+                    ..Default::default()
+                },
+                order: crate::types::model::Order {
+                    order_id: 7, action: "BUY".into(), total_quantity: 300.0,
+                    order_type: "LMT".into(), lmt_price: 400.0, ..Default::default()
+                },
+                order_state: crate::types::model::OrderState {
+                    status: "Submitted".into(), ..Default::default()
+                },
+                last_exec: crate::types::model::Execution {
+                    price: 60.0, avg_price: 50.0, shares: 100.0, cum_qty: 200.0,
+                    ..Default::default()
+                },
+            });
+            shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: 7, instrument: 0, status: crate::types::OrderStatus::Cancelled,
+                filled_qty: 200.0, remaining_qty: 100.0,
+                avg_price: crate::types::price_from_f64(50.0),
+                perm_id: 0, parent_id: 0, timestamp_ns: 0,
+            });
+            // And an order no record is held for.
+            shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: 8, instrument: 0, status: crate::types::OrderStatus::Cancelled,
+                filled_qty: 0.0, remaining_qty: 100.0, avg_price: 0,
+                perm_id: 0, parent_id: 0, timestamp_ns: 0,
+            });
+            client.get().dispatch_once(py, &shared).unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            let said: Vec<(i64, f64)> = py.eval(
+                c"[(c[1], c[8]) for c in w.calls if c[0] in ('orderStatus', 'order_status')]",
+                Some(&g), None,
+            ).unwrap().extract().unwrap();
+            assert_eq!(said, [(7, 60.0), (8, 0.0)],
+                "each status states the print its order holds");
+        });
+    }
 }

@@ -242,6 +242,16 @@ gateway follows the strike of a derivative whose underlying trades in another
 currency with that currency, once it has looked the underlying up; here the
 strike is written alone.
 
+## Two fields of a status are fixed here
+
+Every `order_status` names the last price an order filled at, beside two
+fields this client states as fixed values. A gateway reads its market-cap
+price off an attribute it carries for the order — asked under tag 6591, its
+value answered back — and this client carries no attributes, so
+`mkt_cap_price` is always 0.0. A gateway says why it holds an order where it
+holds one for a reason; this client keeps no such string, so `why_held` is
+always empty.
+
 ## Callbacks nothing fires
 
 Two callbacks exist so a program written against the TWS API compiles and

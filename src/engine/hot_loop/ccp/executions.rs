@@ -3067,9 +3067,20 @@ impl CcpState {
                 ..Default::default()
             };
 
-            let last_exec = stated_execution(
+            // The order holds the last print from every execution report, as
+            // a gateway's order holds it. A report stating no print of its
+            // own — a status alone, the cancel behind a fill — states nought
+            // on the print's tag, so taken from the report's own tags it put
+            // nought over the fill the order held, and every later reader of
+            // the record was told the order's last print was nothing.
+            let mut last_exec = stated_execution(
                 parsed, raw, clord_id, perm_id, action, order.client_id, order.submitter.clone(),
             );
+            if last_shares == 0
+                && let Some(held) = shared.orders.get_order_info(clord_id)
+            {
+                last_exec = held.last_exec;
+            }
 
             if con_id != 0 {
                 // An execution report states a subset of a definition: it names

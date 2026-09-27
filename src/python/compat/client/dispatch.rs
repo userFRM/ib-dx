@@ -1056,6 +1056,12 @@ impl EClient {
         let parent_id = self.core.tracked_parent_id(update.order_id)
             .unwrap_or(update.parent_id);
         let avg = update.avg_price as f64 / crate::types::PRICE_SCALE as f64;
+        // And what its last fill went at, as the order holds it: a gateway
+        // keeps the last print from every execution report and states it on
+        // every status it sends, so where a report of its own states none —
+        // the cancel behind a fill among them — the held print is what goes
+        // out. Nought where no record of the order is held: nothing filled.
+        let last_fill = stated_state.as_ref().map_or(0.0, |held| held.last_exec.price);
         // The order as this client sent it, beside the status it is now in, at
         // the total a gateway states it at. Copied out before the callback
         // rather than read across it.
@@ -1081,7 +1087,7 @@ impl EClient {
                 (self.core.api_order_id(update.order_id), &contract_py, &order_py, &state_py));
         }
         call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, update.filled_qty,
-             update.remaining_qty, avg, update.perm_id, parent_id, 0.0f64,
+             update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
              i64::from(client), "", 0.0f64));
         self.core.update_order_status(shared, update.order_id, update.status, update.filled_qty, update.remaining_qty, update.instrument);
         Ok(())
