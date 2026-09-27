@@ -763,6 +763,18 @@ impl Context {
         unanswered
     }
 
+    /// The orders whose cancellation went out and the venue has not answered.
+    /// A preview places nothing, so it has nothing to withdraw.
+    pub fn unanswered_cancels(&self) -> Vec<OrderId> {
+        let mut cancelling: Vec<OrderId> = self.open_orders.values()
+            .filter(|order| order.status == OrderStatus::PendingCancel)
+            .filter(|order| !self.submitted.get(&order.order_id).is_some_and(|spec| spec.attrs.what_if))
+            .map(|order| order.order_id)
+            .collect();
+        cancelling.sort_unstable();
+        cancelling
+    }
+
     /// Orders still Uncertain — those the reconnect did not account for.
     pub fn uncertain_orders(&self) -> Vec<Order> {
         self.open_orders.values()

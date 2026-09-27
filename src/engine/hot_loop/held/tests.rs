@@ -2187,6 +2187,147 @@ fn a_placement_the_drop_left_unanswered_is_recovered_as_a_gateway_recovers_it() 
     }
 }
 
+/// A cancel written and unanswered at a drop is kept beside the placements
+/// the drop left unanswered, and settled once the naming and the answer of
+/// what the venue has finished are over: where the answers still show the
+/// order working, the cancel is written again, under a number of its own and
+/// naming the version the venue holds, and the program hears it is being
+/// withdrawn again; an order the answers state finished is taken as they
+/// state it; one named in neither answer is left as it stands and written in
+/// the log.
+///
+/// Nothing kept such a cancel: the drop flattened the order to unknown, the
+/// recovery held no set of them, the naming restated the order as working,
+/// and the cancel was silently gone — the order could fill after the program
+/// believed it had withdrawn it.
+#[test]
+fn a_cancel_the_drop_left_unanswered_is_sent_again_as_a_gateway_sends_it() {
+    use crate::types::OrderStatus;
+    struct Row {
+        what: &'static str,
+        named: Vec<Vec<u8>>,
+        answered: Vec<Vec<u8>>,
+        /// The cancel is written again, under a number of its own.
+        sent_again: bool,
+        stands: Option<OrderStatus>,
+        said: Option<OrderStatus>,
+    }
+    let rows = [
+        Row {
+            what: "named working",
+            named: vec![order_7("0", "0", false)],
+            answered: vec![],
+            sent_again: true,
+            stands: Some(OrderStatus::PendingCancel),
+            said: Some(OrderStatus::PendingCancel),
+        },
+        Row {
+            what: "stated finished",
+            named: vec![],
+            answered: vec![order_7("4", "4", true)],
+            sent_again: false,
+            stands: None,
+            said: Some(OrderStatus::Cancelled),
+        },
+        Row {
+            what: "named in neither",
+            named: vec![],
+            answered: vec![],
+            sent_again: false,
+            stands: Some(OrderStatus::Uncertain),
+            said: None,
+        },
+    ];
+    for Row { what, named, answered: answered_reports, sent_again, stands, said } in rows {
+        let (mut hl, shared, _tx, mut peer) = over_a_drop(&["APINTLRCV", "1DAYSORDER"]);
+        hl.take_order_command(placement(7, spy(), 0, true));
+        pass(&mut hl);
+        assert!(on_the_wire(&mut peer).contains("35=D|"), "{what}: the order went out");
+        // The venue acknowledges it working, and the program withdraws it:
+        // the cancel goes out and the venue does not answer it.
+        hl.inject_ccp_message(&fix::fix_build(
+            &[
+                (35, "8"), (11, "7.0"), (150, "0"), (39, "0"), (100, "ARCA"), (198, "ARCA:1"),
+                (14, "0"), (151, "1"),
+            ],
+            1,
+        ));
+        pass(&mut hl);
+        assert_eq!(
+            hl.context.order(7).map(|o| o.status),
+            Some(OrderStatus::Submitted),
+            "{what}: the venue acknowledged the order"
+        );
+        hl.take_order_command(ControlCommand::CancelOrder { order_id: 7, stated: Default::default() });
+        pass(&mut hl);
+        let written = on_the_wire(&mut peer);
+        assert!(
+            written.contains("35=F|") && written.contains("|11=C7|"),
+            "{what}: the cancel went out: {written}"
+        );
+        assert_eq!(
+            hl.context.order(7).map(|o| o.status),
+            Some(OrderStatus::PendingCancel),
+            "{what}: the order stands as being withdrawn"
+        );
+        let records = |shared: &SharedState| {
+            shared.take_records(shared.next_seq(), crate::bridge::Take::Dispatch { bulletins: false })
+        };
+        records(&shared);
+
+        // The connection goes before the venue answers the cancel, and
+        // another comes back in its place.
+        let mut back = dropped_and_back(&mut hl);
+        for report in named {
+            hl.inject_ccp_message(&report);
+        }
+        hl.inject_ccp_message(&the_end());
+        pass(&mut hl);
+        let asked = on_the_wire(&mut back);
+        assert!(
+            asked.contains("35=H|"),
+            "{what}: what the venue has finished is asked, for the cancel alone"
+        );
+        let went_out = hl.context.placed_at.get(&7).map(|(at, _)| *at).expect("the order went out");
+        let since = crate::protocol::datetime::unix_to_ib_utc_dash((went_out - 1_000).div_euclid(1_000));
+        assert!(
+            asked.contains(&format!("|11=*|55=*|54=*|6533=1|6536={since}|")),
+            "{what}: asked back to a second before the order went: {asked}"
+        );
+        let mut heard = records(&shared);
+        for report in answered_reports {
+            hl.inject_ccp_message(&report);
+        }
+        hl.inject_ccp_message(&the_end());
+        pass(&mut hl);
+        pass(&mut hl);
+        heard.extend(records(&shared));
+        let again = on_the_wire(&mut back);
+        if sent_again {
+            assert!(
+                again.contains("35=F|") && again.contains("|11=C7.1|41=7.0|"),
+                "{what}: the cancel is written again, under a number of its own, naming the \
+                 version the venue holds: {again}"
+            );
+        } else {
+            assert!(!again.contains("35=F|"), "{what}: the cancel is not written again: {again}");
+        }
+        assert_eq!(hl.context.order(7).map(|o| o.status), stands, "{what}");
+        let last_said = heard.iter().rev().find_map(|(_, record)| match record {
+            crate::bridge::Record::OrderUpdate(told) if told.update.order_id == 7 => {
+                Some(told.update.status)
+            }
+            crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(told))
+                if told.order_id == 7 =>
+            {
+                Some(OrderStatus::PendingCancel)
+            }
+            _ => None,
+        });
+        assert_eq!(last_said, said, "{what}: what the program is told of it");
+    }
+}
+
 /// The placements a drop leaves waiting are said after its 1100, as a gateway
 /// says them where the logon recovers placements — not yet built under 1104,
 /// built and not sent under 1105, previews under 1106 — and go out once the

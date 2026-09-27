@@ -10,6 +10,12 @@
 //! is told under 106 that it could not be sent. The placements the drop left
 //! waiting go out once that is over, and a question of what is working is
 //! answered then.
+//!
+//! The cancellations the drop left written and unanswered are kept beside the
+//! placements, and settled once both answers are over: where the venue still
+//! shows the order working, the cancellation is written again; an order the
+//! answers state finished is taken as they state it; one named in neither is
+//! left as it stands and written in the log.
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -21,6 +27,7 @@ use crate::engine::hot_loop::HeartbeatState;
 use crate::protocol::connection::Connection;
 use crate::protocol::fix;
 use crate::types::OrderStatus;
+use crate::types::OrderRequest;
 use crate::types::model as api;
 
 /// How long a gateway gives the recovery, from the logon that begins it.
@@ -36,6 +43,9 @@ pub(crate) struct Recovery {
     /// The orders the drop left sent and unanswered, by the number each went
     /// out under.
     unanswered: Vec<u64>,
+    /// The orders whose cancellation the drop left written and unanswered, by
+    /// the number each went out under.
+    cancelling: Vec<u64>,
     /// When it is given up on: a minute from the logon that began it.
     until: Option<Instant>,
     /// Whether the connection now up began it. One that replaced it after it
@@ -79,6 +89,11 @@ impl Recovery {
         self.sent_once.extend(ids);
     }
 
+    /// Whether the drop left this recovery anything to settle.
+    fn holds(&self) -> bool {
+        !self.unanswered.is_empty() || !self.cancelling.is_empty()
+    }
+
     /// A report stated this time about an order.
     pub(crate) fn note_report_time(&mut self, parsed: &std::collections::HashMap<u32, String>) {
         if let Some(at) = parsed
@@ -93,6 +108,7 @@ impl Recovery {
 
 impl CcpState {
     /// The trading connection went: keep the orders it leaves sent and
+    /// unanswered, and the ones it leaves with a cancellation written and
     /// unanswered, where no recovery is already keeping some, and hold what is
     /// left waiting until the next one is over.
     pub(crate) fn keep_what_the_drop_leaves(&mut self, context: &Context, shared: &SharedState) {
@@ -115,13 +131,16 @@ impl CcpState {
         if recovery.unanswered.is_empty() {
             recovery.unanswered = context.unanswered_orders();
         }
+        if recovery.cancelling.is_empty() {
+            recovery.cancelling = context.unanswered_cancels();
+        }
     }
 
     /// A logon: where the drop left orders to recover and none is under way,
     /// this connection begins it.
     pub(crate) fn begin_the_recovery(&mut self) {
         let recovery = &mut self.recovery;
-        if !recovery.unanswered.is_empty() && recovery.until.is_none() {
+        if recovery.holds() && recovery.until.is_none() {
             recovery.until = Some(Instant::now() + RECOVERY_BOUND);
             recovery.here = true;
         }
@@ -144,7 +163,7 @@ impl CcpState {
             return;
         }
         let recovery = &mut self.recovery;
-        if recovery.here && !recovery.unanswered.is_empty() && recovery.question == Question::None {
+        if recovery.here && recovery.holds() && recovery.question == Question::None {
             recovery.question = Question::Due;
             return;
         }
@@ -178,12 +197,14 @@ impl CcpState {
         if self.recovery.until.is_some_and(|until| Instant::now() >= until) {
             log::warn!(
                 "the orders the drop left sent and unanswered were not accounted for within \
-                 the recovery's minute: {:?}",
+                 the recovery's minute: {:?}, and its unanswered cancellations: {:?}",
                 self.recovery.unanswered,
+                self.recovery.cancelling,
             );
             // Given up, as a gateway gives it up: a question of what is
             // working is answered, and what waited goes out at the next end.
             self.recovery.unanswered.clear();
+            self.recovery.cancelling.clear();
             self.recovery.until = None;
             self.recovery.here = false;
             if self.recovery.question == Question::Due {
@@ -279,6 +300,48 @@ impl CcpState {
                 );
             }
         }
+        for order_id in std::mem::take(&mut self.recovery.cancelling) {
+            self.settle_an_unanswered_cancel(order_id, context);
+        }
+    }
+
+    /// One cancellation the drop left written and unanswered, against what the
+    /// venue has named and what it has said it finished. Where the answers
+    /// still show the order working, the cancellation is written again, as a
+    /// gateway re-sends a cancellation it holds: the write the drop took is
+    /// gone and nothing else stands against the order. An order the answers
+    /// state finished, or state already being withdrawn, is taken as they
+    /// state it. One named in neither answer is left as it stands and written
+    /// in the log, as a gateway warns of one it could not recover.
+    fn settle_an_unanswered_cancel(&self, order_id: u64, context: &mut Context) {
+        match context.order(order_id).map(|order| order.status) {
+            // A finished order leaves the book, and an order the venue states
+            // a cancellation still stands against needs no second write: both
+            // answers are taken as the venue stated them.
+            None | Some(OrderStatus::PendingCancel) => {}
+            // Named in neither answer: the order stands as it does, and the
+            // program is told nothing new, as a gateway tells it nothing.
+            Some(OrderStatus::Uncertain) => log::warn!(
+                "order {order_id} was being withdrawn when the connection went, and the venue \
+                 named it in neither what it holds working nor what it has finished: the \
+                 withdrawal is lost and its state is not known"
+            ),
+            Some(status) if status.is_terminal() => {}
+            // The venue's answer still shows the order working, or inactive,
+            // where a gateway holds the cancellation against it: written
+            // again, under a number of its own and naming the version the
+            // venue holds.
+            Some(_) => {
+                log::info!(
+                    "the venue restates order {order_id} working: the cancellation the drop \
+                     left unanswered is written again"
+                );
+                context.pending_orders.push(OrderRequest::Cancel {
+                    order_id,
+                    stated: api::OrderCancel::default(),
+                });
+            }
+        }
     }
 }
 
@@ -291,6 +354,7 @@ impl Recovery {
         let went_out = self
             .unanswered
             .iter()
+            .chain(self.cancelling.iter())
             .filter_map(|id| context.placed_at.get(id).map(|(at, _)| *at))
             .filter(|at| *at > 0)
             .min()
