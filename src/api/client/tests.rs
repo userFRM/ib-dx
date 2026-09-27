@@ -12255,6 +12255,43 @@ fn depth_requires_an_exchange_before_checking_expiry() {
     assert!(next_command(&rx).is_none());
 }
 
+/// What a gateway refuses in a quote request before it looks the contract up
+/// is refused here the same way: an exchange nobody named, in its words — no
+/// trailing period, which the book refusal has — with nothing registered,
+/// looked up or sent. The exchange is read before the expiry, as a gateway
+/// reads it. A contract of the news type is the one exemption: headlines name
+/// no venue.
+#[test]
+fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
+    let (client, rx, _shared) = test_client();
+    // By id alone, described by symbol, and beside a malformed expiry: the
+    // refusal is the same and nothing follows it — no lookup, no
+    // subscription, no expiry answer.
+    for contract in [
+        Contract { con_id: 265598, sec_type: "STK".into(), exchange: String::new(), ..Default::default() },
+        Contract { symbol: "AAPL".into(), sec_type: "STK".into(), exchange: String::new(), ..Default::default() },
+        Contract {
+            con_id: 265598, sec_type: "STK".into(), exchange: String::new(),
+            last_trade_date_or_contract_month: "20260230".into(), ..Default::default()
+        },
+    ] {
+        let why = reported(&client, || client.req_mkt_data(71, &contract, "", false, false))
+            .expect_err("an exchange nobody named");
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (321, "Error validating request:-'' : cause - Please enter exchange"),
+            "{contract:?}",
+        );
+        assert!(next_command(&rx).is_none(), "{contract:?} sent something");
+        assert!(client.core.req_to_instrument.lock().unwrap().is_empty(), "and kept a subscription");
+    }
+    // The news type is exempt: a headline request names providers, not a
+    // venue, and goes as it stands.
+    let news = Contract { con_id: 265598, sec_type: "NEWS".into(), exchange: String::new(), ..Default::default() };
+    reported(&client, || client.req_mkt_data(72, &news, "", false, false)).expect("news is exempt");
+    assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
+}
+
 #[test]
 fn order_fields_are_checked_before_contract_expiry() {
     let (client, rx, _) = test_client();

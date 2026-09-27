@@ -2387,6 +2387,15 @@ impl ClientCore {
         calculation: Option<Box<crate::types::Calculation>>,
         delayed_allowed: bool,
     ) -> Result<(), Refusal> {
+        // A quote request naming no exchange is refused before anything is
+        // registered or looked up, in a gateway's own first word on the
+        // request — no trailing period, which the book refusal has. A contract
+        // given by id alone is refused as instantly as one described: the
+        // exchange is read off the contract as the caller stated it. Only the
+        // news type is exempt, as headlines name providers and no venue.
+        if exchange.is_empty() && !sec_type.eq_ignore_ascii_case("NEWS") {
+            return Err(Refusal::validation("Please enter exchange"));
+        }
         Self::validate_contract_expiry(&filters.last_trade_date_or_contract_month)?;
         // A quote feed the engine has given up on serves nothing more this
         // session: there is no connection to write the request to and no

@@ -161,9 +161,14 @@ with every one of them, as a gateway does.
   and the rest carry neither to a gateway, which looks their contract up by its
   description, whatever else the contract holds. This client looks a contract
   given without the venue's id up by its description too, and one given by the
-  id with no type or no exchange beside it by that id. One stating the id, its
-  type and its exchange goes out as it stands, and so does a fundamental
-  report stating the id, which states nothing else of the contract. One stating
+  id with no type or no exchange beside it by that id — except on a quote
+  request naming no exchange, which a gateway refuses before any lookup under
+  321, *Please enter exchange*, with no trailing period, which the book
+  refusal has. Only a contract of the news type is exempt, as headlines name
+  providers and no venue; so does this client refuse it, and exempt the same
+  type. One stating the id, its type and its exchange goes out as it stands,
+  and so does a fundamental report stating the id, which states nothing else
+  of the contract. One stating
   neither the id nor a symbol names nothing to look up, and is refused as a
   contract not found (200), as a gateway's lookup refuses it.
 - A head timestamp states the contract's type and exchange as a gateway states
