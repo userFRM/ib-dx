@@ -82,9 +82,11 @@ struct NanoTimestamp;
 
 impl FormatTime for NanoTimestamp {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        // As in the protocol's timestamp: a clock before the epoch stamps
+        // the epoch rather than panicking inside a log record.
         let dur = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock before unix epoch");
+            .unwrap_or_default();
         let total_secs = dur.as_secs();
         let nanos = dur.subsec_nanos();
         let days = total_secs / 86_400;

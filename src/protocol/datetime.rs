@@ -31,9 +31,12 @@ impl std::fmt::Display for TimestampBuf {
 /// FIX-compliant UTC timestamp without chrono dependency. Zero heap allocation.
 pub fn chrono_free_timestamp() -> TimestampBuf {
     use std::time::SystemTime;
+    // A host clock before the epoch (a failed RTC, an unsynced container)
+    // stamps the epoch rather than panicking: the venue then refuses the
+    // logon on its own terms instead of the client dying mid-connect.
     let dur = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
+        .unwrap_or_default();
     let secs = dur.as_secs();
     let days = secs / 86400;
     let time_secs = secs % 86400;
