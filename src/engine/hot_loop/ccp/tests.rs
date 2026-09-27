@@ -11502,6 +11502,96 @@ fn a_refusal_of_a_working_order_is_the_venues_own_word_on_it() {
     assert_eq!(operations_answered(&shared), [(42, Venue)], "39={status}");
 }
 
+/// A gateway restates its order to the program on every report naming one its
+/// book holds, with the values its book holds: a duplicate of a status it
+/// already stated restates it as much as one that moved it, and a working
+/// echo behind a cancel in flight restates the cancel's own status, not the
+/// echo's.
+#[test]
+fn every_report_of_an_order_the_book_holds_restates_it() {
+    // A duplicate: the book holds what the report states, and the program
+    // hears the order restated all the same.
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
+    let _ = shared.orders.drain_order_updates();
+    let frame = exec_report_frame(&[(39, "0"), (150, "0"), (20, "0")]);
+    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    let restated: Vec<_> = shared.orders.drain_order_updates()
+        .into_iter().map(|update| (update.order_id, update.status)).collect();
+    assert_eq!(
+        restated,
+        [(42, crate::types::OrderStatus::Submitted)],
+        "a report that moved nothing still restates the order",
+    );
+
+    // A working echo behind a cancel in flight: the restatement is the
+    // status the book holds, not the one the echo states.
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
+    context.placed_at.insert(42, Default::default());
+    context.before_the_cancel.insert(42, crate::types::OrderStatus::Submitted);
+    assert!(context.update_order_status(42, crate::types::OrderStatus::PendingCancel, false));
+    let _ = shared.orders.drain_order_updates();
+    let echo = exec_report_frame(&[(39, "0"), (150, "0"), (20, "3")]);
+    ccp.handle_exec_report(&echo, b"", &mut context, &shared, &None, "");
+    let restated: Vec<_> = shared.orders.drain_order_updates()
+        .into_iter().map(|update| (update.order_id, update.status)).collect();
+    assert_eq!(
+        restated,
+        [(42, crate::types::OrderStatus::PendingCancel)],
+        "the restatement carries the book, whatever the report stated",
+    );
+
+    // A duplicate of a fill already booked: the restatement states the
+    // average the book holds, not the one the duplicate carries.
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
+    context.placed_at.insert(42, Default::default());
+    let _ = shared.orders.drain_order_updates();
+    let fill = exec_report_frame(&[
+        (150, "F"), (39, "1"), (20, "0"), (17, "E1"), (14, "10"), (32, "10"), (31, "100.0"),
+        (151, "90"), (6, "100.0"), (38, "100"),
+    ]);
+    ccp.handle_exec_report(&fill, b"", &mut context, &shared, &None, "");
+    let _ = shared.orders.drain_fills();
+    let _ = shared.orders.drain_order_updates();
+    let mut dup = fill.clone();
+    dup.insert(6, "555.0".to_string());
+    ccp.handle_exec_report(&dup, b"", &mut context, &shared, &None, "");
+    let updates = shared.orders.drain_order_updates();
+    assert_eq!(updates.len(), 1, "the duplicate restates and books nothing");
+    assert!(shared.orders.drain_fills().is_empty(), "the fill is not booked twice");
+    assert_eq!(
+        updates[0].status, crate::types::OrderStatus::PartiallyFilled,
+        "with the status the book holds",
+    );
+    assert_eq!(updates[0].filled_qty, 10.0, "and the fill it holds");
+    assert_eq!(
+        updates[0].avg_price, crate::types::price_from_f64(100.0),
+        "and the average it holds, not the one the duplicate carries",
+    );
+
+    // A working echo replayed behind a cancel in flight: the guard keeps the
+    // cancel, and the restatement says the cancel, not the echo.
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert!(context.update_order_status(42, crate::types::OrderStatus::Submitted, false));
+    assert!(context.update_order_status(42, crate::types::OrderStatus::PendingCancel, false));
+    let _ = shared.orders.drain_order_updates();
+    let replayed = exec_report_frame(&[(39, "0"), (150, "0"), (97, "Y")]);
+    ccp.handle_exec_report(&replayed, b"", &mut context, &shared, &None, "");
+    assert_eq!(
+        context.order(42).unwrap().status, crate::types::OrderStatus::PendingCancel,
+        "the replayed echo does not move the cancel",
+    );
+    let restated: Vec<_> = shared.orders.drain_order_updates()
+        .into_iter().map(|update| (update.order_id, update.status)).collect();
+    assert_eq!(
+        restated,
+        [(42, crate::types::OrderStatus::PendingCancel)],
+        "and the restatement is the book's status, not the echo's",
+    );
+}
+
 /// A report stating why the venue restates an order tells the program nothing
 /// of it, whatever reason it states: a gateway reads no reason on a report. A
 /// report of the order replaced is the replacement, and an ordinary report

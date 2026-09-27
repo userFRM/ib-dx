@@ -670,7 +670,11 @@ is taken as the replacement, whatever reason it gives. An ordinary report
 restating the order, and an acknowledgement of a cancel on one, are skipped and
 move nothing of an order the session holds; each still restates the order to
 the program in the state the book holds, as every report with an order restates
-it. A status report restating an order is read as any status report is.
+it — a duplicate of a status the book already holds, and a report the book's
+own order refuses, restate it as much as one that moved it, each with the
+status the book holds and the average its booked fills last stated, not the
+report's own figures. A status report restating an order is read as any status
+report is.
 
 ## An order's total
 

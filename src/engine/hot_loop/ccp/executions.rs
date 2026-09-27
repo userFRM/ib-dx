@@ -2691,32 +2691,22 @@ impl CcpState {
         let is_resend = ["Y", "y"].contains(&parsed.get(&97).map(|v| v.as_str()).unwrap_or(""))
             || ["Y", "y"].contains(&parsed.get(&43).map(|v| v.as_str()).unwrap_or(""));
 
-        // The guard's verdict doubles as the change flag: a frame it rejects
-        // surfaces no order_status.
-        let applied = if acknowledges_a_change {
+        // What the guard takes, the book holds; what it rejects moves nothing
+        // — and the restatement below carries the book either way.
+        if acknowledges_a_change {
             context.set_order_status_forced(clord_id, status);
-            true
         } else {
-            context.update_order_status(clord_id, status, is_resend)
-        };
-        // An accepted modify is announced even where it changed no status: an
-        // order already working when the change lands stays working. Only where
-        // the order is in the state being announced, so a status the guard
-        // rejected is not reported over it.
+            context.update_order_status(clord_id, status, is_resend);
+        }
         // Compared as the caller is told them, not as this engine holds them.
         // A partly filled working order is reported as submitted — the two
         // quantities carry the distinction, which is why the vocabulary
         // collapses them — so an acknowledgement stating submitted, on a book
-        // holding partly filled, is the same status stated twice. Compared as
-        // enums it was two, and an accepted replace on an order that had filled
-        // before the answer landed announced nothing at all.
+        // holding partly filled, is the same status stated twice.
         let says_the_same = |held: crate::types::OrderStatus| {
             crate::types::order_status::order_status_str(held)
                 == crate::types::order_status::order_status_str(status)
         };
-        let acknowledged_in_place =
-            is_replace_ack && context.order(clord_id).is_some_and(|o| says_the_same(o.status));
-        let status_changed = applied || acknowledged_in_place || skipped;
 
         // A report can also undo or restate an execution rather than announce a
         // new one: a busted trade and a corrected one both arrive as executions,
@@ -2799,8 +2789,12 @@ impl CcpState {
         // notification queries this session for the order it names, so the
         // record must exist before the announcement.
         let mut announce: Option<crate::types::OrderUpdate> = None;
-        if status_changed
-            && let Some(order) = context.order(clord_id).copied() {
+        // A gateway restates its order to the program on every report naming
+        // one its book holds: a duplicate, a report a guard refused, one of a
+        // type it skips and one stating what the book already stated restate
+        // it as much as one that moved it — with the values its book holds,
+        // which are the report's own exactly where the book took them.
+        if let Some(order) = context.order(clord_id).copied() {
                 // Tag 583 is the link id this engine sends the OCA group on, not
                 // a parent order. Hashing it produced a stable non-zero value
                 // shared by every order in a group, none of which has a parent,
@@ -2823,7 +2817,7 @@ impl CcpState {
                 let update = crate::types::OrderUpdate {
                     order_id: clord_id,
                     instrument: order.instrument,
-                    status,
+                    status: order.status,
                     filled_qty: qty_to_f64(order.filled),
                     // What is left of the order's own size, as a gateway
                     // states it: the report's leaves where it takes the size
@@ -2833,14 +2827,16 @@ impl CcpState {
                     remaining_qty: stated_total
                         .map(|(total, filled)| (total - filled).max(0.0))
                         .unwrap_or_else(|| qty_to_f64(leaves_qty)),
-                    // A skipped report restates the order as the book holds
-                    // it; its own figures move nothing, the average among
-                    // them.
-                    avg_price: crate::types::price_from_f64(if skipped {
+                    // A restatement states the book's own average: only a
+                    // fill this report booked moves it — a skipped report, a
+                    // duplicate, a status alone or one a guard refused moves
+                    // it no more than any other, and the average stated is
+                    // the one last filed.
+                    avg_price: crate::types::price_from_f64(if filled.is_some() {
+                        order_avg_px
+                    } else {
                         shared.orders.get_order_info(clord_id)
                             .map_or(order_avg_px, |viewed| viewed.last_exec.avg_price)
-                    } else {
-                        order_avg_px
                     }),
                     perm_id,
                     parent_id,
@@ -3240,11 +3236,9 @@ impl CcpState {
                 emit(event_tx, Event::Fill(fill));
             }
             (None, Some(update)) => {
-                if skipped {
-                    shared.orders.push_order_restated(update);
-                } else {
-                    shared.orders.push_order_update(update);
-                }
+                // Every report restates, whether or not the book moved: the
+                // restatement is the book's own values either way.
+                shared.orders.push_order_restated(update);
                 emit(event_tx, Event::OrderUpdate(update));
             }
             (None, None) => {}
