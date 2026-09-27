@@ -1416,3 +1416,68 @@ fn an_ended_series_is_the_kind_the_reply_would_have_been() {
         );
     }
 }
+
+/// One bar as the capture states it: time, open, high, low, close, volume, count.
+type RtBar = (u32, f64, f64, f64, f64, u32, u32);
+
+/// Known real-time bar captures off the wire, each raw frame with the bar it decodes to.
+const RTBAR_CAPTURES: &[(&[u8], RtBar)] = &[
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x01\xf2\
+          \x0c\x0c\xd6\x20\xda\xd3\x18\x30\x00\x02\x5b\x81\x3a",
+        (1772552690, 262.90, 262.95, 262.89, 262.95, 603, 6),
+    ),
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x01\xf7\
+          \x0c\x0c\xd6\x03\x1b\xd1\x98\xb0\x00\x0f\x14\x86\x61",
+        (1772552695, 262.93, 262.94, 262.88, 262.91, 3860, 24),
+    ),
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x01\xfc\
+          \x0c\x0c\xd6\xa5\x3c\xfe\x70\x30\x00\x14\x51\xa4\x9f",
+        (1772552700, 262.94, 263.21, 262.93, 263.21, 5201, 41),
+    ),
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x02\x01\
+          \x0c\x0c\xd8\x06\xdd\x50\x66\x50\x00\x23\x2d\xb6\xf7",
+        (1772552705, 263.22, 263.29, 263.04, 263.04, 9005, 54),
+    ),
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x02\x06\
+          \x0c\x0c\xd6\xc3\x5e\x90\x31\x30\x00\x10\x64\x8c\x2b",
+        (1772552710, 263.03, 263.06, 262.94, 262.94, 4196, 26),
+    ),
+    (
+        b"8=O\x019=0043\x0135=G\x01\
+          \x00\xa8\x00\x00\x00\x01\x69\xa7\x02\x0b\
+          \x0c\x0c\xd5\x83\x7f\x53\xa5\x30\x00\x15\x39\x8c\xa6",
+        (1772552715, 262.93, 262.93, 262.84, 262.91, 5433, 27),
+    ),
+];
+
+#[test]
+fn rtbar_captures_decode_to_their_bars() {
+    for (raw, (time, open, high, low, close, volume, count)) in RTBAR_CAPTURES {
+        // Behind the header: a ticker id, the bar's time, then the payload's
+        // length and the payload.
+        let body = raw.strip_prefix(b"8=O\x019=0043\x0135=G\x01").expect("header");
+        assert_eq!(u32::from_be_bytes(body[6..10].try_into().unwrap()), *time);
+        let payload = &body[11..11 + body[10] as usize];
+        let bar = decode_bar_payload(payload, 0.01, 1.0).expect("decodes");
+        for (got, want) in [
+            (bar.open, *open),
+            (bar.high, *high),
+            (bar.low, *low),
+            (bar.close, *close),
+        ] {
+            assert!((got - want).abs() < 1e-6, "{time}: {got} != {want}");
+        }
+        assert_eq!(bar.volume, f64::from(*volume), "{time}");
+        assert_eq!(bar.count, *count as i32, "{time}");
+    }
+}

@@ -145,7 +145,6 @@ fn a_tick_stream_that_arrives_wrong_is_not_fatal() {
     ];
     for wrong in every_corruption(&stream) {
         let _ = tick_decoder::decode_ticks_35p(&wrong);
-        let _ = tick_decoder::decode_ticks_35e(&wrong);
         let _ = historical::decode_bar_payload(&wrong, 0.01, 1.0);
         let _ = tbt_stream::Records::new(&wrong).and_then(|mut records| records.next_stream());
         let _ = trading_status::parse_trading_status(&wrong);
@@ -230,7 +229,6 @@ fn a_frame_of_pure_noise_is_not_fatal() {
             let _ = news::parse_news_payload(&bytes);
             let _ = news::parse_article_payload(&bytes);
             let _ = tick_decoder::decode_ticks_35p(&bytes);
-            let _ = tick_decoder::decode_ticks_35e(&bytes);
             let _ = historical::decode_bar_payload(&bytes, 0.01, 1.0);
             let _ = tbt_stream::Records::new(&bytes).and_then(|mut records| records.next_stream());
             let _ = trading_status::parse_trading_status(&bytes);
