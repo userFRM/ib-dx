@@ -1808,7 +1808,8 @@ mod scanner_tests {
             assert_eq!(args.get_item(0).unwrap().extract::<i64>().unwrap(), 3,
                 "against the requesting id");
             assert_eq!(args.get_item(3).unwrap().extract::<String>().unwrap(),
-                "Scanner subscription not allowed", "in the venue's own words");
+                "Error validating request:-'' : cause - Scanner subscription not allowed",
+                "in the venue's own words");
         });
     }
 }

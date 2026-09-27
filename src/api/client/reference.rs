@@ -811,7 +811,9 @@ mod tests {
 
         assert_eq!(wrapper.events.len(), 1, "the miss is answered, once");
         assert!(
-            wrapper.events[0].starts_with("error:-1:322:market rule 26 "),
+            wrapper.events[0].starts_with(
+                "error:-1:322:Error processing request:-'' : cause - market rule 26 ",
+            ),
             "reported against -1 under 322: {}", wrapper.events[0],
         );
     }

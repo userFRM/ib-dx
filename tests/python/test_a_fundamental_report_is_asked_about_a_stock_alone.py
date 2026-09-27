@@ -3,6 +3,7 @@ a contract stated as any other type, or stating none, before looking it up,
 in its words under 321, and so does this surface. A stock stated as CS, or in
 lower case, is a stock."""
 import ibkr_dx
+from conftest import refused
 
 
 class Errors(ibkr_dx.EWrapper):
@@ -25,8 +26,8 @@ def test_a_fundamental_report_is_asked_about_a_stock_alone():
         c.reqFundamentalData(req_id, contract, "ReportSnapshot", [])
     c.poll()
     assert w.seen == [
-        (1, 321, "Please enter a valid security type"),
-        (2, 321, "Please enter a valid security type"),
+        refused(1, 321, "Please enter a valid security type"),
+        refused(2, 321, "Please enter a valid security type"),
     ]
     sent = [cmd for cmd in c._test_take_commands() if cmd.startswith("FetchFundamentalData")]
     assert len(sent) == 2, sent

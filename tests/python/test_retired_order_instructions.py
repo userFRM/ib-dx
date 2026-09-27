@@ -3,6 +3,7 @@
 import pytest
 
 import ibkr_dx
+from conftest import refused
 
 
 class Heard(ibkr_dx.EWrapper):
@@ -126,7 +127,7 @@ def test_an_orders_manual_value_is_checked_after_its_preview_and_trail():
     client.placeOrder(96, contract, order)
     assert not heard.errors
     client.poll()
-    assert heard.errors == [(96, 321, "What-If order should have transmit flag set to TRUE ")]
+    assert heard.errors == [refused(96, 321, "What-If order should have transmit flag set to TRUE ")]
     heard.errors.clear()
     order.transmit = True
     order.orderType = "TRAIL"
@@ -134,14 +135,14 @@ def test_an_orders_manual_value_is_checked_after_its_preview_and_trail():
     client.placeOrder(96, contract, order)
     assert not heard.errors
     client.poll()
-    assert heard.errors == [(96, 321,
+    assert heard.errors == [refused(96, 321,
         "Invalid Trailing Percent value. Valid values are greater than 0 and less than 100.")]
     heard.errors.clear()
     order.trailingPercent = 1.0
     client.placeOrder(96, contract, order)
     assert not heard.errors
     client.poll()
-    assert heard.errors == [(96, 321,
+    assert heard.errors == [refused(96, 321,
         "Order: 'manual' has wrong value=2, expected [1 or 0]")]
     assert not client._test_take_commands()
 

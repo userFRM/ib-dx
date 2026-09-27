@@ -16,7 +16,7 @@ Tests cover:
 """
 
 from ibkr_dx import EClient, EWrapper, Contract
-from conftest import NotConnectedProbe
+from conftest import NotConnectedProbe, refused
 
 
 # ── Helper fixtures ──
@@ -160,7 +160,7 @@ def test_req_smart_components_refuses_a_bbo_exchange_nothing_named():
     c.req_smart_components(1, "a]AMEX")
     c._test_dispatch_once()
     assert w.req_id is None, "no map for a name nothing stated"
-    assert (1, 321, "Invalid BBO exchange/security type code") in w.errors, w.errors
+    assert refused(1, 321, "Invalid BBO exchange/security type code") in w.errors, w.errors
 
 
 def test_req_smart_components_answers_the_map_its_bbo_exchange_names():

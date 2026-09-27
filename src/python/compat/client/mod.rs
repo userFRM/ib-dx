@@ -1903,6 +1903,12 @@ impl EClient {
         code: i64,
         msg: &str,
     ) -> PyResult<(&'static str, Py<pyo3::types::PyTuple>)> {
+        // Every error this surface says goes through here, so the wire text a
+        // gateway states a refusal it raised itself with is said the same way
+        // whichever queue or call it was raised at. A message a queue has
+        // already stated in that shape passes through as it is.
+        let wrapped = crate::error_codes::wire_text(code, msg.to_string());
+        let msg = wrapped.as_str();
         let arity = self.declared.get().map_or(Declared::CURRENT.error_arity, |d| d.error_arity);
         let args = match arity {
             3 => (origin.id(), code, msg).into_pyobject(py)?.unbind(),
@@ -3043,7 +3049,8 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 let said: Vec<(i64, i64, String)> = py
                     .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
                     .unwrap().extract().unwrap();
-                assert!(said.contains(&(1, 321, reason.to_string())), "{reason}: {said:?}");
+                let wire = format!("Error validating request:-'' : cause - {reason}");
+                assert!(said.contains(&(1, 321, wire)), "{reason}: {said:?}");
             }
         });
     }

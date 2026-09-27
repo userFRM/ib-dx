@@ -843,6 +843,7 @@ impl OrderState {
     #[doc(hidden)] pub fn push_order_inactive_sent(
         &self, order_id: u64, op: api::OrderOp, code: i32, message: String, sent: Option<i64>,
     ) {
+        let message = crate::error_codes::wire_text(i64::from(code), message);
         self.order_inactive.push((order_id, code, message, op, sent));
     }
 

@@ -8,6 +8,7 @@ against it reads the same answer here.
 """
 
 import ibkr_dx
+from conftest import refused
 
 
 class Errors(ibkr_dx.EWrapper):
@@ -33,9 +34,9 @@ def test_an_account_summary_names_a_group_and_tags():
     c.reqAccountSummary(3, "Nope", "NetLiquidation")
     c.poll()
     assert w.seen == [
-        (1, 321, "Group name cannot be null"),
-        (2, 321, "Tags cannot be null"),
-        (3, 321, "Group name is invalid"),
+        refused(1, 321, "Group name cannot be null"),
+        refused(2, 321, "Tags cannot be null"),
+        refused(3, 321, "Group name is invalid"),
     ]
 
 
@@ -44,8 +45,8 @@ def test_a_third_account_summary_is_refused_under_322():
     for req_id in (1, 2, 3):
         c.reqAccountSummary(req_id, "All", "NetLiquidation")
     c.poll()
-    assert w.seen == [(3, 322, "Maximum number of account summary requests exceeded; "
-                              "desubscribe to previous request first")]
+    assert w.seen == [refused(3, 322, "Maximum number of account summary requests exceeded; "
+                                      "desubscribe to previous request first")]
 
 
 def test_an_account_code_on_a_login_holding_several_names_one_of_them():
@@ -54,8 +55,8 @@ def test_an_account_code_on_a_login_holding_several_names_one_of_them():
     c.req_account_updates(True, acct_code="U9")
     c.poll()
     assert w.seen == [
-        (-1, 321, "The account code is required for this operation."),
-        (-1, 321, "Invalid account code 'U9'."),
+        refused(-1, 321, "The account code is required for this operation."),
+        refused(-1, 321, "Invalid account code 'U9'."),
     ]
     assert not any("Ask(AccountUpdates {" in cmd for cmd in c._test_take_commands())
 
@@ -72,7 +73,9 @@ def test_a_profit_request_names_an_account_the_login_holds():
     c.reqPnL(1, "", "")
     c.reqPnLSingle(2, "DU9", "", 265598)
     c.poll()
-    assert w.seen == [(1, 321, "Account must not be empty"), (2, 321, "Invalid account code")]
+    assert w.seen == [
+        refused(1, 321, "Account must not be empty"), refused(2, 321, "Invalid account code"),
+    ]
 
 
 def test_every_account_on_a_login_holding_several_is_taken_without_a_notice():
@@ -81,7 +84,7 @@ def test_every_account_on_a_login_holding_several_is_taken_without_a_notice():
     c.reqAccountUpdates(True, "AllNonProp")
     c.reqAccountSummary(5, "All", "NetLiquidation")
     c.poll()
-    assert w.seen == [(-1, 321, "Invalid account code 'AllNonProp'.")]
+    assert w.seen == [refused(-1, 321, "Invalid account code 'AllNonProp'.")]
     assert sum("Ask(AccountUpdates {" in cmd for cmd in c._test_take_commands()) == 1
 
 
@@ -90,4 +93,6 @@ def test_a_profit_request_is_refused_in_a_gateways_words():
     c.reqPnL(1, " ", "")
     c.reqPnL(2, "All", "")
     c.poll()
-    assert w.seen == [(1, 321, "Account must not be empty"), (2, 321, "Invalid account code")]
+    assert w.seen == [
+        refused(1, 321, "Account must not be empty"), refused(2, 321, "Invalid account code"),
+    ]

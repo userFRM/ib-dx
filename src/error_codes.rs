@@ -85,6 +85,30 @@ impl Refusal {
     }
 }
 
+/// The wire text of a refusal raised here, as a gateway states one it raised
+/// itself: its standing text for the number, ":" joined, then the slot for
+/// the field the request was last read at — empty, as a typed request names
+/// no field as it is read — and the reason verbatim.
+///
+/// A message already stated in that shape goes out as it is: a gateway
+/// states some refusals with their own wire text rather than raising them,
+/// and those carry the standing text without the slot and the cause. Every
+/// other number is untouched: a refusal carrying its own number carries its
+/// own text.
+pub fn wire_text(code: i64, reason: String) -> String {
+    let base = if code == i64::from(Refusal::VALIDATION) {
+        "Error validating request"
+    } else if code == i64::from(REQUEST_NOT_PROCESSED) {
+        "Error processing request"
+    } else {
+        return reason;
+    };
+    if reason.starts_with(base) {
+        return reason;
+    }
+    format!("{base}:-'' : cause - {reason}")
+}
+
 /// The code a request number that is already watching something is refused
 /// under.
 pub const DUPLICATE_TICKER_ID: i32 = 102;

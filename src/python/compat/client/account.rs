@@ -553,8 +553,8 @@ w = W()",
                 .map(|(_, req_id, _, code, message, _)| (req_id, code, message))
                 .collect();
             assert_eq!(refused, vec![
-                (7, 321, "Account must not be empty".to_string()),
-                (8, 321, "Invalid account code".to_string()),
+                (7, 321, "Error validating request:-'' : cause - Account must not be empty".to_string()),
+                (8, 321, "Error validating request:-'' : cause - Invalid account code".to_string()),
             ]);
         });
     }

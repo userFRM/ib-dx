@@ -1288,6 +1288,7 @@ impl ReferenceState {
             id if id >= Self::ASK_ID_BASE => api::ErrorOrigin::Internal(id),
             id => api::ErrorOrigin::Request { id: i64::from(id), ends: true },
         };
+        let message = crate::error_codes::wire_text(i64::from(code), message);
         self.push_error_from(req_id, origin, code, message);
     }
 

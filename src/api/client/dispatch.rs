@@ -998,13 +998,17 @@ impl EClient {
                     Ok(answer) => answer,
                     Err(why) => {
                         let origin = ErrorOrigin::Request { id: req_id, ends: true };
-                        return wrapper.error_from(origin, raised_now(), i64::from(why.code), &why.message, "");
+                        let message = crate::error_codes::wire_text(i64::from(why.code), why.message);
+                        return wrapper.error_from(origin, raised_now(), i64::from(why.code), &message, "");
                     }
                 };
                 if let Some(why) = crate::client_core::ClientCore::unheld_days_notice(&unheld) {
                     log::warn!("{why}");
                     // A notice the executions and their end follow.
                     let origin = ErrorOrigin::Request { id: req_id, ends: false };
+                    let why = crate::error_codes::wire_text(
+                        i64::from(crate::error_codes::Refusal::VALIDATION), why,
+                    );
                     wrapper.error_from(origin, raised_now(), crate::error_codes::Refusal::VALIDATION as i64, &why, "");
                 }
                 for se in rows {

@@ -1059,15 +1059,32 @@ fn a_modify_behind_a_held_placement_goes_out_after_it() {
 
 /// A cancel of an order still being named withdraws it with the modify
 /// behind it, and nothing of either is built — the naming's answer included.
+/// A time stated on the withdrawal does not travel with it, and the order is
+/// told so under 321, in the wire text a gateway states a refusal it raised
+/// itself with.
 #[test]
 fn a_cancel_behind_a_held_placement_withdraws_it_and_its_modify() {
     let (mut hl, shared, tx, _peer) = with_trading();
     shared.orders.set_replay_done();
     tx.send(placement(5, described(), 0, true)).unwrap();
     tx.send(placement(5, described(), 0, true)).unwrap();
-    tx.send(ControlCommand::CancelOrder { order_id: 5, stated: Default::default() }).unwrap();
+    tx.send(ControlCommand::CancelOrder {
+        order_id: 5,
+        stated: crate::types::model::OrderCancel {
+            manual_order_cancel_time: "20260924-14:30:00".into(), ..Default::default()
+        },
+    }).unwrap();
     hl.poll_once();
     assert_eq!(hl.intake.waiting(), 0, "nothing of the order is left waiting");
+    let told = shared.orders.drain_order_inactive();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert_eq!((told[0].0, told[0].1), (5, 321), "{told:?}");
+    assert!(
+        told[0].2.starts_with(
+            "Error validating request:-'' : cause - a withdrawal states a time",
+        ),
+        "{:?}", told[0].2,
+    );
 
     named_spy(&mut hl);
     hl.poll_once();

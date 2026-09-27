@@ -241,7 +241,9 @@ fn a_report_queued_between_any_two_drains_goes_before_a_refusal_pushed_after_it(
         } else {
             w.position_of(&format!("contract_details_end:{}", 3000 + k))
         };
-        let b = w.position_of(&format!("error:{}:321:B", 2000 + k));
+        let b = w.position_of(&format!(
+            "error:{}:321:Error validating request:-'' : cause - B", 2000 + k,
+        ));
         let (a, b) = (a.expect("A is delivered"), b.expect("B is delivered"));
         assert!(a < b, "at drain {k}, the refusal went ahead of the report: {:?}", w.0);
     }

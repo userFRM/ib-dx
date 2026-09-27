@@ -17,6 +17,7 @@ up to date, an end date, and a bar longer than a day.
 """
 
 import ibkr_dx
+from conftest import refused
 
 
 class _Recorder(ibkr_dx.EWrapper):
@@ -78,7 +79,7 @@ def test_adjusted_last_kept_up_to_date_is_refused():
         keep_up_to_date=True,
     )
     c.poll()
-    assert (3, 321, "Source price not supported with live updates") in w.errors, w.errors
+    assert refused(3, 321, "Source price not supported with live updates") in w.errors, w.errors
 
 
 def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
@@ -104,7 +105,7 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
             bar_size_setting=size, what_to_show=series, use_rth=1, keep_up_to_date=keep,
         )
         c.poll()
-        assert (req_id, 321, reason) in w.errors, (reason, w.errors)
+        assert refused(req_id, 321, reason) in w.errors, (reason, w.errors)
     # A week and a month are kept up to date.
     for req_id, size in [(9, "1 week"), (10, "1 month")]:
         c.req_historical_data(

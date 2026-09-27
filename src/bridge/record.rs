@@ -1071,9 +1071,11 @@ impl super::SharedState {
         self.calls.push(record);
     }
 
-    /// Push a refusal made at a call.
+    /// Push a refusal made at a call, in the wire text a gateway states one
+    /// it raised itself with.
     pub fn push_refused(&self, origin: api::ErrorOrigin, code: i64, message: impl Into<String>) {
-        self.calls.push(Record::Refused((origin, code, message.into())));
+        let message = crate::error_codes::wire_text(code, message.into());
+        self.calls.push(Record::Refused((origin, code, message)));
     }
 
     /// Take the refusals made at calls, leaving everything else queued: the

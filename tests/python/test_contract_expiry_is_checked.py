@@ -4,6 +4,7 @@ import pytest
 
 import ibkr_dx
 from ibkr_dx import Contract
+from conftest import refused
 
 
 class Errors(ibkr_dx.EWrapper):
@@ -89,7 +90,7 @@ def test_depth_requires_an_exchange_before_checking_expiry():
     client.reqMktDepth(71, contract, 5, False)
     client._test_dispatch_once()
     assert [(request, code, message) for request, code, message in wrapper.seen] == [
-        (71, 321, "Please enter exchange.")
+        refused(71, 321, "Please enter exchange.")
     ]
     assert client._test_take_commands() == []
 

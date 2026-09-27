@@ -3763,6 +3763,31 @@ fn execution_filter_time_is_a_lower_bound() {
     assert_eq!(w3.seen.len(), 2, "a date-only bound keeps that day");
 }
 
+/// A window reaching back before what the session holds is answered with what
+/// it holds, and the days named ahead of the answer under 321, in the wire
+/// text a gateway states a refusal it raised itself with.
+#[test]
+fn an_executions_window_past_what_the_session_holds_is_told_in_the_wire_text() {
+    let (client, _rx, shared) = test_client();
+    // Held from a day ahead of now: whichever zone the session counts in,
+    // today starts before that, so a window naming today names a day the
+    // session does not reach back to.
+    let held_from = jiff::Timestamp::now().as_second() + 86_400;
+    shared.reference.set_executions_held_from(Some(held_from));
+    client.req_executions(1, &crate::types::model::ExecutionFilter {
+        last_n_days: 2, ..Default::default()
+    });
+    let mut w = RecordingWrapper::default();
+    client.process_msgs(&mut w);
+    assert!(
+        w.events.iter().any(|e| e.starts_with(
+            "error:1:321:Error validating request:-'' : cause - the executions this session \
+             holds do not reach back to the start of ",
+        )),
+        "{:?}", w.events,
+    );
+}
+
 /// An execution the venue restated at logon is not a fill and is announced as
 /// none — but a caller asking for the day's executions is owed it. After a
 /// restart the record was empty, and that caller was told, silently, that
@@ -5400,8 +5425,8 @@ fn an_account_code_is_checked_as_a_gateway_checks_it() {
     client.process_msgs(&mut w);
     let errors: Vec<&String> = w.events.iter().filter(|e| e.starts_with("error:")).collect();
     assert_eq!(errors, [
-        "error:-1:321:The account code is required for this operation.",
-        "error:-1:321:Invalid account code 'U9'.",
+        "error:-1:321:Error validating request:-'' : cause - The account code is required for this operation.",
+        "error:-1:321:Error validating request:-'' : cause - Invalid account code 'U9'.",
     ], "{:?}", w.events);
     assert!(
         !rx.try_iter().any(|cmd| matches!(cmd, ControlCommand::Ask(Ask::AccountUpdates { .. }))),
@@ -5460,7 +5485,7 @@ fn an_execution_filters_account_is_checked_as_a_gateway_checks_it() {
     }
     let mut w = Told::default();
     client.req_executions(2, &filter); client.process_msgs(&mut w);
-    assert_eq!(w.0, ["error:2:321:Invalid account code X."], "refused, and told nothing else, as a gateway tells it");
+    assert_eq!(w.0, ["error:2:321:Error validating request:-'' : cause - Invalid account code X."], "refused, and told nothing else, as a gateway tells it");
 
     // A date that is not a day is refused as a gateway reads the request,
     // ahead of the account it names.
@@ -5483,10 +5508,13 @@ fn an_account_summary_a_gateway_refuses_takes_nothing() {
     client.req_account_summary(2, "All", "");
     client.process_msgs(&mut w);
     assert!(
-        w.events.iter().any(|e| e == "error:1:321:Group name cannot be null"),
+        w.events.iter().any(|e| e == "error:1:321:Error validating request:-'' : cause - Group name cannot be null"),
         "{:?}", w.events,
     );
-    assert!(w.events.iter().any(|e| e == "error:2:321:Tags cannot be null"), "{:?}", w.events);
+    assert!(
+        w.events.iter().any(|e| e == "error:2:321:Error validating request:-'' : cause - Tags cannot be null"),
+        "{:?}", w.events,
+    );
     assert!(client.core.account_summary_req.lock().unwrap().is_none(), "no slot was taken");
 
     // Every account, on a login holding several, is answered with this
@@ -8629,7 +8657,8 @@ fn a_book_a_gateway_refuses_before_asking_is_refused_here() {
         (spy(), 0, "Market depth rows requested must be greater than zero."),
     ] {
         let refused = crate::api::client::tests::reported(&client, || client.req_mkt_depth(1, &contract, rows, false)).expect_err(reason);
-        assert_eq!((refused.code, refused.message.as_str()), (Refusal::VALIDATION, reason));
+        let wire = format!("Error validating request:-'' : cause - {reason}");
+        assert_eq!((refused.code, refused.message.as_str()), (Refusal::VALIDATION, wire.as_str()));
         assert!(rx.try_recv().is_err(), "nothing was sent for it");
         assert!(client.core.hold_the_book(1, &client.shared).is_ok(), "and no book slot was taken");
         client.core.release_the_book(1, &client.shared).unwrap();
@@ -9196,8 +9225,14 @@ fn asking_for_the_accounts_pnl_asks_the_venue() {
         !rx.try_iter().any(|cmd| matches!(cmd, ControlCommand::SubscribePnl { .. })),
         "the venue is asked for nothing under a refused request",
     );
-    assert!(w.events.iter().any(|e| e == "error:10:321:Invalid account code"), "{:?}", w.events);
-    assert!(w.events.iter().any(|e| e == "error:11:321:Account must not be empty"), "{:?}", w.events);
+    assert!(
+        w.events.iter().any(|e| e == "error:10:321:Error validating request:-'' : cause - Invalid account code"),
+        "{:?}", w.events,
+    );
+    assert!(
+        w.events.iter().any(|e| e == "error:11:321:Error validating request:-'' : cause - Account must not be empty"),
+        "{:?}", w.events,
+    );
     assert!(client.core.pnl_req_id.lock().unwrap().is_empty(), "and no slot is taken");
 }
 
@@ -10522,7 +10557,9 @@ fn the_bbo_exchange_on_tick_req_params_is_what_smart_components_answers_to() {
     assert!(w.events.iter().any(|e| e == "smart_components:7:1"), "{:?}", w.events);
     client.req_smart_components(8, "zz0001"); client.process_msgs(&mut w);
     assert!(
-        w.events.iter().any(|e| e.starts_with("error:8:321:Invalid BBO exchange/security type code")),
+        w.events.iter().any(|e| {
+            e.starts_with("error:8:321:Error validating request:-'' : cause - Invalid BBO exchange/security type code")
+        }),
         "{:?}", w.events,
     );
     assert!(!w.events.iter().any(|e| e.starts_with("smart_components:8:")), "and no map");
@@ -12207,7 +12244,14 @@ fn depth_requires_an_exchange_before_checking_expiry() {
         exchange: String::new(), last_trade_date_or_contract_month: "20260230".into(), ..spy()
     };
     let why = reported(&client, || client.req_mkt_depth(71, &contract, 5, false)).unwrap_err();
-    assert_eq!((why.code, why.message.as_str()), (321, "Please enter exchange."));
+    // A gateway wraps a refusal it raises itself: its standing text for the
+    // number, ":" joined, the slot for the field the request was last read at
+    // — empty, as a typed request names no field as it is read — and the
+    // reason verbatim.
+    assert_eq!(
+        (why.code, why.message.as_str()),
+        (321, "Error validating request:-'' : cause - Please enter exchange."),
+    );
     assert!(next_command(&rx).is_none());
 }
 

@@ -5501,9 +5501,10 @@ mod tests {
             .expect("the engine holds the other end");
             hl.poll_once();
             let told = shared.reference.drain_historical_errors();
+            let wire = format!("Error validating request:-'' : cause - {said}");
             assert!(
                 told.iter().any(|(rid, code, message)| {
-                    *rid == req_id && *code == crate::error_codes::Refusal::VALIDATION && message == said
+                    *rid == req_id && *code == crate::error_codes::Refusal::VALIDATION && message == &wire
                 }),
                 "{told:?}",
             );
@@ -9006,7 +9007,11 @@ mod tests {
         hl.poll_control_commands();
         assert_eq!(
             shared.reference.drain_historical_errors(),
-            [(9, crate::error_codes::Refusal::VALIDATION, "Please enter exchange.".to_string())],
+            [(
+                9,
+                crate::error_codes::Refusal::VALIDATION,
+                "Error validating request:-'' : cause - Please enter exchange.".to_string(),
+            )],
         );
         assert!(hl.farm.depth_subs.is_empty());
         assert!(farm::tests::drain_inner(&mut peer).is_empty(), "nothing asked of the venue");

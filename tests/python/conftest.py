@@ -127,6 +127,17 @@ def declined(errors, *req_ids):
     ]
 
 
+def refused(req_id, code, reason):
+    """An (req_id, code, message) entry for a refusal this client raises
+    itself, as it reaches the callback: a gateway states one with its standing
+    text for the number, ":" joined, then the slot for the field the request
+    was last read at -- empty, as a typed request names no field as it is read
+    -- and the reason verbatim.
+    """
+    base = {321: "Error validating request", 322: "Error processing request"}[code]
+    return (req_id, code, f"{base}:-'' : cause - {reason}")
+
+
 def give_back(client, statuses, bought, sold, contract, sell):
     """Leave the account as a test found it after buying one share.
 
