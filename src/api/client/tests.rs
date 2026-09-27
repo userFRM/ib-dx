@@ -12292,6 +12292,45 @@ fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
 }
 
+/// An ordinary snapshot asked beside a generic list is refused before
+/// anything is subscribed, as a gateway refuses it: one burst has no series
+/// beside it. The regulatory snapshot is not covered by the refusal — its
+/// series are dropped at the engine as they were. An "mdoff" token counts as
+/// no entry, and a token that reads as no number leaves nothing the refusal
+/// covers, so a list of either beside a snapshot goes as it stands.
+#[test]
+fn a_snapshot_beside_a_generic_list_is_refused() {
+    let (client, rx, _shared) = test_client();
+    for list in ["100,101", "100", "292", "292:BRFG+DJNL", "mdoff,100"] {
+        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, true, false))
+            .expect_err(list);
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (321, "Error validating request:-'' : cause - Snapshot market data subscription is not applicable to generic ticks"),
+            "{list}",
+        );
+        assert!(next_command(&rx).is_none(), "{list} subscribed something");
+        assert!(client.core.req_to_instrument.lock().unwrap().is_empty(), "and kept a subscription");
+    }
+    for (req_id, (list, snapshot, regulatory)) in [
+        ("", true, false),
+        ("mdoff", true, false),
+        (",mdoff,", true, false),
+        ("foo", true, false),
+        ("100,foo", true, false),
+        ("100", false, true),
+    ].into_iter().enumerate() {
+        let req_id = 72 + req_id as i64;
+        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, regulatory)) {
+            panic!("{list}, snapshot {snapshot}, regulatory {regulatory}: {why:?}");
+        }
+        assert!(
+            matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })),
+            "{list} was not taken",
+        );
+    }
+}
+
 #[test]
 fn order_fields_are_checked_before_contract_expiry() {
     let (client, rx, _) = test_client();

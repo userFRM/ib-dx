@@ -2397,6 +2397,23 @@ impl ClientCore {
             return Err(Refusal::validation("Please enter exchange"));
         }
         Self::validate_contract_expiry(&filters.last_trade_date_or_contract_month)?;
+        // News subscription if generic_tick_list names 292, bare or with the
+        // providers to ask. The whole entry, not its last three characters:
+        // "1292" is not 292, and matching on a suffix subscribes to news the
+        // caller did not ask for.
+        let asked = parse_generic_tick_list(generic_tick_list);
+        // An ordinary snapshot is one burst, and a gateway refuses a generic
+        // entry listed beside it before anything is subscribed. The
+        // regulatory snapshot is not covered: its series are dropped at the
+        // engine, as they were. An "mdoff" token is no entry, and a token
+        // that reads as no number is no entry the refusal covers either — a
+        // list a gateway cannot read whole reaches it as no list at all — so
+        // both go as they stand, the unreadable warned below as before.
+        if snapshot && asked.unread.is_empty() && (asked.news || !asked.series.is_empty()) {
+            return Err(Refusal::validation(
+                "Snapshot market data subscription is not applicable to generic ticks",
+            ));
+        }
         // A quote feed the engine has given up on serves nothing more this
         // session: there is no connection to write the request to and no
         // reconnect coming to replay it, and a caller told it had a
@@ -2409,11 +2426,6 @@ impl ClientCore {
         // The chargeable snapshot is one burst by construction, so it ends the
         // way an ordinary snapshot does and the caller hears the same end.
         let snapshot = snapshot || regulatory_snapshot;
-        // News subscription if generic_tick_list names 292, bare or with the
-        // providers to ask. The whole entry, not its last three characters:
-        // "1292" is not 292, and matching on a suffix subscribes to news the
-        // caller did not ask for.
-        let asked = parse_generic_tick_list(generic_tick_list);
         // Each remaining entry is asked for. The number a caller states is the
         // venue's own number for the series, so there is nothing to translate:
         // it goes out as a subscription of its own under that number, the way
