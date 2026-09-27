@@ -92,7 +92,7 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
     cases = [
         (4, _spy(), "20250101 00:00:00", "1 day", "ADJUSTED_LAST", False,
          "End date not supported with adjusted last"),
-        (5, _spy(), "", "1 week", "ADJUSTED_LAST", False,
+        (5, _spy(), "", "1W", "ADJUSTED_LAST", False,
          "Multi day bar size not supported with adjusted last"),
         (6, _spy(), "20250101 00:00:00", "5 mins", "TRADES", True,
          "End date not supported with live updates"),
@@ -107,7 +107,7 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
         c.poll()
         assert refused(req_id, 321, reason) in w.errors, (reason, w.errors)
     # A week and a month are kept up to date.
-    for req_id, size in [(9, "1 week"), (10, "1 month")]:
+    for req_id, size in [(9, "1W"), (10, "1M")]:
         c.req_historical_data(
             req_id, _spy(), end_date_time="", duration_str="1 Y",
             bar_size_setting=size, what_to_show="TRADES", use_rth=1, keep_up_to_date=True,

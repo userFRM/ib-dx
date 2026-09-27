@@ -248,51 +248,69 @@ pub enum BarSize {
     Week1,
     /// One bar covers a month.
     Month1,
+    /// One bar covers a quarter.
+    Month3,
+    /// One bar covers a year.
+    Year1,
 }
+
+/// The legal bar-size names and the sizes they name, in the order a gateway
+/// lists them. The last two are legal and matched, but are left out of the
+/// list a gateway renders in its refusal: it names every size but those two.
+const BAR_SIZES: [(&str, BarSize); 24] = [
+    ("1 secs", BarSize::Sec1),
+    ("5 secs", BarSize::Sec5),
+    ("10 secs", BarSize::Sec10),
+    ("15 secs", BarSize::Sec15),
+    ("30 secs", BarSize::Sec30),
+    ("1 min", BarSize::Min1),
+    ("2 mins", BarSize::Min2),
+    ("3 mins", BarSize::Min3),
+    ("4 mins", BarSize::Min4),
+    ("5 mins", BarSize::Min5),
+    ("10 mins", BarSize::Min10),
+    ("15 mins", BarSize::Min15),
+    ("20 mins", BarSize::Min20),
+    ("30 mins", BarSize::Min30),
+    ("1 hour", BarSize::Hour1),
+    ("2 hours", BarSize::Hour2),
+    ("3 hours", BarSize::Hour3),
+    ("4 hours", BarSize::Hour4),
+    ("8 hours", BarSize::Hour8),
+    ("1 day", BarSize::Day1),
+    ("1W", BarSize::Week1),
+    ("1M", BarSize::Month1),
+    ("3 months", BarSize::Month3),
+    ("1 year", BarSize::Year1),
+];
 
 impl BarSize {
     /// Read the official API's bar-size string.
     ///
-    /// The one table every request path reads. Case is folded before the
-    /// match: asked in any casing the venue answers with bars, so refusing
-    /// `4 MINS` refused a question it would have answered. A size not in the
-    /// table is still an error rather than a fallback — plausible, complete
-    /// candles of the wrong size are worse than none.
+    /// The one table every request path reads, holding the whole legal set of
+    /// names, matched exactly and case-sensitively: a gateway compares the
+    /// size against each legal name by strict equality and refuses a miss
+    /// before asking the venue. An alias or a casing the venue would happen
+    /// to answer got bars where a gateway gave an error — plausible,
+    /// complete candles the caller could not have asked a real gateway for.
+    /// A miss is refused in the words a gateway uses, naming the legal ones
+    /// the way it names them: the list it renders leaves out the two longest
+    /// sizes, which are legal all the same.
     pub fn from_api_str(s: &str) -> Result<BarSize, String> {
-        let lowered = s.to_ascii_lowercase();
-        Ok(match lowered.as_str() {
-            "1 secs" | "1 sec" => Self::Sec1,
-            "5 secs" => Self::Sec5,
-            "10 secs" => Self::Sec10,
-            "15 secs" => Self::Sec15,
-            "30 secs" => Self::Sec30,
-            "1 min" => Self::Min1,
-            "2 mins" => Self::Min2,
-            "3 mins" => Self::Min3,
-            "4 mins" => Self::Min4,
-            "5 mins" => Self::Min5,
-            "10 mins" => Self::Min10,
-            "15 mins" => Self::Min15,
-            "20 mins" => Self::Min20,
-            "30 mins" => Self::Min30,
-            "1 hour" => Self::Hour1,
-            "2 hours" => Self::Hour2,
-            "3 hours" => Self::Hour3,
-            "4 hours" => Self::Hour4,
-            "8 hours" => Self::Hour8,
-            "1 day" => Self::Day1,
-            "1 week" | "1w" => Self::Week1,
-            "1 month" | "1m" => Self::Month1,
-            other => {
-                return Err(format!(
-                    "Unsupported bar_size '{other}': expected one of 1 secs, 5 secs, \
-                     10 secs, 15 secs, 30 secs, 1 min, 2 mins, 3 mins, 4 mins, \
-                     5 mins, 10 mins, 15 mins, 20 mins, 30 mins, 1 hour, \
-                     2 hours, 3 hours, 4 hours, 8 hours, 1 day, 1 week or \
-                     1 month, in any casing",
-                ));
-            }
-        })
+        BAR_SIZES
+            .iter()
+            .find(|(name, _)| *name == s)
+            .map(|(_, size)| *size)
+            .ok_or_else(|| {
+                format!(
+                    "Historical data bar size setting is invalid. Legal ones are: {}",
+                    BAR_SIZES[..BAR_SIZES.len() - 2]
+                        .iter()
+                        .map(|(name, _)| *name)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            })
     }
 
     /// Whether a bar this long can be kept up to date.
@@ -351,6 +369,10 @@ impl BarSize {
             Self::Day1 => 86_400,
             Self::Week1 => 604_800,
             Self::Month1 => 2_592_000,
+            // A quarter is three of the gateway's 31-day months and a year
+            // is its 365 days, which is how it counts both.
+            Self::Month3 => 8_035_200,
+            Self::Year1 => 31_536_000,
         }
     }
 
@@ -387,6 +409,8 @@ impl BarSize {
             Self::Day1 => "1 day",
             Self::Week1 => "1W",
             Self::Month1 => "1M",
+            Self::Month3 => "3 months",
+            Self::Year1 => "1 year",
         }
     }
 }
@@ -730,8 +754,8 @@ fn read_length(length: &str) -> Option<(i64, (&'static str, i64))> {
     Some((count, unit))
 }
 
-/// The bars a series of days, weeks or months still wants once the newest
-/// stretch is in, and what a later stretch is asked with because of them.
+/// The bars a series of a day or longer still wants once the newest stretch
+/// is in, and what a later stretch is asked with because of them.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BarsWanted {
     /// How many bars are still to come.
@@ -764,15 +788,16 @@ impl BarsWanted {
 }
 
 /// The stretches a request is asked along, the bars it still wants once the
-/// first is in, and the first days whose week or month is joined.
+/// first is in, and the first days whose week, month, quarter or year is
+/// joined.
 pub(crate) type Plan = (Vec<Stretch>, Option<BarsWanted>, Vec<String>);
 
 /// A request asked along its contract's id history: one stretch per id,
 /// ticker or listing the history names within the request, newest first; for a
-/// series of days, weeks or months asked along more than one, the bars it
-/// still wants; and for weeks or months asked along more than one, the first
-/// days of the stretches, whose weeks or months are one bar joined from both
-/// sides.
+/// series of a day or longer asked along more than one, the bars it still
+/// wants; and for a week or longer asked along more than one, the first days
+/// of the stretches, whose weeks, months, quarters or years are one bar joined
+/// from both sides.
 ///
 /// Each is asked under the id it traded as, naming the one the caller asked
 /// under where that is another. The newest is asked as the request is, from
@@ -821,6 +846,8 @@ pub(crate) fn along(
         BarSize::Day1 => Some(ms_day),
         BarSize::Week1 => Some(7 * ms_day),
         BarSize::Month1 => Some(31 * ms_day),
+        BarSize::Month3 => Some(93 * ms_day),
+        BarSize::Year1 => Some(365 * ms_day),
         _ => None,
     };
     let joining = bar.is_some_and(|bar| bar > ms_day) && history.len() > 1;
@@ -871,9 +898,10 @@ pub(crate) fn along(
     Ok((out, wanted, joins))
 }
 
-/// The week or the month a day falls in, for bars of that size, as a gateway
-/// groups them: a week is named by its Monday, a Sunday by the Monday before
-/// it, and a month by its first day.
+/// The week, the month, the quarter or the year a day falls in, for bars of
+/// that size, as a gateway groups them: a week is named by its Monday, a
+/// Sunday by the Monday before it, a month by its first day, a quarter by the
+/// first day of its first month and a year by the first of January.
 pub(crate) fn period_of(bar_size: BarSize, day: &str) -> Option<String> {
     let date = jiff::civil::Date::strptime("%Y%m%d", day.get(..8)?).ok()?;
     let first = match bar_size {
@@ -881,17 +909,21 @@ pub(crate) fn period_of(bar_size: BarSize, day: &str) -> Option<String> {
             date.checked_sub(jiff::Span::new().days(i64::from(date.weekday().to_monday_zero_offset()))).ok()?
         }
         BarSize::Month1 => date.first_of_month(),
+        BarSize::Month3 => {
+            jiff::civil::Date::new(date.year(), (date.month() - 1) / 3 * 3 + 1, 1).ok()?
+        }
+        BarSize::Year1 => jiff::civil::Date::new(date.year(), 1, 1).ok()?,
         _ => return None,
     };
     Some(first.strftime("%Y%m%d").to_string())
 }
 
-/// Join the bars of a week or a month that more than one stretch answered for
-/// into one, as a gateway joins them once the series is whole: every run of
-/// bars falling in the week or the month one of `starts` falls in. The joined
-/// bar opens where the first opened and closes where the last closed, spans
-/// both, takes the highest high and the lowest low, and sums the volume and
-/// the count; its average is weighted by volume.
+/// Join the bars of a week, a month, a quarter or a year that more than one
+/// stretch answered for into one, as a gateway joins them once the series is
+/// whole: every run of bars falling in the period one of `starts` falls in.
+/// The joined bar opens where the first opened and closes where the last
+/// closed, spans both, takes the highest high and the lowest low, and sums
+/// the volume and the count; its average is weighted by volume.
 pub(crate) fn join_periods(
     bars: Vec<HistoricalBar>, starts: &[String], bar_size: BarSize,
 ) -> Vec<HistoricalBar> {

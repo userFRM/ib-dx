@@ -52,8 +52,8 @@ def test_a_bar_is_dated_the_way_their_parser_reads_one():
 @pytest.mark.parametrize("size,stated,end,day", [
     ("1 day", "20260924-13:30:00", "20260924-20:00:00", "20260924"),
     ("1 day", "20260923-22:00:00", "20260924-21:00:00", "20260924"),
-    ("1 week", "20260921", "20260926", "20260921"),
-    ("1 month", "20260901", "20261001", "20260901"),
+    ("1W", "20260921", "20260926", "20260921"),
+    ("1M", "20260901", "20261001", "20260901"),
 ])
 def test_daily_and_longer_bars_keep_their_dates(format_date, size, stated, end, day):
     import ibkr_dx

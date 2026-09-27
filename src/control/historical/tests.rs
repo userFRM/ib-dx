@@ -17,54 +17,114 @@ fn bar_data_type_strings() {
 fn bar_size_strings() {
     assert_eq!(BarSize::Min5.as_str(), "5 mins");
     assert_eq!(BarSize::Hour1.as_str(), "1 hour");
-        assert_eq!(BarSize::Day1.as_str(), "1 day");
+    assert_eq!(BarSize::Day1.as_str(), "1 day");
+    assert_eq!(BarSize::Month3.as_str(), "3 months");
+    assert_eq!(BarSize::Year1.as_str(), "1 year");
 }
 
 // ── single parse table, rejection instead of Min5/TRADES ──
 
+/// The whole legal set, matched exactly: every name reads, and goes back
+/// out under the spelling it was read by.
 #[test]
-fn bar_size_from_api_str_accepts_all_official_strings() {
+fn bar_size_from_api_str_accepts_exactly_the_legal_names() {
     let all = [
         "1 secs", "5 secs", "10 secs", "15 secs", "30 secs",
-        "1 min", "2 mins", "3 mins", "5 mins", "10 mins", "15 mins",
+        "1 min", "2 mins", "3 mins", "4 mins", "5 mins", "10 mins", "15 mins",
         "20 mins", "30 mins", "1 hour", "2 hours", "3 hours", "4 hours",
-            "8 hours", "1 day", "1 week", "1 month",
+        "8 hours", "1 day", "1W", "1M", "3 months", "1 year",
     ];
     for s in all {
-        assert!(BarSize::from_api_str(s).is_ok(), "'{s}' must parse");
+        let size = BarSize::from_api_str(s).unwrap_or_else(|e| panic!("'{s}' is legal: {e}"));
+        assert_eq!(size.as_str(), s, "'{s}' goes out under the name it was read by");
     }
-    assert_eq!(BarSize::from_api_str("1 min").unwrap(), BarSize::Min1);
+    assert_eq!(BarSize::from_api_str("3 months").unwrap(), BarSize::Month3);
+    assert_eq!(BarSize::from_api_str("1 year").unwrap(), BarSize::Year1);
+    // A quarter is three of a gateway's 31-day months and a year its 365
+    // days, which is how it counts both.
+    assert_eq!(BarSize::Month3.seconds(), 8_035_200);
+    assert_eq!(BarSize::Year1.seconds(), 31_536_000);
 }
 
+/// A quarter and a year are named by their first day on the calendar, the
+/// way a month is by its first day: the bars of one period that more than
+/// one stretch answered for are joined on that day.
 #[test]
-fn bar_size_from_api_str_rejects_what_is_not_a_size_and_reads_any_casing() {
-    // The issue's exact repro: an unknown size silently became 5-minute bars.
-    for s in ["1min", "1 minute", "7 mins", ""] {
-        let err = BarSize::from_api_str(s).unwrap_err();
-        assert!(err.contains("bar_size"), "'{s}' -> {err}");
+fn a_quarter_and_a_year_are_named_by_their_first_day() {
+    assert_eq!(period_of(BarSize::Month3, "20260517").as_deref(), Some("20260401"));
+    assert_eq!(period_of(BarSize::Month3, "20260401").as_deref(), Some("20260401"));
+    assert_eq!(period_of(BarSize::Month3, "20260630").as_deref(), Some("20260401"));
+    assert_eq!(period_of(BarSize::Month3, "20260701").as_deref(), Some("20260701"));
+    assert_eq!(period_of(BarSize::Year1, "20260517").as_deref(), Some("20260101"));
+    assert_eq!(period_of(BarSize::Year1, "20261231").as_deref(), Some("20260101"));
+}
+
+/// A series of quarters or of years asked along more than one id counts its
+/// bars the way a month's does, in the lengths a gateway states: a quarter of
+/// 93 days and a year of 365, so a later stretch is asked for the bars still
+/// wanted, in the unit the request stated.
+#[test]
+fn a_series_of_quarters_or_years_counts_its_bars_along_the_history() {
+    use crate::control::adjustments::IdStretch;
+    for (size, duration, left, length) in [
+        (BarSize::Month3, "1 y", 3, "1 y"),
+        (BarSize::Year1, "2 y", 2, "2 y"),
+    ] {
+        let req = HistoricalRequest {
+            query_id: "q1".to_string(),
+            con_id: 222,
+            symbol: "NEWCO".to_string(),
+            sec_type: "CS".to_string(),
+            exchange: "BEST".to_string(),
+            data_type: BarDataType::Trades,
+            end_time: "20240628-20:00:00".to_string(),
+            duration: duration.to_string(),
+            bar_size: size,
+            use_rth: true,
+            keep_up_to_date: false,
+            include_expired: false,
+        };
+        let history = vec![
+            IdStretch { con_id: 222, start: "-1".into(), end: "-1".into(), symbol: String::new(), exchange: String::new() },
+            IdStretch { con_id: 111, start: "-1".into(), end: "20240531".into(), symbol: String::new(), exchange: String::new() },
+        ];
+        let (stretches, wanted, _) = along(&req, &history).unwrap_or_else(|e| panic!("{duration}: {e}"));
+        assert_eq!(stretches.len(), 2, "{duration} is asked along both ids");
+        let wanted = wanted.unwrap_or_else(|| panic!("{duration} counts its bars"));
+        assert_eq!(wanted.left, left, "{duration}: bars still wanted");
+        assert_eq!(wanted.length(), length, "{duration}: what a later stretch is asked with");
     }
-    // Casing is the caller's business: asked in any of these the venue answers
-    // with bars of that size, so refusing them refused a question it would
-    // have answered.
-    assert_eq!(BarSize::from_api_str("1 Min").unwrap(), BarSize::Min1);
-    assert_eq!(BarSize::from_api_str("4 MINS").unwrap(), BarSize::Min4);
-    assert_eq!(BarSize::from_api_str("1 Day").unwrap(), BarSize::Day1);
-    assert_eq!(BarSize::from_api_str("30 SECS").unwrap(), BarSize::Sec30);
-    // And what it names as expected is what it takes. Named two the table has
-    // no arm for, a caller retrying with one was refused under the same text.
-    let refusal = BarSize::from_api_str("nonsense").unwrap_err();
-    let named = refusal.split(": expected one of ").nth(1).expect("it names them");
-    for size in named
-        .trim_end_matches(", in any casing")
-        .replace(" or ", ", ")
-        .split(", ")
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-    {
+}
+
+/// A miss is refused in a gateway's words, with the list it renders: every
+/// legal size but the two longest, which are legal all the same. An alias or
+/// a casing is a miss too — a gateway compares by strict equality, so what
+/// the venue would have happened to answer was bars a gateway would never
+/// have been asked for.
+#[test]
+fn bar_size_from_api_str_refuses_a_miss_in_the_gateways_words() {
+    let refusal = BarSize::from_api_str("1 minute").unwrap_err();
+    assert_eq!(
+        refusal,
+        "Historical data bar size setting is invalid. Legal ones are: \
+         1 secs, 5 secs, 10 secs, 15 secs, 30 secs, 1 min, 2 mins, 3 mins, \
+         4 mins, 5 mins, 10 mins, 15 mins, 20 mins, 30 mins, 1 hour, \
+         2 hours, 3 hours, 4 hours, 8 hours, 1 day, 1W, 1M",
+    );
+    // The aliases this table once carried, and the casings it once folded.
+    for s in [
+        "1 sec", "1 week", "1w", "1 month", "1m",
+        "1 Min", "4 MINS", "1 Day", "30 SECS",
+        "1min", "7 mins", "",
+    ] {
+        assert_eq!(BarSize::from_api_str(s).unwrap_err(), refusal, "'{s}' is a miss");
+    }
+    // Every name the refusal renders is one it then reads.
+    let named = refusal.split("Legal ones are: ").nth(1).expect("it names them");
+    for size in named.split(", ") {
         assert!(
             BarSize::from_api_str(size).is_ok(),
-            "the refusal names {size}, which it then refuses: {refusal}",
+            "the refusal names {size}, which it then refuses",
         );
     }
 }
@@ -1393,7 +1453,7 @@ fn a_bar_is_kept_up_to_date_when_it_folds_from_the_five_second_stream() {
         "a second is shorter than what arrives, so nothing can form it",
     );
     // A week and a month are formed on the calendar, as a gateway forms them.
-    for asked in ["1 week", "1 month"] {
+    for asked in ["1W", "1M"] {
         let size = BarSize::from_api_str(asked).expect("a size this client reads");
         assert!(size.supports_keep_up_to_date(), "{asked} is kept up to date");
     }

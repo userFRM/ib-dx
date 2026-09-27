@@ -4272,12 +4272,19 @@ fn req_historical_data_carries_the_contract_s_own_type_and_venue() {
 fn req_historical_data_rejects_unknown_bar_size() {
     let (client, rx, _shared) = test_client();
     // A size that is not one is refused rather than answered with five-minute
-    // candles. Its casing is not what makes it one: `1 Min` is a minute.
-    let err = client.try_req_historical_data(5, &spy(), "", "2 D", "1 minute", "TRADES", true, 1, false).unwrap_err();
-    assert!(err.message.contains("bar_size"), "got: {err}");
-    assert!(rx.try_recv().is_err(), "nothing may reach the engine");
-    client.try_req_historical_data(5, &spy(), "", "2 D", "1 Min", "TRADES", true, 1, false)
-        .expect("a minute asked for in another casing is still a minute");
+    // candles, in a gateway's words. Its near-misses are misses too: an alias
+    // and a legal name in another casing are both refused, as a gateway
+    // compares by strict equality.
+    for size in ["1 minute", "1 Min", "1 week"] {
+        let err = client.try_req_historical_data(5, &spy(), "", "2 D", size, "TRADES", true, 1, false).unwrap_err();
+        assert!(
+            err.message.contains("Historical data bar size setting is invalid"),
+            "{size}: got {err}",
+        );
+        assert!(rx.try_recv().is_err(), "nothing may reach the engine for {size}");
+    }
+    client.try_req_historical_data(5, &spy(), "", "2 D", "1W", "TRADES", true, 1, false)
+        .expect("the legal name for a week");
     assert!(rx.try_recv().is_ok(), "and it reaches the engine");
 }
 
@@ -4372,7 +4379,7 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
     for (contract, end, size, series, keep, reason) in [
         (spy(), "20250101 00:00:00", "1 day", "ADJUSTED_LAST", false,
          "End date not supported with adjusted last"),
-        (spy(), "", "1 week", "ADJUSTED_LAST", false,
+        (spy(), "", "1W", "ADJUSTED_LAST", false,
          "Multi day bar size not supported with adjusted last"),
         (spy(), "20250101 00:00:00", "5 mins", "TRADES", true,
          "End date not supported with live updates"),
@@ -4390,7 +4397,7 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
     }
     // And a week and a month are kept up to date, and a day adjusted.
     for (size, series, keep) in [
-        ("1 week", "TRADES", true), ("1 month", "MIDPOINT", true), ("1 day", "ADJUSTED_LAST", false),
+        ("1W", "TRADES", true), ("1M", "MIDPOINT", true), ("1 day", "ADJUSTED_LAST", false),
     ] {
         client
             .try_req_historical_data(5, &spy(), "", "1 Y", size, series, true, 1, keep)
@@ -10672,8 +10679,8 @@ fn an_update_to_a_bar_of_a_day_or_longer_is_dated_by_its_day() {
     let (client, rx, shared) = test_client();
     for (req_id, size, opened_at, dated) in [
         (5u32, "1 day", 1_790_208_000u32, "20260924"),
-        (6, "1 week", 1_789_948_800, "20260921"),
-        (7, "1 month", 1_788_220_800, "20260901"),
+        (6, "1W", 1_789_948_800, "20260921"),
+        (7, "1M", 1_788_220_800, "20260901"),
     ] {
         client
             .try_req_historical_data(i64::from(req_id), &spy(), "", "1 Y", size, "TRADES", true, 1, true)
@@ -12204,8 +12211,8 @@ fn daily_history_and_updates_keep_dates_in_both_formats() {
     for format in [1, 2] {
         for (offset, size, stated, end, day) in [
             (0, "1 day", "20260924-13:30:00", "20260924-20:00:00", "20260924"),
-            (1, "1 week", "20260921", "20260926", "20260921"),
-            (2, "1 month", "20260901", "20261001", "20260901"),
+            (1, "1W", "20260921", "20260926", "20260921"),
+            (2, "1M", "20260901", "20261001", "20260901"),
             (3, "1 day", "20260923-22:00:00", "20260924-21:00:00", "20260924"),
             (4, "1 day", "20260924-00:00:00", "20260925-01:00:00", "20260924"),
         ] {

@@ -5483,7 +5483,7 @@ mod tests {
         hl.set_control_rx(rx);
         for (req_id, end, bar_size, said) in [
             (64u32, "20250101 00:00:00", "1 day", "End date not supported with adjusted last"),
-            (65, "", "1 week", "Multi day bar size not supported with adjusted last"),
+            (65, "", "1W", "Multi day bar size not supported with adjusted last"),
         ] {
             tx.send(ControlCommand::FetchHistorical {
                 contract: ContractRef { con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(), ..Default::default() },

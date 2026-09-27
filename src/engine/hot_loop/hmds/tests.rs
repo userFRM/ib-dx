@@ -484,7 +484,7 @@ fn scanner_parameters_on_a_dead_connection_is_reported_not_dropped() {
 /// service's own, and no end follows the refusal.
 #[test]
 fn engine_rejects_an_unknown_bar_size_or_series_with_an_error_alone() {
-    for (bar_size, what_to_show, named) in [("1 minute", "TRADES", "bar_size"), ("1 hour", "GRAVITY", "")] {
+    for (bar_size, what_to_show, named) in [("1 minute", "TRADES", "bar size setting is invalid"), ("1 hour", "GRAVITY", "")] {
         let mut hmds = HmdsState::new();
         let shared = SharedState::new();
         let mut hb = HeartbeatState::new();
@@ -818,7 +818,7 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
                 step: None,
             },
          ], Ok(&[])),
-        ("weeks along two ids and a split", 222, "20240614-20:00:00", "8 W", "1 week",
+        ("weeks along two ids and a split", 222, "20240614-20:00:00", "8 W", "1W",
          "conc\n222,20240603,-1\n111,-1,20240531\nSS\n20240612,2\n", &[
             Asked {
                 states: &["<contractID>222</contractID>", "<endTime>20240614-20:00:00</endTime>",
@@ -851,7 +851,7 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
             ("20240520", 45.0, 200), ("20240528", 47.5, 200), ("20240603", 50.0, 200),
             ("20240610", 60.0, 300),
          ])),
-        ("weeks and a split on a Friday", 222, "20240621-20:00:00", "4 W", "1 week",
+        ("weeks and a split on a Friday", 222, "20240621-20:00:00", "4 W", "1W",
          "conc\n222,-1,-1\nSS\n20240614,2\n", &[
             Asked {
                 states: &["<contractID>222</contractID>", "<cutoffDate>20240614</cutoffDate>",
@@ -870,7 +870,7 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
                 step: None,
             },
          ], Ok(&[("20240603", 48.0, 200), ("20240610", 25.0, 400), ("20240617", 52.0, 100)])),
-        ("months and a split", 222, "20240628-20:00:00", "3 M", "1 month",
+        ("months and a split", 222, "20240628-20:00:00", "3 M", "1M",
          "conc\n222,-1,-1\nSS\n20240515,2\n", &[
             Asked {
                 states: &["<contractID>222</contractID>", "<cutoffDate>20240515</cutoffDate>",
@@ -889,7 +889,7 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
                 step: None,
             },
          ], Ok(&[("20240401", 45.0, 200), ("20240501", 60.0, 300), ("20240603", 62.0, 100)])),
-        ("weeks and a split nobody can date", 222, "20240621-20:00:00", "4 W", "1 week",
+        ("weeks and a split nobody can date", 222, "20240621-20:00:00", "4 W", "1W",
          "conc\n222,-1,-1\nSS\n2024061,2\n", &[
             Asked {
                 states: &["<contractID>222</contractID>", "<timeLength>4 W</timeLength>"],
