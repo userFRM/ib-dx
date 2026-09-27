@@ -101,9 +101,12 @@ jobs:
 
   # One wheel per platform and per interpreter the bindings build for: each
   # CPython `requires-python` admits, and the free-threaded 3.14t. PyO3 builds
-  # for no free-threaded interpreter older than 3.14, so there is no 3.13t. The
-  # extension links against the interpreter it was built for, so a version left
-  # out is one a caller finds missing at `pip install`.
+  # for no free-threaded interpreter older than 3.14 — it dropped 3.13t when
+  # CPython declared free-threading supported starting with 3.14, and its
+  # build refuses a free-threaded target below that — so there is no 3.13t
+  # leg to add until the day that floor moves. The extension links against
+  # the interpreter it was built for, so a version left out is one a caller
+  # finds missing at `pip install`.
   wheels:
     name: wheel (${{ matrix.platform.name }}, py${{ matrix.python }})
     needs: gate
