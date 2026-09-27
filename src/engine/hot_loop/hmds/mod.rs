@@ -2428,6 +2428,15 @@ fn build_tbt_query(
             use_rth, include_expired,
             symbol: symbol.to_string(), sec_type: sec_type.to_string(), exchange: exchange.to_string(),
         };
+        // The surfaces refuse a duration a gateway refuses where the request
+        // is taken; a caller reaching this loop by the control channel goes
+        // past them, so it is refused here in the same words, and the venue
+        // is not asked what it makes of a length nobody stated right.
+        if let Err(why) = crate::control::historical::validate_duration(duration) {
+            log::error!("historical req_id={req_id}: {why}");
+            super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::VALIDATION, why, true);
+            return false;
+        }
         let duration = crate::control::historical::normalize_duration(duration);
         let duration = duration.as_str();
         let end_date_time = if end_date_time.is_empty() {

@@ -113,3 +113,35 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
             bar_size_setting=size, what_to_show="TRADES", use_rth=1, keep_up_to_date=True,
         )
         assert not [e for e in w.errors if e[0] == req_id], w.errors
+
+
+def test_a_duration_a_gateway_refuses_is_refused_in_its_words():
+    """The duration is read where the request is taken, before the venue is
+    asked: nothing stated, a count outside its unit's range and a unit outside
+    the five are each refused with the gateway's reason, wrapped as every
+    refusal this client raises itself is wrapped, and nothing is sent."""
+    w, c = _client()
+    cases = [
+        (11, "", "Historical data request duration not specified."),
+        (12, "10 S", "Historical data requested duration is invalid."),
+        (13, "90000 S", "Historical data request for greater than 86400 seconds rejected."),
+        (14, "400 d", "Historical data requests for durations longer than 365 days must be made in years."),
+        (15, "60 W", "Historical data request for durations longer than 52 weeks must be made in years."),
+        (16, "24 m", "Historical data request for durations longer than 12 months must be made in years."),
+        (17, "1 q", "When specifying a unit, historical data request duration format is "
+                    "integer{SPACE}unit (S|D|W|M|Y)."),
+    ]
+    for req_id, duration, reason in cases:
+        c.req_historical_data(
+            req_id, _spy(), end_date_time="", duration_str=duration,
+            bar_size_setting="1 hour", what_to_show="TRADES", use_rth=1,
+        )
+        c.poll()
+        assert refused(req_id, 321, reason) in w.errors, (duration, w.errors)
+    # A bare number is that many seconds, and is served.
+    c.req_historical_data(
+        18, _spy(), end_date_time="", duration_str="60",
+        bar_size_setting="1 hour", what_to_show="TRADES", use_rth=1,
+    )
+    c.poll()
+    assert not [e for e in w.errors if e[0] == 18], w.errors

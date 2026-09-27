@@ -484,16 +484,22 @@ fn scanner_parameters_on_a_dead_connection_is_reported_not_dropped() {
 /// service's own, and no end follows the refusal.
 #[test]
 fn engine_rejects_an_unknown_bar_size_or_series_with_an_error_alone() {
-    for (bar_size, what_to_show, named) in [("1 minute", "TRADES", "bar size setting is invalid"), ("1 hour", "GRAVITY", "")] {
+    for (duration, bar_size, what_to_show, named) in [
+        ("2 D", "1 minute", "TRADES", "bar size setting is invalid"),
+        ("2 D", "1 hour", "GRAVITY", ""),
+        ("1 q", "1 hour", "TRADES", "duration format is integer{SPACE}unit (S|D|W|M|Y)."),
+        ("", "1 hour", "TRADES", "Historical data request duration not specified."),
+        ("90000 S", "1 hour", "TRADES", "Historical data request for greater than 86400 seconds rejected."),
+    ] {
         let mut hmds = HmdsState::new();
         let shared = SharedState::new();
         let mut hb = HeartbeatState::new();
         let mut conn: Option<Connection> = None;
 
-        hmds.send_historical_request_ex(9, 756733, "", "2 D", bar_size, what_to_show,
+        hmds.send_historical_request_ex(9, 756733, "", duration, bar_size, what_to_show,
             true, false, false, "SPY", "STK", "SMART", &mut conn, &mut hb, &shared);
 
-        assert!(hmds.pending_historical.is_empty(), "{bar_size} {what_to_show}: a refused request does not go pending");
+        assert!(hmds.pending_historical.is_empty(), "{duration} {bar_size} {what_to_show}: a refused request does not go pending");
         let errors = shared.reference.drain_historical_errors();
         assert_eq!(errors.len(), 1);
         assert_eq!(
@@ -501,7 +507,7 @@ fn engine_rejects_an_unknown_bar_size_or_series_with_an_error_alone() {
             "the request is malformed, not a difficulty the service had with one it answered",
         );
         assert!(errors[0].2.contains(named), "got: {}", errors[0].2);
-        assert!(shared.reference.drain_historical_data().is_empty(), "{bar_size} {what_to_show}: and no end follows it");
+        assert!(shared.reference.drain_historical_data().is_empty(), "{duration} {bar_size} {what_to_show}: and no end follows it");
     }
 }
 

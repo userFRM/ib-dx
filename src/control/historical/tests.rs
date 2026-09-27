@@ -1014,12 +1014,13 @@ fn a_bar_payload_cut_short_is_not_decoded() {
     }
 }
 mod duration_spelling_tests {
-    use super::super::normalize_duration;
+    use super::super::{normalize_duration, validate_duration};
 
     /// The spelling each unit is taken in, measured against a live session in
     /// both cases. Getting one wrong is refused outright — "Invalid time
     /// length" — rather than corrected, so a caller asking for seconds or weeks
-    /// got nothing while the same span in days was served.
+    /// got nothing while the same span in days was served. And a bare number
+    /// is a number of seconds, as a gateway reads it.
     #[test]
     fn each_unit_is_spelled_the_way_the_venue_takes_it() {
         for (asked, sent) in [
@@ -1028,17 +1029,84 @@ mod duration_spelling_tests {
             ("2 W", "2 W"), ("2 w", "2 W"),
             ("1 M", "1 m"), ("1 m", "1 m"),
             ("1 Y", "1 y"), ("1 y", "1 y"),
+            ("60", "60 S"),
         ] {
             assert_eq!(normalize_duration(asked), sent, "asked for {asked}");
         }
     }
 
-    /// A unit this venue does not name is the venue's to refuse, not this
-    /// client's to swallow.
+    /// The request path takes only the five units, and refuses what is not
+    /// one of them before the venue is asked; a path of its own that sends a
+    /// duration this does not validate still passes it through, because
+    /// refusing it there would hide the venue's answer about what it accepts.
     #[test]
     fn an_unknown_unit_reaches_the_venue_unchanged() {
         assert_eq!(normalize_duration("5 Q"), "5 Q");
         assert_eq!(normalize_duration(""), "");
+        assert!(validate_duration("5 Q").is_err());
+    }
+
+    /// What a gateway refuses of a duration before it asks the venue, in its
+    /// words: nothing stated, a shape that is not an integer, a space and one
+    /// of the five units, and a count outside its unit's range.
+    #[test]
+    fn a_duration_a_gateway_refuses_is_refused_in_its_words() {
+        const FORMAT: &str = "When specifying a unit, historical data request duration format is \
+                              integer{SPACE}unit (S|D|W|M|Y).";
+        const INVALID: &str = "Historical data requested duration is invalid.";
+        for (asked, why) in [
+            ("", "Historical data request duration not specified."),
+            // The count and the seconds' own floor.
+            ("0 d", INVALID),
+            ("10 S", INVALID),
+            ("29 s", INVALID),
+            ("0", INVALID),
+            // Each unit's ceiling.
+            ("90000 S", "Historical data request for greater than 86400 seconds rejected."),
+            ("86401 S", "Historical data request for greater than 86400 seconds rejected."),
+            ("400 d", "Historical data requests for durations longer than 365 days must be made in years."),
+            ("366 d", "Historical data requests for durations longer than 365 days must be made in years."),
+            ("60 W", "Historical data request for durations longer than 52 weeks must be made in years."),
+            ("53 W", "Historical data request for durations longer than 52 weeks must be made in years."),
+            ("24 m", "Historical data request for durations longer than 12 months must be made in years."),
+            ("13 m", "Historical data request for durations longer than 12 months must be made in years."),
+            // A unit outside the five is a miss of the shape, whatever the
+            // venue would once have been asked to make of it.
+            ("1 q", FORMAT),
+            ("1 h", FORMAT),
+            ("60 min", FORMAT),
+            ("1 S ", FORMAT),
+            ("S", FORMAT),
+            ("1  S", FORMAT),
+            ("1.5 S", FORMAT),
+            ("-1 S", FORMAT),
+            ("1 sec", FORMAT),
+            // The shape is the gateway's whole-string match: a space short,
+            // a space over, a letter in the count or nothing but a space is
+            // a miss of it, not a length.
+            ("60S", FORMAT),
+            ("1x5 S", FORMAT),
+            (" ", FORMAT),
+            // A count past the width a gateway reads it in is refused, not
+            // read around.
+            ("99999999999 S", INVALID),
+        ] {
+            assert_eq!(validate_duration(asked).unwrap_err(), why, "asked for {asked:?}");
+        }
+    }
+
+    /// What a gateway takes: the folded shape, at the edges of every range.
+    #[test]
+    fn a_duration_a_gateway_takes_is_taken() {
+        for asked in [
+            "60", "30 S", "30 s", "86400 S",
+            "1 d", "1 D", "365 d",
+            "1 W", "52 w",
+            "1 m", "1 M", "12 m",
+            "1 y", "1 Y", "100 y",
+        ] {
+            validate_duration(asked).unwrap_or_else(|why| panic!("{asked:?}: {why}"));
+        }
     }
 }
 mod tick_data_type_tests {

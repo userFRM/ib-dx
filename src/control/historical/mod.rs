@@ -503,37 +503,99 @@ pub struct HistoricalResponse {
     pub is_complete: bool,
 }
 
-/// Build the XML query for a historical bar data request.
-/// The spelling of a duration unit this venue accepts.
+/// The duration a query carries, spelled the way a gateway spells it.
 ///
-/// It is not one case or the other: seconds and weeks are taken uppercase,
-/// days, months and years lowercase, and the wrong case is refused outright
+/// A bare number is a number of seconds, and a gateway appends the unit
+/// before it sends: asked unit-less, the venue was handed a length it read
+/// as it pleased. The unit's case is then folded to the spelling the venue
+/// takes — seconds and weeks uppercase, days, months and years lowercase —
+/// which is not one case or the other: the wrong case is refused outright
 /// with "Invalid time length" rather than corrected. Measured against a live
-/// session, every unit, both cases: `S` and `W` are taken and `s`/`w` refused;
-/// `d`, `m`, `y` are taken and `D`/`M`/`Y` refused.
+/// session, every unit, both cases.
 ///
-/// The duration had been lowercased whole, which is right for three of the five
-/// and silently breaks the other two: a caller asking for seconds or weeks was
-/// refused, while the same span asked for in days was served. Callers state the
-/// unit however the reference client documents it, so it is normalised here.
+/// Anything else passes through as it stands. On the bar path nothing else
+/// reaches here — [`validate_duration`] refuses it where the request is
+/// taken — and where a path of its own sends a duration this does not
+/// validate, refusing it here would hide the venue's answer about what it
+/// accepts.
 pub fn normalize_duration(duration: &str) -> String {
-    let trimmed = duration.trim();
-    let Some(unit) = trimmed.chars().last() else {
-        return trimmed.to_string();
+    fold_duration(duration.trim())
+}
+
+/// What a gateway does to the duration text before it reads it: a bare
+/// number becomes that many seconds, and each unit is folded to the case
+/// the venue takes. No trimming — the gateway reads the text as it stands.
+fn fold_duration(duration: &str) -> String {
+    if !duration.is_empty() && duration.bytes().all(|b| b.is_ascii_digit()) {
+        return format!("{duration} S");
+    }
+    duration
+        .chars()
+        .map(|c| match c {
+            's' => 'S',
+            'D' => 'd',
+            'w' => 'W',
+            'M' => 'm',
+            'Y' => 'y',
+            other => other,
+        })
+        .collect()
+}
+
+/// What a request's duration has to state to be asked, refused in a gateway's
+/// own words where it does not.
+///
+/// Taken where the request is taken, before the venue is asked: an empty
+/// duration, one that is not an integer, a space and a unit of seconds, days,
+/// weeks, months or years, and one whose count is outside the range a gateway
+/// enforces on its unit — seconds from thirty to a day, a year of days, two
+/// score of weeks, twelve months — are each refused there, and a bare number
+/// is read as the seconds it is. A unit outside the five is a miss of the
+/// format rather than a length the venue is asked about: a minute, an hour
+/// and a quarter were once folded into the query and answered as whatever
+/// the venue made of them.
+pub fn validate_duration(duration: &str) -> Result<(), String> {
+    const FORMAT: &str = "When specifying a unit, historical data request duration format is \
+                          integer{SPACE}unit (S|D|W|M|Y).";
+    if duration.is_empty() {
+        return Err("Historical data request duration not specified.".to_string());
+    }
+    let folded = fold_duration(duration);
+    // An integer, one space and one unit — the shape a gateway matches the
+    // folded duration against, whole.
+    let bytes = folded.as_bytes();
+    let shaped = bytes.len() >= 3
+        && "dSWmy".contains(bytes[bytes.len() - 1] as char)
+        && bytes[bytes.len() - 2] == b' '
+        && bytes[..bytes.len() - 2].iter().all(|b| b.is_ascii_digit());
+    if !shaped {
+        return Err(FORMAT.to_string());
+    }
+    // A count past what the width a gateway reads it in carries is one it
+    // refuses rather than reads around.
+    let Ok(count) = folded[..folded.len() - 2].parse::<i32>() else {
+        return Err("Historical data requested duration is invalid.".to_string());
     };
-    let spelled = match unit {
-        'S' | 's' => 'S',
-        'D' | 'd' => 'd',
-        'W' | 'w' => 'W',
-        'M' | 'm' => 'm',
-        'Y' | 'y' => 'y',
-        // Not a unit this venue names. Passed through, because refusing it here
-        // would hide the venue's answer about what it accepts.
-        other => other,
+    let unit = bytes[bytes.len() - 1] as char;
+    if count < 1 || (unit == 'S' && count < 30) {
+        return Err("Historical data requested duration is invalid.".to_string());
+    }
+    let why = match (unit, count) {
+        ('S', count) if count > 86_400 => {
+            "Historical data request for greater than 86400 seconds rejected."
+        }
+        ('d', count) if count > 365 => {
+            "Historical data requests for durations longer than 365 days must be made in years."
+        }
+        ('W', count) if count > 52 => {
+            "Historical data request for durations longer than 52 weeks must be made in years."
+        }
+        ('m', count) if count > 12 => {
+            "Historical data request for durations longer than 12 months must be made in years."
+        }
+        _ => return Ok(()),
     };
-    let mut out: String = trimmed[..trimmed.len() - unit.len_utf8()].to_string();
-    out.push(spelled);
-    out
+    Err(why.to_string())
 }
 
 /// Build the query the venue reads, as the XML it expects.
@@ -741,10 +803,10 @@ impl Stretch {
 const NO_LISTING: [&str; 3] = ["BASKET", "VALUE", "CORPACT"];
 
 /// The units a time length is stated in, in the order a gateway tries them on
-/// the end of the length, and how long each is.
-const LENGTH_UNITS: [(&str, i64); 8] = [
-    ("S", 1_000), ("min", 60_000), ("h", 3_600_000), ("d", 86_400_000),
-    ("W", 604_800_000), ("m", 2_678_400_000), ("q", 8_035_200_000), ("y", 31_536_000_000),
+/// the end of the length, and how long each is. The five a request may state:
+/// the shape a gateway reads the duration against names no others.
+const LENGTH_UNITS: [(&str, i64); 5] = [
+    ("S", 1_000), ("d", 86_400_000), ("W", 604_800_000), ("m", 2_678_400_000), ("y", 31_536_000_000),
 ];
 
 /// A time length read: how many, and of which unit.
@@ -774,11 +836,7 @@ impl BarsWanted {
     /// the request's own unit and rounded up: a day's bars counted in calendar
     /// days, seven for every five.
     pub(crate) fn length(&self) -> String {
-        let (suffix, ms) = match self.unit.0 {
-            "min" | "h" => LENGTH_UNITS[0],
-            "q" => LENGTH_UNITS[5],
-            _ => self.unit,
-        };
+        let (suffix, ms) = self.unit;
         let mut wanted = self.left * self.bar;
         if self.bar == 86_400_000 {
             wanted = wanted * 7 / 5;

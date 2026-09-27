@@ -4288,6 +4288,42 @@ fn req_historical_data_rejects_unknown_bar_size() {
     assert!(rx.try_recv().is_ok(), "and it reaches the engine");
 }
 
+/// What a gateway reads of a request's duration before anything else about
+/// it: a bare number is that many seconds, and a shape, a unit or a count it
+/// does not take is refused in its words, under 321, with nothing sent.
+#[test]
+fn req_historical_data_refuses_a_duration_a_gateway_refuses() {
+    let (client, rx, _shared) = test_client();
+    for (duration, reason) in [
+        ("", "Historical data request duration not specified."),
+        ("10 S", "Historical data requested duration is invalid."),
+        ("90000 S", "Historical data request for greater than 86400 seconds rejected."),
+        ("400 d", "Historical data requests for durations longer than 365 days must be made in years."),
+        ("60 W", "Historical data request for durations longer than 52 weeks must be made in years."),
+        ("24 m", "Historical data request for durations longer than 12 months must be made in years."),
+        (
+            "1 q",
+            "When specifying a unit, historical data request duration format is \
+             integer{SPACE}unit (S|D|W|M|Y).",
+        ),
+    ] {
+        let err = client
+            .try_req_historical_data(5, &spy(), "", duration, "1 hour", "TRADES", true, 1, false)
+            .expect_err(reason);
+        assert_eq!((err.code, err.message.as_str()), (Refusal::VALIDATION, reason), "{duration:?}");
+        assert!(rx.try_recv().is_err(), "nothing was sent for {duration:?}");
+    }
+    // A bare number is that many seconds: the request goes, and the query
+    // states the unit the gateway appends.
+    client
+        .try_req_historical_data(5, &spy(), "", "60", "1 hour", "TRADES", true, 1, false)
+        .expect("a bare number is a number of seconds");
+    match rx.try_recv().expect("the request reaches the engine") {
+        ControlCommand::FetchHistorical { duration, .. } => assert_eq!(duration, "60"),
+        other => panic!("expected FetchHistorical, got {other:?}"),
+    }
+}
+
 #[test]
 fn req_historical_data_rejects_unknown_what_to_show() {
     let (client, rx, _shared) = test_client();

@@ -1503,7 +1503,8 @@ impl HotLoop {
                         || crate::control::historical::what_to_show_is_adjusted(&what_to_show)
                     {
                         crate::client_core::ClientCore::validate_historical_args(
-                            &bar_size, &what_to_show, keep_up_to_date, &end_date_time, &sec_type,
+                            &bar_size, &what_to_show, &duration, keep_up_to_date, &end_date_time,
+                            &sec_type,
                         )
                         .err()
                     } else {

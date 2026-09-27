@@ -6254,17 +6254,23 @@ impl ClientCore {
     /// what_to_show falls back to TRADES. The caller is answered with a
     /// synchronous Err at the call instead of plausible, wrong candles.
     ///
-    /// And what a gateway refuses before it asks the venue, in its words: the
-    /// adjusted series with an end date or with bars longer than a day, and a
-    /// request kept up to date with an end date, on a combination, or on a
-    /// series a gateway keeps no bar current for.
+    /// And what a gateway refuses before it asks the venue, in its words: a
+    /// duration that is not an integer, a space and one of the five units,
+    /// bare or out of its unit's range, the adjusted series with an end date
+    /// or with bars longer than a day, and a request kept up to date with an
+    /// end date, on a combination, or on a series a gateway keeps no bar
+    /// current for.
     pub fn validate_historical_args(
         bar_size: &str,
         what_to_show: &str,
+        duration: &str,
         keep_up_to_date: bool,
         end_date_time: &str,
         sec_type: &str,
     ) -> Result<(), String> {
+        // Read first, as a gateway reads it: the duration is taken before
+        // anything else about the request is looked at.
+        crate::control::historical::validate_duration(duration)?;
         let bs = crate::control::historical::BarSize::from_api_str(bar_size)?;
         // The adjusted series is folded here from the raw trades and the
         // contract's actions. A gateway refuses it with an end date, and with
