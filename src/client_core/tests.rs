@@ -2206,7 +2206,7 @@ fn news_is_asked_for_from_the_providers_the_logon_named() {
         next.set(con_id + 1);
         let _ = core.register_mkt_data(
             &shared, &tx, con_id, con_id, "SPY", "SMART", "STK", "USD", &Default::default(),
-            false, false, tick_list, 0, None, None, false,
+            false, false, false, tick_list, 0, None, None, false,
         );
         let mut named = None;
         while let Ok(cmd) = rx.try_recv() {
@@ -3909,13 +3909,13 @@ fn no_subscription_is_taken_on_a_feed_that_is_over_for_the_session() {
 
     let joining = core.register_mkt_data(
         &shared, &tx, 2, 756733, "SPY", "SMART", "STK", "USD", &Default::default(),
-        false, false, "", 0, None, None, false,
+        false, false, false, "", 0, None, None, false,
     );
     assert!(joining.is_err(), "the joiner is refused: {joining:?}");
 
     let fresh = core.register_mkt_data(
         &shared, &tx, 3, 272093, "MSFT", "SMART", "STK", "USD", &Default::default(),
-        false, false, "", 0, None, None, false,
+        false, false, false, "", 0, None, None, false,
     );
     assert!(fresh.is_err(), "and so is a contract nobody is watching: {fresh:?}");
 }

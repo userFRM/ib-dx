@@ -12331,6 +12331,41 @@ fn a_snapshot_beside_a_generic_list_is_refused() {
     }
 }
 
+/// A combination stating no legs describes nothing: a gateway refuses a quote
+/// request stating the BAG type before it looks anything up, whether or not
+/// the contract states the venue's id for the combination — here a
+/// subscription was taken by the id. Legs stated pass the intake; carrying
+/// them to the venue is the gap the limits page records.
+#[test]
+fn a_bag_quote_naming_no_legs_is_refused() {
+    let (client, rx, _shared) = test_client();
+    for con_id in [0, 28868674] {
+        let combo = Contract {
+            con_id, sec_type: "BAG".into(), exchange: "SMART".into(), ..Default::default()
+        };
+        let why = reported(&client, || client.req_mkt_data(71, &combo, "", false, false))
+            .expect_err("a combination stating no legs");
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (321, "Error validating request:-'' : cause - Security type 'BAG' requires combo leg details."),
+            "con_id {con_id}",
+        );
+        assert!(next_command(&rx).is_none(), "something was sent for con_id {con_id}");
+        assert!(client.core.req_to_instrument.lock().unwrap().is_empty(), "and kept a subscription");
+    }
+    let leg = crate::types::model::ComboLeg {
+        con_id: 756733, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
+        ..Default::default()
+    };
+    let stated = Contract {
+        con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
+        combo_legs: vec![leg], ..Default::default()
+    };
+    reported(&client, || client.req_mkt_data(72, &stated, "", false, false))
+        .expect("a combination stating legs is taken");
+    assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
+}
+
 #[test]
 fn order_fields_are_checked_before_contract_expiry() {
     let (client, rx, _) = test_client();

@@ -3055,6 +3055,47 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// A combination stating no legs is refused on this surface as on the
+    /// Rust one, with the gateway's reason and nothing sent; one stating
+    /// legs is taken, the legs read off the caller's contract at the intake.
+    #[test]
+    fn a_bag_quote_naming_no_legs_is_refused_here_too() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, w) = wired_client(py);
+            let bare = Py::new(py, Contract {
+                con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
+                ..Default::default()
+            }).unwrap();
+            client.call_method1(py, "req_mkt_data", (1i64, &bare, "", false, false)).unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for a combination stating no legs");
+            client.call_method0(py, "poll").unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            let said: Vec<(i64, i64, String)> = py
+                .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
+                .unwrap().extract().unwrap();
+            let wire = "Error validating request:-'' : cause - Security type 'BAG' requires combo leg details.";
+            assert!(said.contains(&(1, 321, wire.to_string())), "{said:?}");
+
+            let leg = Py::new(py, crate::python::compat::class_contracts::ComboLeg {
+                con_id: 756733, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
+                ..Default::default()
+            }).unwrap();
+            let stated = Py::new(py, Contract {
+                con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
+                combo_legs: crate::python::compat::class_contracts::ListField::of(py, [leg])
+                    .expect("one leg"),
+                ..Default::default()
+            }).unwrap();
+            client.call_method1(py, "req_mkt_data", (2i64, &stated, "", false, false)).unwrap();
+            assert!(
+                matches!(rx.try_recv(), Ok(ControlCommand::Subscribe { .. })),
+                "a combination stating legs is taken",
+            );
+        });
+    }
+
     /// A number naming no market-data type is refused under -1 on this
     /// surface as on the Rust one, in the wire form a gateway wraps a
     /// refusal it raised itself in, and the feeds stay as they were.

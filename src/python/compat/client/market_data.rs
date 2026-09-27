@@ -926,7 +926,7 @@ impl EClient {
         if let Err(why) = self.core.register_mkt_data(
             &shared, &tx, req_id,
             contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type,
-            &contract.currency, &filters,
+            &contract.currency, &filters, contract.combo_legs.bound(py).len() > 0,
             snapshot, regulatory_snapshot, generic_tick_list, mode_9887,
             spread_scan, calculation, delayed_allowed,
         ) {

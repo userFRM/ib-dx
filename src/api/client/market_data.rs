@@ -236,7 +236,7 @@ impl EClient {
         self.core.register_mkt_data(
             &self.shared, &self.control_tx, req_id,
             contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type,
-            &contract.currency, &contract.lookup_filters(),
+            &contract.currency, &contract.lookup_filters(), !contract.combo_legs.is_empty(),
             snapshot, regulatory_snapshot, generic_tick_list, mode_9887,
             spread_scan, calculation, delayed_allowed,
         )

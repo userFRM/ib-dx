@@ -683,6 +683,21 @@ answers them:
 - Prices on later legs alone are read and not sent, as a gateway sends none;
   the combination goes at its own limit.
 
+## The legs a combination's quote states
+
+A quote request stating the `BAG` type and no legs is refused as a gateway
+refuses it, under 321, *Security type 'BAG' requires combo leg details.*,
+whether or not the contract states the venue's id for the combination.
+
+Legs stated on the request are dropped at the API boundary: the lookup
+behind a subscription carries no legs, so nothing downstream can state them,
+and a gateway carries them to the venue — each leg's contract, its ratio, its
+side and its venue — naming a combination the venue has not numbered. Here
+the request is answered only where the venue has numbered the combination:
+the subscription goes out under the id the contract states. A combination
+the venue has not numbered cannot be described, and what the venue is asked
+for is the id alone.
+
 ## A request's option list
 
 Every request that carries a free-form option list has it checked the way an

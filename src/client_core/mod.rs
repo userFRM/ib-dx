@@ -2379,6 +2379,7 @@ impl ClientCore {
         sec_type: &str,
         currency: &str,
         filters: &crate::types::SecDefFilters,
+        stated_legs: bool,
         snapshot: bool,
         regulatory_snapshot: bool,
         generic_tick_list: &str,
@@ -2397,6 +2398,15 @@ impl ClientCore {
             return Err(Refusal::validation("Please enter exchange"));
         }
         Self::validate_contract_expiry(&filters.last_trade_date_or_contract_month)?;
+        // A combination stating no legs describes nothing, and a gateway
+        // refuses the request before it looks anything up — whether or not
+        // the contract states the venue's id for the combination, as this
+        // reads the type the caller stated, before any lookup.
+        if sec_type.eq_ignore_ascii_case("BAG") && !stated_legs {
+            return Err(Refusal::validation(
+                "Security type 'BAG' requires combo leg details.",
+            ));
+        }
         // News subscription if generic_tick_list names 292, bare or with the
         // providers to ask. The whole entry, not its last three characters:
         // "1292" is not 292, and matching on a suffix subscribes to news the
