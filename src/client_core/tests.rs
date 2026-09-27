@@ -2623,10 +2623,10 @@ fn a_quote_a_program_may_not_see_is_kept_from_its_option_computations() {
             req_id: 1, slot, generation: 1, con_id: 0, series: Vec::new(),
             snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
             unsent: 0,
-        }).is_none());
+        }, &crate::engine::hot_loop::ccp::order_message::display_name).is_none());
         core.option_tick_owed(&shared, 1, &OptionTick {
             instrument: slot, kind: Model, figures, price_based: true,
-        })
+        }, &crate::engine::hot_loop::ccp::order_message::display_name)
     }
     // The option's own quote acknowledged on both sides; the underlying's
     // listing as the case states it.
@@ -2697,7 +2697,7 @@ fn a_quote_access_decision_is_made_once() {
             req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
             snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
             unsent: 0,
-        }).is_none());
+        }, &crate::engine::hot_loop::ccp::order_message::display_name).is_none());
     };
 
     // Nothing acknowledged on the underlying's listing yet: held, nothing
@@ -2711,7 +2711,7 @@ fn a_quote_access_decision_is_made_once() {
     register(&core, &shared);
     let owed = |core: &ClientCore, shared: &SharedState, figures| core.option_tick_owed(shared, 1, &OptionTick {
         instrument: 1, kind: Model, figures, price_based: true,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert_eq!(owed(&core, &shared, whole).to, vec![(1, [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, unstated])]);
     shared.market.note_listing_subscribed(101, 201, "BEST");
     shared.market.note_listing_access(101, false, QuoteAccess::Allowed);
@@ -2760,10 +2760,10 @@ fn a_side_a_program_may_not_see_is_kept_from_its_own_computation() {
         req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
         unsent: 0,
-    }).is_none());
+    }, &crate::engine::hot_loop::ccp::order_message::display_name).is_none());
     let owed = |kind, figures| core.option_tick_owed(&shared, 1, &OptionTick {
         instrument: 1, kind, figures, price_based: true,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
 
     // The bid's and the ask's own price is held; the last's, acknowledged as
     // allowed, goes whole; the model's figures are gated by the underlying
@@ -2800,10 +2800,10 @@ fn a_frozen_refusal_names_the_frozen_feed_and_a_delayed_one_is_gated_by_nothing(
         req_id: 1, slot: 1, generation: 1, con_id: 0, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: true,
         unsent: 0,
-    }).is_none());
+    }, &crate::engine::hot_loop::ccp::order_message::display_name).is_none());
     let owed = core.option_tick_owed(&shared, 1, &OptionTick {
         instrument: 1, kind: Model, figures: whole, price_based: true,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert_eq!(
         owed.refusals,
         vec![(1, 10091, format!("{requires}{delayed}UND NASDAQ/FROZEN_TOP/BID_ASK"))],
@@ -2821,10 +2821,10 @@ fn a_frozen_refusal_names_the_frozen_feed_and_a_delayed_one_is_gated_by_nothing(
         req_id: 1, slot: 2, generation: 1, con_id: 0, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(1), marked: true,
         unsent: 0,
-    }).is_none());
+    }, &crate::engine::hot_loop::ccp::order_message::display_name).is_none());
     let owed = core.option_tick_owed(&shared, 1, &OptionTick {
         instrument: 2, kind: Model, figures: whole, price_based: true,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert_eq!(owed.to, vec![(1, whole)], "a delayed feed is gated by nothing");
     assert!(owed.refusals.is_empty(), "{:?}", owed.refusals);
 }
@@ -2863,12 +2863,12 @@ fn an_options_snapshot_is_sent_each_computation_once_and_whole() {
         asked_at: std::time::Instant::now(),
         req_id, slot, generation: 1, con_id: 0, series: Vec::new(),
         snapshot, one_shot: false, data_type: data_type_for_mode(0), marked: true, unsent: 0,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     let unstated = f64::MAX;
     let whole = [0.2, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
     let partial = [0.2, 0.55, 5.0, unstated, 0.02, 0.3, -0.1, 765.0];
     let owed = |kind: OptionTickKind, figures: [f64; 8], slot| {
-        let owed = core.option_tick_owed(&shared, 1, &OptionTick { instrument: slot, kind, figures, price_based: true });
+        let owed = core.option_tick_owed(&shared, 1, &OptionTick { instrument: slot, kind, figures, price_based: true }, &crate::engine::hot_loop::ccp::order_message::display_name);
         (owed.tick_type, owed.to)
     };
 
@@ -3740,7 +3740,7 @@ fn a_forgotten_baseline_states_the_quote_as_it_stands() {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 756733, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert_eq!(core.followers_of(iid), [2], "the same contract, so it followed rather than took one");
     assert!(
         core.poll_instrument_ticks(&shared, iid, 2).delivered,
@@ -3777,7 +3777,7 @@ fn registering_a_joiner_leaves_its_refusal_to_the_engine() {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 756733, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert!(shared.market.drain_subscription_failures_direct().is_empty());
     assert_eq!(shared.market.failure_for_follower(iid).map(|refusal| refusal.message).as_deref(), Some("no entitlement"));
 
@@ -3992,7 +3992,7 @@ fn registering_a_named_joiner_resets_its_baseline_without_pushing_records() {
         asked_at: std::time::Instant::now(),
         req_id: 2, slot: iid, generation: 2, con_id: 0, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
 
     assert!(shared.market.drain_tick_req_params_direct().is_empty());
     assert!(shared.market.drain_subscription_failures_direct().is_empty());
@@ -4013,7 +4013,7 @@ fn followers_keep_the_subscriptions_market_data_type() {
         asked_at: std::time::Instant::now(),
         req_id, slot: 0, generation: req_id as u64, con_id: 756733, series: Vec::new(),
         snapshot: false, one_shot: false, data_type: data_type_for_mode(core.subscription_mode()), marked: false, unsent: 0,
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
 
     core.set_market_data_type(MDT_DELAYED);
     subscribe(1);
@@ -4860,7 +4860,7 @@ fn a_snapshot_keeps_its_deadline_while_its_registration_waits_to_be_read() {
         req_id: 5, slot: 0, generation: 1, con_id: 756733, series: Vec::new(),
         snapshot: true, one_shot: false, data_type: data_type_for_mode(0), marked: false, unsent: 0,
         asked_at: std::time::Instant::now() - std::time::Duration::from_secs(12),
-    });
+    }, &crate::engine::hot_loop::ccp::order_message::display_name);
     assert!(core.check_snapshot_done(5).is_some(), "a late read does not restart the wait");
 }
 

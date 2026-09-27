@@ -423,7 +423,7 @@ impl EClient {
             // An option computation to every request watching the option
             // that is owed it, with the figures it is owed.
             Record::OptionTick((generation, tick)) => {
-                let owed = self.core.option_tick_owed(&self.shared, generation, &tick);
+                let owed = self.core.option_tick_owed(&self.shared, generation, &tick, &crate::engine::hot_loop::ccp::order_message::display_name);
                 deliver_option_ticks(owed, tick.price_based, wrapper);
             }
             // What the venue said went wrong. It attributes these to no
@@ -438,7 +438,9 @@ impl EClient {
             // And one joining an option already modelled is sent the model as
             // it stands, to it alone.
             Record::MarketDataTaken(taken) => {
-                if let Some((owed, price_based)) = self.core.note_mkt_data_taken(&self.shared, &taken) {
+                if let Some((owed, price_based)) =
+                    self.core.note_mkt_data_taken(&self.shared, &taken, &crate::engine::hot_loop::ccp::order_message::display_name)
+                {
                     deliver_option_ticks(owed, price_based, wrapper);
                 }
             }

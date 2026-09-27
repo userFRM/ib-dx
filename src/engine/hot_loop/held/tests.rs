@@ -1542,7 +1542,9 @@ fn a_snapshot_is_registered_after_its_option_is_named() {
             .expect("the named option is registered");
         assert!(taken.marked, "the venue's option type sets the snapshot mask");
         let core = crate::client_core::ClientCore::new();
-        core.note_mkt_data_taken(&shared, &taken);
+        core.note_mkt_data_taken(
+            &shared, &taken, &crate::engine::hot_loop::ccp::order_message::display_name,
+        );
         for tick in [1, 2, 4, 9, 14] {
             core.note_snapshot_tick(17, tick);
         }

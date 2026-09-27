@@ -2530,6 +2530,30 @@ assert w.calls == [('tickReqParams', 7)], w.calls
         });
     }
 
+    /// Wire a slot as an option a program may see whole, as the api-side
+    /// tests wire one: the venue has answered its definition and its
+    /// underlying's, and every live quote — the option's own and the watch on
+    /// the underlying's listing — is acknowledged with nothing restricting it.
+    fn wire_the_quote_access(shared: &crate::bridge::SharedState, slot: u32, con_id: u32) {
+        use crate::bridge::QuoteAccess;
+        use crate::control::contracts::{ContractDefinition, SecurityType};
+        let under = con_id + 1;
+        shared.reference.cache_contract_definition(ContractDefinition {
+            con_id, under_con_id: under, sec_type: SecurityType::Option,
+            exchange: "SMART".into(), ..Default::default()
+        });
+        shared.reference.cache_contract_definition(ContractDefinition {
+            con_id: under, symbol: "UND".into(), sec_type: SecurityType::Stock,
+            exchange: "SMART".into(), ..Default::default()
+        });
+        shared.market.note_listing_subscribed(slot, i64::from(con_id), "SMART");
+        shared.market.note_listing_subscribed(slot + 1000, i64::from(under), "BEST");
+        for id in [slot, slot + 1000] {
+            shared.market.note_listing_access(id, false, QuoteAccess::Allowed);
+            shared.market.note_listing_access(id, true, QuoteAccess::Allowed);
+        }
+    }
+
     #[test]
     fn option_callbacks_receive_the_reference_decoders_none_values() {
         Python::initialize();
@@ -2537,6 +2561,7 @@ assert w.calls == [('tickReqParams', 7)], w.calls
             for answers in [None, Some(7)] {
                 let (client, _rx, shared, w) = wired_client(py);
                 client.get().core.instrument_to_req.lock().unwrap().insert(0, 7);
+                wire_the_quote_access(&shared, 0, 1);
                 let cases = [
                     (f64::MAX, [None; 8]),
                     (f64::NAN, [None; 8]),
@@ -2600,6 +2625,7 @@ if calls:
             engine.pump();
             client.get().dispatch_once(py, &shared).unwrap();
             let slot = client.get().core.watching(1).expect("the engine took it");
+            wire_the_quote_access(&shared, slot, 756733);
             let publish = || {
                 shared.market.push_tick_news(TickNews {
                     instrument: slot, timestamp: 0, provider_code: "BRFG".into(),

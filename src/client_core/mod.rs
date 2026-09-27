@@ -431,6 +431,7 @@ impl ClientCore {
     /// (`check_snapshot_done`).
     pub fn option_tick_owed(
         &self, shared: &SharedState, generation: u64, tick: &crate::bridge::OptionTick,
+        named: &ContractNamer,
     ) -> OwedOptionTicks {
         use crate::bridge::OptionTickKind::Model;
         let delayed = self.feed_is_delayed(tick.instrument);
@@ -458,7 +459,7 @@ impl ClientCore {
             let snapshot = snapshots.get_mut(&req_id);
             let mut figures = tick.figures;
             if !delayed {
-                let shown = self.quote_shown(shared, req_id, tick, feed, &mut refusals);
+                let shown = self.quote_shown(shared, req_id, tick, feed, &mut refusals, named);
                 if !shown.underlying {
                     figures[7] = f64::MAX;
                 }
@@ -524,13 +525,14 @@ impl ClientCore {
         tick: &crate::bridge::OptionTick,
         feed: i32,
         refusals: &mut Vec<(i64, i32, String)>,
+        named: &ContractNamer,
     ) -> QuoteShown {
         use crate::bridge::OptionTickKind::{Ask, Bid, Last, Model};
         let option = shared.market.listing_quote(tick.instrument);
         let mut shown = self.quotes_shown.lock().unwrap();
         let decided = shown.entry(req_id).or_default();
         if decided.underlying.is_none() {
-            decided.underlying = self.underlying_decided(shared, req_id, option.as_ref(), feed, refusals);
+            decided.underlying = self.underlying_decided(shared, req_id, option.as_ref(), feed, refusals, named);
         }
         let which = match tick.kind {
             Bid | Ask => Some(0),
@@ -563,6 +565,7 @@ impl ClientCore {
         option: Option<&crate::bridge::ListingQuote>,
         feed: i32,
         refusals: &mut Vec<(i64, i32, String)>,
+        named: &ContractNamer,
     ) -> Option<bool> {
         use crate::bridge::QuoteAccess;
         let definition = option
@@ -590,9 +593,7 @@ impl ClientCore {
                     _ => (last, "LAST"),
                 };
                 let rule = held.market_rule_id.and_then(|rule| shared.reference.market_rule(rule as i32));
-                if let Some(named) =
-                    crate::engine::hot_loop::ccp::order_message::display_name(held, rule.as_ref(), shared)
-                {
+                if let Some(named) = named(held, rule.as_ref(), shared) {
                     let (code, said) = if access == QuoteAccess::RequiresSubscription {
                         (10091, UNDERLYING_REQUIRES_SUBSCRIPTION)
                     } else {
@@ -636,6 +637,15 @@ pub(crate) struct QuotesShown {
     underlying: Option<bool>,
     option: [Option<bool>; 2],
 }
+
+/// The display name a refusal naming a quote a program may not see carries,
+/// named by the surface that holds the formatter: the contract, and the
+/// market rule its figures read against, where one is known.
+pub type ContractNamer = dyn Fn(
+    &crate::control::contracts::ContractDefinition,
+    Option<&crate::control::contracts::MarketRule>,
+    &SharedState,
+) -> Option<String>;
 
 /// An option computation as it goes out: its number, each request it goes to
 /// with the figures that request is sent, and what the requests are told of
@@ -2473,6 +2483,7 @@ impl ClientCore {
     /// under, for the caller to send that request alone.
     pub fn note_mkt_data_taken(
         &self, shared: &SharedState, taken: &crate::bridge::MarketDataTaken,
+        named: &ContractNamer,
     ) -> Option<(OwedOptionTicks, bool)> {
         let crate::bridge::MarketDataTaken {
             req_id, slot, generation, con_id, ref series, snapshot, asked_at, one_shot, data_type, marked,
@@ -2511,7 +2522,7 @@ impl ClientCore {
             let delayed = self.feed_is_delayed(slot);
             let mut refusals = Vec::new();
             let mut figures = tick.figures;
-            if !delayed && !self.quote_shown(shared, req_id, &tick, self.feed_of(slot), &mut refusals).underlying {
+            if !delayed && !self.quote_shown(shared, req_id, &tick, self.feed_of(slot), &mut refusals, named).underlying {
                 figures[7] = f64::MAX;
             }
             let stated = figures.iter().any(|figure| *figure != f64::MAX);
