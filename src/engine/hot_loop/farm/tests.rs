@@ -1439,16 +1439,27 @@ mod news_tests {
         // The model's clock, read once a minute from when it started.
         let clock = ms("2026-09-25T13:37:00Z");
         let midnight_today = ms("2026-09-25T04:00:00Z");
-        // One payment going ex three days from the clock's day, inside the
-        // option's life.
+        // Two payments going ex three and four days from the clock's day,
+        // inside the option's life. An index states them cumulatively: the
+        // second's amount is what both come to, and its model reads it so.
         let ex_date = ms("2026-09-28T04:00:00Z");
-        let dividends = [crate::options::Dividend {
-            ex_day: 3,
-            millis_to_ex_date: ex_date - clock,
-            millis_from_today: ex_date - midnight_today,
-            days_to_end_of_ex_date: 3,
-            amount: 1.8,
-        }];
+        let ex_date2 = ms("2026-09-29T04:00:00Z");
+        let dividends = [
+            crate::options::Dividend {
+                ex_day: 3,
+                millis_to_ex_date: ex_date - clock,
+                millis_from_today: ex_date - midnight_today,
+                days_to_end_of_ex_date: 3,
+                amount: 1.8,
+            },
+            crate::options::Dividend {
+                ex_day: 4,
+                millis_to_ex_date: ex_date2 - clock,
+                millis_from_today: ex_date2 - midnight_today,
+                days_to_end_of_ex_date: 4,
+                amount: 2.0,
+            },
+        ];
         let per_day = |attributes: i32, per_day: f64| {
             let mut payload = attributes.to_be_bytes().to_vec();
             payload.extend_from_slice(&per_day.to_be_bytes());
@@ -1490,12 +1501,14 @@ mod news_tests {
             date_only: bool,
             frozen: bool,
             watched: bool,
+            /// Whether the venue answered the underlying's schedule.
+            seeded: bool,
         }
         let an_option = Row {
             what: "an option", sec_type: "OPT", per_contract: 1.0, under: "STK",
             last_trade_time: "1615", real_expiration: "", liquid: &[], chain: ("SPY", 5),
             rates: Rates::AtStart, expiry: "2026-10-01T16:15:00-04:00", date_only: false,
-            frozen: false, watched: false,
+            frozen: false, watched: false, seeded: true,
         };
         let rows = [
             an_option,
@@ -1534,6 +1547,18 @@ mod news_tests {
                 what: "the underlying's own quote watched: its price, not the chain parameters'",
                 watched: true, ..an_option
             },
+            Row {
+                what: "an option on a future, from the future's own record",
+                under: "FUT", watched: true, ..an_option
+            },
+            Row {
+                what: "an option on a future whose record holds no price: no side at all, and no chain parameters' price for one",
+                under: "FUT", watched: false, ..an_option
+            },
+            Row {
+                what: "an option on a future no schedule was answered for: the value it states is nought, once the rate is in hand",
+                under: "FUT", watched: true, seeded: false, ..an_option
+            },
         ];
         for (at_row, row) in rows.into_iter().enumerate() {
             let what = row.what;
@@ -1551,7 +1576,25 @@ mod news_tests {
                 &[point("2026-09-27T04:00:00Z", 4.0), point("2026-09-29T04:00:00Z", 4.6)],
                 crate::options::rate_term(years),
             );
-            let pv = 1.8 * (-rate * (3.0 / 365.0)).exp();
+            // The value the computation states: the schedule's, at the rate —
+            // nought for a future nothing was answered for, once the rate is
+            // in hand. What the model discounts is nought for any option on a
+            // future, which grows at the rate as its yield instead.
+            let pv = if row.under == "FUT" && !row.seeded {
+                0.0
+            } else if row.under == "IND" {
+                // An index's cumulative amounts: the last one inside the
+                // option's life, discounted — nothing before today to take
+                // off it.
+                2.0 * (-rate * (4.0 / 365.0)).exp()
+            } else {
+                1.8 * (-rate * (3.0 / 365.0)).exp() + 2.0 * (-rate * (4.0 / 365.0)).exp()
+            };
+            let on_a_future = row.under == "FUT";
+            let (model_pv, yield_rate): (f64, f64) =
+                if on_a_future { (0.0, rate) } else { (pv, 0.0) };
+            let no_dividends: &[crate::options::Dividend] = &[];
+            let model_dividends = if on_a_future { no_dividends } else { &dividends };
             // The chain parameters' price, or the one the watch on the
             // underlying's quote holds.
             let spot = if row.watched { 770.94 } else { 769.45 };
@@ -1567,11 +1610,11 @@ mod news_tests {
                         strike: 769.0,
                         years,
                         rate,
-                        yield_rate: 0.0,
+                        yield_rate,
                         volatility: per_day * 252f64.sqrt(),
-                        dividend_pv: pv,
-                        dividends: &dividends,
-                        index_dividends: false,
+                        dividend_pv: model_pv,
+                        dividends: model_dividends,
+                        index_dividends: row.under == "IND",
                         tax_adjustment: 1.0,
                         forward: f64::NAN,
                         futures_style: false,
@@ -1602,12 +1645,26 @@ mod news_tests {
                 unnamed_fields,
                 ..Default::default()
             });
-            shared.reference.set_dividend_schedule(756733, crate::control::dividends::Schedule {
-                payments: vec![crate::control::dividends::Payment {
-                    ex_date: "20260928".into(), amount: 1.8, ..Default::default()
-                }],
-                ..Default::default()
-            });
+            if row.seeded {
+                shared.reference.set_dividend_schedule(756733, crate::control::dividends::Schedule {
+                    payments: vec![
+                        crate::control::dividends::Payment {
+                            ex_date: "20260928".into(), amount: 1.8, ..Default::default()
+                        },
+                        crate::control::dividends::Payment {
+                            ex_date: "20260929".into(), amount: 2.0, ..Default::default()
+                        },
+                        // A payment the venue marks special: the model's
+                        // schedule skips it, and the value it states is the
+                        // regular ones' alone.
+                        crate::control::dividends::Payment {
+                            ex_date: "20260930".into(), amount: 5.0, special: true,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                });
+            }
             let state_the_rates = || {
                 shared.reference.set_currency_rates(
                     "USD", vec![("20260927".into(), 4.0), ("20260929".into(), 4.6)],
@@ -1680,7 +1737,8 @@ mod news_tests {
             farm.handle_tick_data(&quote, &mut context, &shared, &None);
             farm.publish_option_ticks(at(2), &context, &mut conn, &shared, &mut hb);
             assert!(taken().is_empty(), "{what}: nothing before the option's sessions are in hand");
-            let wanted: &[u32] = if row.under == "STK" { &[700_001] } else { &[] };
+            let wanted: &[u32] =
+                if matches!(row.under, "STK" | "IND" | "FUT") { &[700_001] } else { &[] };
             assert_eq!(farm.schedules_wanted, wanted, "{what}: which are asked for");
 
             shared.reference.note_schedule_key(700_001, "p111959");
@@ -1692,7 +1750,9 @@ mod news_tests {
                 }).collect(),
             });
             farm.publish_option_ticks(at(4), &context, &mut conn, &shared, &mut hb);
-            if row.under != "STK" {
+            // An option on a future is worked from the future's own record:
+            // where the watch holds no price, no side is worked at all.
+            if !matches!(row.under, "STK" | "IND") && !(row.under == "FUT" && row.watched) {
                 assert!(taken().is_empty(), "{what}: not worked out");
                 continue;
             }

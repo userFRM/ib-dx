@@ -3541,6 +3541,35 @@ fn a_schedule_that_comes_late_is_still_filed_against_its_contract() {
     assert_eq!(filed.payments.len(), 1, "{:?}", filed.payments);
 }
 
+/// A currency's own schedule is asked without the specials, and a
+/// contract's with them, as a gateway asks either.
+#[test]
+fn a_currencys_own_schedule_is_asked_without_the_specials() {
+    use std::io::Read;
+    let (conn, mut peer) = Connection::for_test();
+    peer.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+    let mut conn = Some(conn);
+    let mut hb = HeartbeatState::new();
+    let mut ccp = CcpState::new();
+    let shared = SharedState::new();
+    let mut sent = || {
+        let mut buf = [0u8; 8192];
+        let n = peer.read(&mut buf).unwrap_or(0);
+        String::from_utf8_lossy(&buf[..n]).replace('\x01', "|")
+    };
+    let def = |con_id: u32, under: u32, under_sec_type: &str| {
+        crate::control::contracts::ContractDefinition {
+            con_id, under_con_id: under, under_sec_type: under_sec_type.into(),
+            ..Default::default()
+        }
+    };
+    ccp.note_what_it_is_written_on(&def(1, 100, "CASH"), &shared, &mut conn, &mut hb);
+    ccp.note_what_it_is_written_on(&def(2, 200, "STK"), &shared, &mut conn, &mut hb);
+    let asked = sent();
+    assert!(asked.contains("|58=div 100|"), "a currency's schedule names no specials: {asked}");
+    assert!(asked.contains("|58=div incSpecial 200|"), "a contract's does: {asked}");
+}
+
 /// What an option's own model waits on from this connection is asked for
 /// once and filed from the answer: a currency's rates, by the query a
 /// contract's schedule is asked with, and an option's sessions, by the key its

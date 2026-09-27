@@ -183,13 +183,10 @@ On all of them:
   this session, by a contract-details request or by a lookup of this client's
   own. One this session has not been answered is modelled without it: no
   underlying's price, a warrant's price per unit, and no 10 to 12.
-- A gateway sends the underlying's price only once every listing of the
-  underlying it holds is subscribed and the venue has stated the program's
-  access to its quotes, none of it restricted (a restriction is reported to the
-  request as error 10090 or 10091), and a side's price on 10 to 12 only once
-  the venue has stated the program's access to the option's own bid and ask, or
-  last, as allowed. The venue states that access on its acknowledgement of each
-  subscription; it is not read here, and neither price is withheld.
+- A restriction is reported with the offer of delayed data where the venue's
+  refusal of the subscription offers one; the model's own refusal states the
+  offer always, as a gateway's does where delayed data is available for the
+  listing — which, on the feeds this client is served, it is.
 - On a frozen feed a gateway works them from a model it keeps for the frozen
   quote, and what that model states is not established here. Here 13 and 83
   are the live model's, and 10 to 12 (80 to 82) take the frozen quote's sides
@@ -198,12 +195,16 @@ On all of them:
 On 10 to 12 and 80 to 82, and the present value of dividends on every one of
 them:
 
-- Only an option on a share is worked out. An option on an index or on a
-  future is worked from inputs its underlying states another way, which are not
-  carried here: it is sent no 10 to 12, and no dividends' present value. A
-  snapshot of one, as of an option whose definition the venue has not
-  answered, waits for them as a gateway does, and so runs its eleven seconds,
-  where a gateway ends it once its own 10 to 12 are sent.
+- A volatility option in the VIX style, a quanto's or a forex index's yield,
+  and a premium settled futures-style are read by a gateway from reference
+  data it is served; this client is not served them. An option on an index is
+  worked in the index style with no yield, and an option on a future as one
+  whose premium is not settled futures-style — for a volatility option, a
+  quanto, or a future whose premium settles that way, the figures can differ
+  from a gateway's. An option whose definition the venue has not answered is
+  sent no 10 to 12 and no dividends' present value, and a snapshot of one
+  waits for them as a gateway does, and so runs its eleven seconds, where a
+  gateway ends it once its own 10 to 12 are sent.
 - They wait on the option's sessions, for when its time runs out, which this
   client asks for by the key the option's definition names, once for every
   option on the key and again each day, as a gateway asks; on the underlying's

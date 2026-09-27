@@ -157,11 +157,26 @@ pub(super) struct ModelInputs {
     /// The rate at the option's term: not a number before the currency's
     /// rates are in hand.
     rate: f64,
-    /// The present value of the dividends the option's life covers, at that
-    /// rate.
+    /// The present value the computation states: the dividends the
+    /// underlying's own schedule states over the option's life, at that rate.
+    /// For an option on a future, its schedule's — a future pays nothing out,
+    /// and what the computation states is what that schedule says, which is
+    /// nought once the rate is in hand where nothing was answered.
     pv_dividend: f64,
-    /// Each payment the underlying's schedule states: its ex-date, the
-    /// midnight that date begins at on the model's calendar, and its amount.
+    /// The present value the model discounts, and the schedule it walks: both
+    /// empty for an option on a future, which costs nothing to hold and pays
+    /// nothing out, so the model grows it at the rate as its yield instead.
+    model_pv_dividend: f64,
+    /// The yield the model grows the underlying at: the rate for an option on
+    /// a future, nought for anything else whose dividends the schedule states.
+    yield_rate: f64,
+    /// Whether the schedule states an index's cumulative amounts, as an
+    /// index's does.
+    index_dividends: bool,
+    /// Each payment the model's schedule states: its ex-date, the midnight
+    /// that date begins at on the model's calendar, and its amount. Payments
+    /// the venue marks special are not among them, as a gateway's model
+    /// leaves them out.
     payments: Vec<(Date, i64, f64)>,
     /// What a payment is multiplied by for tax: one where the session does
     /// not adjust for it.
@@ -298,6 +313,10 @@ impl ModelInputs {
         let payments: Vec<(Date, i64, f64)> = dividends
             .payments
             .iter()
+            // A payment the venue marks special moves the underlying on its
+            // day as any other does, and the movement is the price's own
+            // business: a gateway's model schedule skips it, and so does this.
+            .filter(|payment| !payment.special)
             .filter_map(|payment| {
                 let date = date_of(&payment.ex_date)?;
                 Some((date, midnight(date, &calendar)?, payment.amount))
@@ -308,17 +327,32 @@ impl ModelInputs {
         let rate = curve.map_or(f64::NAN, |curve| {
             crate::options::rate_at(curve, crate::options::rate_term(years))
         });
+        // An index states its schedule in cumulative amounts, as a gateway
+        // reads an index's; anything else states what each payment is.
+        let index_dividends = terms.under_sec_type == "IND";
         let pv_dividend = match days_between(today, date_of(&terms.last_trading_day)?) {
             Some(expiry_day) if !rate.is_nan() => crate::options::dividend_present_value(
                 &dividends_from(&payments, today, midnight_today, now, &TimeZone::system()),
                 expiry_day,
                 rate,
                 tax,
-                false,
+                index_dividends,
             ),
             _ => f64::NAN,
         };
-        Some(Self { expiry, date_only, rated: curve.is_some(), rate, pv_dividend, payments, tax })
+        // A future costs nothing to hold and pays nothing out: an option on
+        // one is worked at the rate as its yield with no dividends at all,
+        // and the value the computation states is its schedule's alone.
+        let on_a_future = terms.under_sec_type == "FUT";
+        let (model_pv_dividend, yield_rate, payments) = if on_a_future {
+            (0.0, rate, Vec::new())
+        } else {
+            (pv_dividend, 0.0, payments)
+        };
+        Some(Self {
+            expiry, date_only, rated: curve.is_some(), rate,
+            pv_dividend, model_pv_dividend, yield_rate, index_dividends, payments, tax,
+        })
     }
 }
 
@@ -499,12 +533,13 @@ impl FarmState {
         let adjusts_for_tax = shared.reference.enables("TAXADJDVD");
         for (instrument, option) in &mut self.modelled_options {
             let Some(terms) = option.terms.as_ref() else { continue };
-            // A gateway works the options on a share this way; an index's
-            // payments and a future's carry are stated otherwise.
-            let (Some(underlying), "STK") = (terms.underlying, terms.under_sec_type.as_str())
-            else {
+            // A gateway works the options on a share, on an index and on a
+            // future this way; what each states of its dividends differs, and
+            // an option on anything else is not worked at all.
+            let Some(underlying) = terms.underlying else { continue };
+            if !matches!(terms.under_sec_type.as_str(), "STK" | "IND" | "FUT") {
                 continue;
-            };
+            }
             if option.inputs.as_ref().is_some_and(|inputs| inputs.rated) {
                 continue;
             }
@@ -533,8 +568,16 @@ impl FarmState {
                 }
                 continue;
             };
-            let Some(dividends) = shared.reference.dividend_schedule(underlying as u32) else {
-                continue;
+            // A share's or an index's schedule is waited for; a future's is
+            // not — an option on one is worked with none, and what its
+            // computation states of dividends is nought where the venue
+            // answered none, once the rate is in hand.
+            let dividends = match shared.reference.dividend_schedule(underlying as u32) {
+                Some(dividends) => dividends,
+                None if terms.under_sec_type == "FUT" => {
+                    crate::control::dividends::Schedule::default()
+                }
+                None => continue,
             };
             option.inputs = expiry.and_then(|expiry| {
                 ModelInputs::read(
@@ -590,19 +633,24 @@ impl FarmState {
             };
             let sets = chain_of(&self.underlying_models, terms);
             // The price the watch on the underlying's quote holds, and the
-            // chain parameters' where it holds none.
-            let spot = underlying_of(&self.underlying_models, terms)
+            // chain parameters' where it holds none. An option on a future is
+            // worked from the future's own record alone: where it holds no
+            // price, no side is worked, as a gateway works none from the
+            // chain parameters for one.
+            let spot = match underlying_of(&self.underlying_models, terms)
                 .and_then(|held| held.price)
                 .map(|price| price.preferred())
                 .filter(|spot| !spot.is_nan())
-                .unwrap_or_else(|| {
-                    modelled_underlying_price(
-                        sets,
-                        &terms.trading_class,
-                        terms.multiplier,
-                        &terms.last_trading_day,
-                    )
-                });
+            {
+                Some(spot) => spot,
+                None if terms.under_sec_type == "FUT" => continue,
+                None => modelled_underlying_price(
+                    sets,
+                    &terms.trading_class,
+                    terms.multiplier,
+                    &terms.last_trading_day,
+                ),
+            };
             if !stated(spot) {
                 continue;
             }
@@ -659,11 +707,11 @@ impl FarmState {
                         strike: terms.strike,
                         years,
                         rate: inputs.rate,
-                        yield_rate: 0.0,
+                        yield_rate: inputs.yield_rate,
                         volatility,
-                        dividend_pv: inputs.pv_dividend,
+                        dividend_pv: inputs.model_pv_dividend,
                         dividends: &dividends,
-                        index_dividends: false,
+                        index_dividends: inputs.index_dividends,
                         tax_adjustment: inputs.tax,
                         forward: f64::NAN,
                         futures_style: false,

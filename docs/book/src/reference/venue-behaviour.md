@@ -295,13 +295,24 @@ it:
   (687, asked for once per underlying on each connection) state for the
   option's trading class, multiplier and last trading day, and where they
   state none, the mark the model holds from the underlying's own quote
-  (below).
+  (below). An option on a future is worked from the future's own record
+  alone: where it holds no price, no side is worked, and the chain
+  parameters stand in for no future.
 - The present value of dividends is that of the payments the underlying's
   schedule states over the option's life, discounted at the currency's rate
-  for the option's term. The currency's rates are the venue's answer to the
-  query a contract's payments are asked with, naming the currency (`div USD`):
-  each entry is written as a payment is, its date the day the rate runs to and
-  its amount the percentage, and a gateway reads it that way.
+  for the option's term. A payment the venue marks special — as an attribute
+  on the entry its answer states — is skipped, as a gateway skips it. An
+  index states its schedule in cumulative amounts, and its present value is
+  the last one inside the option's life discounted, less the last before
+  today grown to that day, as a gateway reads an index's. A future pays
+  nothing out: the model of an option on one takes no dividends and grows it
+  at the rate as its yield instead, and the value its computation states
+  comes from the future's own schedule — nought, once the rate is in hand,
+  where the venue answered none. The currency's rates are the venue's answer
+  to the query a contract's payments are asked with, naming the currency
+  (`div USD`): each entry is written as a payment is, its date the day the
+  rate runs to and its amount the percentage, and a gateway reads it that
+  way.
 
 It is rebuilt at most once a second, on the clock's seconds, and a request is
 sent it when any figure differs from the last one that request was sent. A

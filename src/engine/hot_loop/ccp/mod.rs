@@ -3437,7 +3437,11 @@ impl CcpState {
     ) {
         shared.reference.note_under_con_id(def.con_id, def.under_con_id);
         if def.under_con_id != 0 {
-            self.send_dividends_query(def.under_con_id, ccp_conn, hb);
+            // A currency's own schedule is asked without the specials, as a
+            // gateway asks it.
+            self.send_dividends_query(
+                def.under_con_id, def.under_sec_type != "CASH", ccp_conn, hb,
+            );
         }
     }
 
@@ -3456,6 +3460,7 @@ impl CcpState {
     pub(crate) fn send_dividends_query(
         &mut self,
         con_id: u32,
+        specials: bool,
         ccp_conn: &mut Option<Connection>,
         hb: &mut HeartbeatState,
     ) {
@@ -3465,7 +3470,7 @@ impl CcpState {
         {
             return;
         }
-        let query = crate::control::dividends::query_for(con_id);
+        let query = crate::control::dividends::query_for(con_id, specials);
         // Registered as outstanding only if it went out. Recorded either way,
         // the contract would never be asked about again.
         if let Some(query_id) = self.send_text_query(&query, ccp_conn, hb) {

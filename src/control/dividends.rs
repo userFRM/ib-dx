@@ -33,6 +33,11 @@ pub struct Payment {
     pub amount: f64,
     /// What it is paid out of — income, a capital gain, or unstated.
     pub distribution_type: String,
+    /// Whether the venue marks it special, as an attribute on the entry. A
+    /// model's schedule skips one, as a gateway's skips it: the underlying
+    /// moves on the day, and the movement is the price's own business, not a
+    /// payment the option's life discounts.
+    pub special: bool,
 }
 
 /// A contract's whole schedule, as the venue states it.
@@ -63,12 +68,14 @@ impl Default for Schedule {
 ///
 /// The query is text, not a document: the request carries it verbatim and the
 /// venue answers the whole schedule under the id it was asked with. Specials
-/// are asked for, which is the ordinary case — a special dividend moves the
-/// underlying on its ex-date exactly as the regular one does, so a model that
-/// left it out would price every option over that date as though nothing
-/// happened.
-pub fn query_for(con_id: u32) -> String {
-    format!("div incSpecial {con_id}")
+/// are asked for, which is the ordinary case, and the answer marks each
+/// payment it states as one: a special dividend moves the underlying on its
+/// ex-date exactly as the regular one does, and the movement is the price's
+/// own business — a model's schedule skips a payment so marked, as a
+/// gateway's skips it. A currency's own schedule is asked without them, as a
+/// gateway asks it.
+pub fn query_for(con_id: u32, specials: bool) -> String {
+    format!("div {}{con_id}", if specials { "incSpecial " } else { "" })
 }
 
 /// The same, for a currency's own rates rather than a contract's.
@@ -141,6 +148,8 @@ fn one_payment(entry: &str) -> Option<Payment> {
         currency: stated("curr").unwrap_or_default().to_string(),
         amount,
         distribution_type: stated("dt").unwrap_or_default().to_string(),
+        special: crate::control::xml::attr(entry, "special")
+            .is_some_and(|stated| stated.eq_ignore_ascii_case("true")),
     })
 }
 
@@ -227,11 +236,13 @@ mod tests {
             <recDate>20260323</recDate><curr>USD</curr><amt>1.81</amt><dt>I</dt></div>\
             <div><date>20260619</date><payDate>20260630</payDate>\
             <recDate>20260622</recDate><curr>USD</curr><amt>1.77</amt><dt>I</dt></div>\
+            <div special=\"true\"><date>20260720</date><payDate>20260731</payDate>\
+            <recDate>20260721</recDate><curr>USD</curr><amt>5.00</amt><dt>I</dt></div>\
             </dividends>\
             <taxAdjRatio>0.85</taxAdjRatio>";
         let read = parse(answer);
         assert_eq!(read.tax_adjustment, 0.85);
-        assert_eq!(read.payments.len(), 2, "{:?}", read.payments);
+        assert_eq!(read.payments.len(), 3, "{:?}", read.payments);
         assert_eq!(read.payments[0].ex_date, "20260320");
         assert_eq!(read.payments[0].pay_date, "20260331");
         assert_eq!(read.payments[0].record_date, "20260323");
@@ -239,6 +250,11 @@ mod tests {
         assert_eq!(read.payments[0].amount, 1.81);
         assert_eq!(read.payments[0].distribution_type, "I");
         assert_eq!(read.payments[1].amount, 1.77);
+        assert!(
+            !read.payments[0].special && !read.payments[1].special,
+            "an entry the venue does not mark is not special",
+        );
+        assert!(read.payments[2].special, "and one it marks is");
 
         // A currency's, as the venue answered `div USD`.
         let rates = parse(include_str!("fixtures/currency_rates.xml")).term_rates;
@@ -292,7 +308,8 @@ mod tests {
     /// The query names the contract and asks for specials.
     #[test]
     fn the_query_names_what_it_is_about() {
-        assert_eq!(query_for(756_733), "div incSpecial 756733");
+        assert_eq!(query_for(756_733, true), "div incSpecial 756733");
+        assert_eq!(query_for(756_733, false), "div 756733");
         assert_eq!(query_for_currency("USD"), "div USD");
     }
 
