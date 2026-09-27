@@ -146,7 +146,7 @@ fn withdrawing_bars_withdraws_their_own_actions_query_and_not_the_callers() {
         fold: hmds::Fold::Adjusted,
         actions: None,
         complete: true,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
     hl.hmds.pending_historical.push(("hist_1".into(), 7));
     let _ = sent(&mut peer);

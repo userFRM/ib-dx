@@ -44,6 +44,12 @@ pub enum BarDataType {
     YieldBid,
     /// The yield at the ask.
     YieldAsk,
+    /// The yield at either side, asked as the pair it is.
+    ///
+    /// The venue carries the two sides as two series and neither holds both,
+    /// so a gateway asks the bid-yield series with the ask-yield series added
+    /// to the query, and answers the pair from both — see [`BarDataType::paired_series`].
+    YieldBidAsk,
     /// The yield at the last trade.
     YieldLast,
     /// The yield at the venue's own mark.
@@ -99,19 +105,13 @@ impl BarDataType {
             "FEE_RATE" => Self::FeeRate,
             "YIELD_BID" => Self::YieldBid,
             "YIELD_ASK" => Self::YieldAsk,
+            // Two series the venue carries separately and neither holds both.
+            // A gateway asks it as the bid-yield series with the ask-yield
+            // one added to the query, and answers the pair from both.
+            "YIELD_BID_ASK" => Self::YieldBidAsk,
             "YIELD_LAST" => Self::YieldLast,
             "YIELD_MARK" => Self::YieldMark,
             "NAV_LAST" => Self::NavLast,
-            // Two series the venue carries separately and neither holds both,
-            // so answering it means folding one bar out of two. Refused until
-            // this client does that, rather than answering with one of them
-            // under a name that says both.
-            "YIELD_BID_ASK" => return Err(
-                "YIELD_BID_ASK is two series, the yield at the bid and the yield at the \
-                 ask, and the venue carries no series holding both. Ask for YIELD_BID \
-                 and YIELD_ASK"
-                    .to_string(),
-            ),
             "HISTORICAL_VOLATILITY" => Self::HistoricalVolatility,
             "OPTION_IMPLIED_VOLATILITY" => Self::ImpliedVolatility,
             "INDICATIVE_AUCTION_PRICE_SIZE" => Self::IndicativeAuctionPriceSize,
@@ -127,7 +127,7 @@ impl BarDataType {
                 return Err(format!(
                     "Unsupported what_to_show '{other}': expected TRADES, MIDPOINT, \
                      BID, ASK, BID_ASK, AGGTRADES, FEE_RATE, YIELD_BID, YIELD_ASK, \
-                     YIELD_LAST, YIELD_MARK, NAV_LAST, HISTORICAL_VOLATILITY, \
+                     YIELD_BID_ASK, YIELD_LAST, YIELD_MARK, NAV_LAST, HISTORICAL_VOLATILITY, \
                      OPTION_IMPLIED_VOLATILITY, INDICATIVE_AUCTION_PRICE_SIZE, \
                      CALL_OPTION_OPEN_INTEREST, PUT_OPTION_OPEN_INTEREST, \
                      CALL_OPTION_VOLUME or PUT_OPTION_VOLUME",
@@ -167,6 +167,9 @@ impl BarDataType {
             Self::FeeRate => "FeeRate",
             Self::YieldBid => "BidYield",
             Self::YieldAsk => "AskYield",
+            // The pair is asked under its bid side, with the ask side added
+            // to the query beside it — see [`BarDataType::paired_series`].
+            Self::YieldBidAsk => "BidYield",
             Self::YieldLast => "LastYield",
             Self::YieldMark => "MarkYield",
             Self::NavLast => "NavLast",
@@ -180,6 +183,20 @@ impl BarDataType {
             // something with Volume in it, both come back refused.
             Self::CallOptionVolume => "CallLast",
             Self::PutOptionVolume => "PutLast",
+        }
+    }
+
+    /// The second series a gateway adds to the query for a name that is a
+    /// pair, and `None` for every name that is one series.
+    ///
+    /// The venue carries the two sides separately and neither holds both, so
+    /// the query goes out as the bid side under [`BarDataType::as_str`] with
+    /// the ask side beside it under this name, each under an id of its own,
+    /// and the answer is the pair folded from both — see [`merge_pair`].
+    pub fn paired_series(&self) -> Option<&'static str> {
+        match self {
+            Self::YieldBidAsk => Some("AskYield"),
+            _ => None,
         }
     }
 }
@@ -522,7 +539,6 @@ pub(crate) fn build_stretch_xml(req: &HistoricalRequest, s: &Stretch) -> String 
         value.as_ref().map_or(String::new(), |v| format!("<{name}>{v}</{name}>"))
     };
 
-    let data_str = req.data_type.as_str();
     // keepUpToDate uses structured ;;-delimited ID required by CCP gateway parser.
     // One-shot uses simple ID (HMDS accepts it fine).
     let query_id = if req.keep_up_to_date {
@@ -537,10 +553,8 @@ pub(crate) fn build_stretch_xml(req: &HistoricalRequest, s: &Stretch) -> String 
         (s.end_time.clone().or_else(|| Some(req.end_time.clone())), "")
     };
 
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
-         <ListOfQueries>\
-         <Query>\
+    let query = |data: &str, id: &str| format!(
+        "<Query>\
          <id>{id}</id>\
          {approx_step}\
          <useRTH>{rth}</useRTH>\
@@ -563,13 +577,10 @@ pub(crate) fn build_stretch_xml(req: &HistoricalRequest, s: &Stretch) -> String 
          <needTotalValue>false</needTotalValue>\
          <wholeDays>false</wholeDays>\
          <delay>auto</delay>\
-         </Query>\
-         </ListOfQueries>",
-        id = query_id,
+         </Query>",
         approx_step = tag("approxStep", &s.approx_step),
         con_id = s.con_id,
         sec_type = req.sec_type,
-        data = data_str,
         start_time = tag("startTime", &s.start_time),
         end_time = tag("endTime", &end_time),
         underlying = tag("histUnderlying", &s.underlying),
@@ -579,7 +590,83 @@ pub(crate) fn build_stretch_xml(req: &HistoricalRequest, s: &Stretch) -> String 
         step = req.bar_size.as_str(),
         refresh = refresh_tag,
         live = tag("liveContractID", &s.live_con_id.map(|id| id.to_string())),
+    );
+
+    // A name that is a pair goes out as a gateway sends it: one query per
+    // side, each under an id of its own, so the two answers come back told
+    // apart and are folded into the pair.
+    let queries = match req.data_type.paired_series() {
+        Some(second) => format!(
+            "{}{}",
+            query(req.data_type.as_str(), &query_id),
+            query(second, &pair_id_under(req, second)),
+        ),
+        None => query(req.data_type.as_str(), &query_id),
+    };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListOfQueries>{queries}</ListOfQueries>",
     )
+}
+
+/// The name the second query of a pair goes out under in its id: the query's
+/// own id with the series it asks named beside it, as a gateway names the two
+/// apart.
+fn pair_id_under(req: &HistoricalRequest, second: &str) -> String {
+    let exchange = match req.exchange.as_str() {
+        "SMART" => "BEST",
+        e => e,
+    };
+    format!("{};;{}@{} {}", req.query_id, req.symbol, exchange, second)
+}
+
+/// The id the second query of a pair goes out under, which its answer comes
+/// back naming — `None` where the request is a single series. The engine
+/// holds the number against both ids, so either answer finds its request.
+pub(crate) fn pair_query_id(req: &HistoricalRequest) -> Option<String> {
+    req.data_type.paired_series().map(|second| pair_id_under(req, second))
+}
+
+/// The two series of a paired request delivered as the answer states them:
+/// one bar for every stamp both sides answered, opening at the bid side's own
+/// average of the bar, at the highest the ask side reached, down to the
+/// lowest the bid side reached, and closing at the ask side's own average.
+/// A stamp only one side answered has no pair to state and is not delivered.
+///
+/// The pair itself trades nothing, so it states no volume, no average and no
+/// count: each of those fields says none the way the venue's own answers say
+/// none for a series that has them not.
+///
+/// Both sides are read in the order the venue stamped them, which the held
+/// pages are put in before they reach here.
+pub(crate) fn merge_pair(
+    bid: &[HistoricalBar], ask: &[HistoricalBar],
+) -> Vec<HistoricalBar> {
+    let mut out = Vec::with_capacity(bid.len().min(ask.len()));
+    let mut rest_bid = bid.iter();
+    let mut rest_ask = ask.iter();
+    let (mut next_bid, mut next_ask) = (rest_bid.next(), rest_ask.next());
+    while let (Some(at_bid), Some(at_ask)) = (next_bid, next_ask) {
+        match at_bid.time.cmp(&at_ask.time) {
+            std::cmp::Ordering::Equal => {
+                out.push(HistoricalBar {
+                    end: if at_bid.end.is_empty() { at_ask.end.clone() } else { at_bid.end.clone() },
+                    time: at_bid.time.clone(),
+                    open: at_bid.wap,
+                    high: at_ask.high,
+                    low: at_bid.low,
+                    close: at_ask.wap,
+                    volume: -1,
+                    wap: -1.0,
+                    count: 0,
+                });
+                next_bid = rest_bid.next();
+                next_ask = rest_ask.next();
+            }
+            std::cmp::Ordering::Less => next_bid = rest_bid.next(),
+            std::cmp::Ordering::Greater => next_ask = rest_ask.next(),
+        }
+    }
+    out
 }
 
 /// The query for one stretch of a contract's id history, where it differs from

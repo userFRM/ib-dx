@@ -460,6 +460,25 @@ pub(crate) struct HeldSeries {
     pub(crate) complete: bool,
     /// What a folded series is still to ask along its contract's id history.
     pub(crate) along: Along,
+    /// The second series of a request that is a pair, where it is one. The
+    /// bars held above are the bid side's; the ask side is held here until
+    /// both are in, and the pair is folded from the two when they are.
+    pub(crate) pair: Option<PairHold>,
+}
+
+/// The ask side of a paired request: its query's id, its bars and how far
+/// each side's answer has come. A stretch of the pair is whole when both
+/// sides have said their last page, and only then does the series go on.
+#[derive(Debug, Default)]
+pub(crate) struct PairHold {
+    /// The id the ask side's query went out under, which its answers name.
+    pub(crate) ask_query: String,
+    /// The ask side's bars so far, in the order they arrived.
+    pub(crate) bars: Vec<crate::control::historical::HistoricalBar>,
+    /// Whether the bid side's last page has arrived.
+    pub(crate) bid_done: bool,
+    /// Whether the ask side's last page has arrived.
+    pub(crate) ask_done: bool,
 }
 
 /// What a folded series asks along its contract's id history.
@@ -2517,6 +2536,9 @@ fn build_tbt_query(
             actions: None,
             complete: false,
             along: Along::default(),
+            // A name that is a pair holds its ask side beside the bid side
+            // until both are in; the id is drawn when the query goes out.
+            pair: data_type.paired_series().map(|_| PairHold::default()),
         });
         self.note_ask(ask);
         if fold == Fold::None {
@@ -2600,9 +2622,28 @@ fn build_tbt_query(
             );
             hb.last_hmds_sent = Instant::now();
         }
-        match self.pending_historical.iter_mut().find(|(_, r)| *r == req_id) {
-            Some(entry) => entry.0 = query_id,
-            None => self.pending_historical.push((query_id, req_id)),
+        // A pair goes out under two names, and both hold the caller's number.
+        // The ask side's name leads: an answer states the id it was asked
+        // under, and the ask side's id names the bid side's as its prefix, so
+        // read against the bid side first it would be filed as the bid side's.
+        match crate::control::historical::pair_query_id(&req) {
+            Some(ask_query) => {
+                self.pending_historical.retain(|(_, r)| *r != req_id);
+                self.pending_historical.push((ask_query.clone(), req_id));
+                self.pending_historical.push((query_id, req_id));
+                if let Some(pair) = self.held.iter_mut()
+                    .find(|a| a.req_id == req_id)
+                    .and_then(|entry| entry.pair.as_mut())
+                {
+                    pair.ask_query = ask_query;
+                    pair.bid_done = false;
+                    pair.ask_done = false;
+                }
+            }
+            None => match self.pending_historical.iter_mut().find(|(_, r)| *r == req_id) {
+                Some(entry) => entry.0 = query_id,
+                None => self.pending_historical.push((query_id, req_id)),
+            },
         }
     }
 
@@ -2764,8 +2805,25 @@ fn build_tbt_query(
                 }
             }
         }
-        held.bars.extend(resp.bars);
-        if resp.is_complete && !self.ask_next_stretch(req_id, hmds_conn, hb, shared) {
+        // The ask side of a pair is held beside the bid side, and the
+        // stretch is whole only once both sides have said their last page:
+        // one side's end alone is half an answer, and filed on it the pair
+        // would be delivered with a hole wherever the other side had not
+        // come in yet.
+        let ask_side = held.pair.as_ref().is_some_and(|pair| pair.ask_query == resp.query_id);
+        let complete = resp.is_complete;
+        if ask_side {
+            let pair = held.pair.as_mut().expect("routed as the ask side of a pair");
+            pair.bars.extend(resp.bars);
+            pair.ask_done |= complete;
+        } else {
+            held.bars.extend(resp.bars);
+            if let Some(pair) = &mut held.pair {
+                pair.bid_done |= complete;
+            }
+        }
+        let whole = held.pair.as_ref().map_or(complete, |pair| pair.bid_done && pair.ask_done);
+        if whole && !self.ask_next_stretch(req_id, hmds_conn, hb, shared) {
             self.held[pos].complete = true;
         }
         // Oldest first, as the reference client delivers them. The venue pages
@@ -2798,6 +2856,11 @@ fn build_tbt_query(
                      are delivered",
                 );
             }
+            // The ask side of a pair is ordered the same way: the pair is
+            // folded stamp by stamp, which reads both sides in order.
+            if let Some(pair) = &mut self.held[pos].pair {
+                pair.bars.sort_by(|a, b| a.time.cmp(&b.time));
+            }
         }
         self.try_file_held(req_id, hmds_conn, hb, shared, event_tx);
     }
@@ -2821,56 +2884,71 @@ fn build_tbt_query(
             return;
         }
         let entry = self.held.remove(pos);
-        let folded = match entry.fold {
-            Fold::None => Ok(entry.bars),
-            fold => {
-                let mut actions = entry.actions.unwrap_or_default();
-                // Up to the day it is folded on, that day included, as a
-                // gateway folds them: today on UTC's calendar, whether or not
-                // the logon states NOINEFFECTCONCQUERY, because a request made
-                // through the API carries no sessions to date it by. An action
-                // after that day moves no bar, whatever the answer holds. One
-                // whose day cannot be read is kept, so the fold refuses it.
-                let today: String = chrono_free_timestamp().chars().take(8).collect();
-                actions.retain(|a| {
-                    crate::control::adjustments::day_of(&a.date, "").is_none_or(|day| day <= today)
-                });
-                // A series of a kind a gateway adjusts is put on the scale of
-                // the kinds that move it; a kind this client cannot name goes
-                // with them, so the fold refuses it rather than guess. A week
-                // or a month is put on it as a gateway puts one, by where it
-                // ends, and the bars of a week or a month two stretches
-                // answered for are then joined.
-                let scaled: Vec<_> = actions
-                    .iter()
-                    .filter(|a| fold != Fold::Offers && a.kind.is_none_or(|k| k.moves_the_scale()))
-                    .cloned()
-                    .collect();
-                let size = entry.along.asked.as_ref().map(|asked| asked.bar_size);
-                let long = size.filter(|size| size.seconds() > crate::control::historical::BarSize::Day1.seconds());
-                // On the clock the venue named beside the bars: an action is
-                // dated on the exchange's day and a stamp below a day arrives
-                // in UTC. Then the rights offers, and for ADJUSTED_LAST the
-                // cash dividends, as a gateway takes them once a series is whole.
-                crate::control::adjustments::scale_historical_bars(
-                    entry.bars, &scaled, &entry.timezone,
-                    long,
-                )
-                    .map(|bars| match size {
-                        Some(size) if !entry.along.joins.is_empty() => {
-                            crate::control::historical::join_periods(bars, &entry.along.joins, size)
-                        }
-                        _ => bars,
-                    })
-                    .map(|bars| crate::control::adjustments::fold_rights_offers(bars, &actions))
-                    .map(|bars| match fold {
-                        Fold::Adjusted => crate::control::adjustments::fold_dividends(
-                            bars, &actions, &entry.timezone,
-                        ),
-                        _ => bars,
-                    })
+        // The ask side of a pair, where the request is one, taken out beside
+        // the bid side so the fold can borrow what it folds by.
+        let (bid_bars, ask_bars) = match entry.pair {
+            Some(pair) => (entry.bars, Some(pair.bars)),
+            None => (entry.bars, None),
+        };
+        let fold_one = |bars| -> Result<Vec<crate::control::historical::HistoricalBar>, String> {
+            match entry.fold {
+                Fold::None => Ok(bars),
+                fold => {
+                    let mut actions = entry.actions.clone().unwrap_or_default();
+                    // Up to the day it is folded on, that day included, as a
+                    // gateway folds them: today on UTC's calendar, whether or not
+                    // the logon states NOINEFFECTCONCQUERY, because a request made
+                    // through the API carries no sessions to date it by. An action
+                    // after that day moves no bar, whatever the answer holds. One
+                    // whose day cannot be read is kept, so the fold refuses it.
+                    let today: String = chrono_free_timestamp().chars().take(8).collect();
+                    actions.retain(|a| {
+                        crate::control::adjustments::day_of(&a.date, "").is_none_or(|day| day <= today)
+                    });
+                    // A series of a kind a gateway adjusts is put on the scale of
+                    // the kinds that move it; a kind this client cannot name goes
+                    // with them, so the fold refuses it rather than guess. A week
+                    // or a month is put on it as a gateway puts one, by where it
+                    // ends, and the bars of a week or a month two stretches
+                    // answered for are then joined.
+                    let scaled: Vec<_> = actions
+                        .iter()
+                        .filter(|a| fold != Fold::Offers && a.kind.is_none_or(|k| k.moves_the_scale()))
+                        .cloned()
+                        .collect();
+                    let size = entry.along.asked.as_ref().map(|asked| asked.bar_size);
+                    let long = size.filter(|size| size.seconds() > crate::control::historical::BarSize::Day1.seconds());
+                    // On the clock the venue named beside the bars: an action is
+                    // dated on the exchange's day and a stamp below a day arrives
+                    // in UTC. Then the rights offers, and for ADJUSTED_LAST the
+                    // cash dividends, as a gateway takes them once a series is whole.
+                    crate::control::adjustments::scale_historical_bars(
+                        bars, &scaled, &entry.timezone,
+                        long,
+                    )
+                        .map(|bars| match size {
+                            Some(size) if !entry.along.joins.is_empty() => {
+                                crate::control::historical::join_periods(bars, &entry.along.joins, size)
+                            }
+                            _ => bars,
+                        })
+                        .map(|bars| crate::control::adjustments::fold_rights_offers(bars, &actions))
+                        .map(|bars| match fold {
+                            Fold::Adjusted => crate::control::adjustments::fold_dividends(
+                                bars, &actions, &entry.timezone,
+                            ),
+                            _ => bars,
+                        })
+                }
             }
         };
+        // A pair is folded side by side, as the two series it is asked as,
+        // and the pair is delivered only once both sides are: one bar per
+        // stamp both answered, in the shape the answer states.
+        let folded = fold_one(bid_bars).and_then(|bid| match ask_bars {
+            Some(ask) => fold_one(ask).map(|ask| crate::control::historical::merge_pair(&bid, &ask)),
+            None => Ok(bid),
+        });
         match folded {
             Ok(bars) => {
                 let resp = crate::control::historical::HistoricalResponse {

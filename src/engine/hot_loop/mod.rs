@@ -8694,7 +8694,7 @@ mod tests {
             hl.hmds.held.push(hmds::HeldSeries {
                 req_id: 7, bars: Vec::new(), timezone: String::new(),
                 actions_query: Some("adj_historical".into()), fold: hmds::Fold::Adjusted,
-                actions: None, complete: true, along: Default::default(),
+                actions: None, complete: true, along: Default::default(), pair: None,
             });
             let (tx, rx) = std::sync::mpsc::sync_channel(4);
             hl.set_control_rx(rx);
@@ -8748,7 +8748,7 @@ mod tests {
         hl.hmds.held.push(hmds::HeldSeries {
             req_id: 7, bars: Vec::new(), timezone: String::new(),
             actions_query: Some("adj_historical".into()), fold: hmds::Fold::Adjusted,
-            actions: None, complete: true, along: Default::default(),
+            actions: None, complete: true, along: Default::default(), pair: None,
         });
         let (tx, rx) = std::sync::mpsc::sync_channel(4);
         hl.set_control_rx(rx);

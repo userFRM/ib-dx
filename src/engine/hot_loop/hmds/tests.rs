@@ -175,7 +175,7 @@ fn segmented_bar_reply_completes_on_eoq_true() {
     hmds.pending_historical.push(("q7".to_string(), 21));
     hmds.held.push(HeldSeries {
         req_id: 21, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None, actions: None, complete: false,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
 
     hmds.process_hmds_message(&make_bar_msg("q7", false), &mut conn, &shared, &None, &mut hb);
@@ -190,6 +190,103 @@ fn segmented_bar_reply_completes_on_eoq_true() {
     assert_eq!(hist.len(), 1, "the series is filed once its last page is in");
     assert!(hist[0].1.is_complete, "and it is the whole answer");
     assert_eq!(hist[0].1.bars.len(), 2, "with every page's bars in it");
+}
+
+/// A request whose name carries two series is asked as two queries under one
+/// number and delivered as one pair: each side's pages are held until both
+/// sides have said their last, and the pair is folded into the bar the answer
+/// states — the bid side's own average opening it, the highest the ask side
+/// reached, down to the lowest the bid side reached, closing at the ask
+/// side's own average. The pair itself trades nothing, so it states no volume
+/// and no count.
+#[test]
+fn a_pair_request_is_delivered_once_both_series_have_answered() {
+    let mut hmds = HmdsState::new();
+    let shared = SharedState::new();
+    let mut hb = HeartbeatState::new();
+    let mut conn: Option<Connection> = None;
+
+    hmds.send_historical_request_ex(31, 265598, "", "1 d", "1 day", "YIELD_BID_ASK",
+        true, false, false, "USGG10YR", "BOND", "SMART", &mut conn, &mut hb, &shared);
+
+    // Both queries went out under the one number, the ask side's name first:
+    // it names the bid side's as its prefix, so read the other way round its
+    // answer would be filed as the bid side's.
+    assert_eq!(
+        hmds.pending_historical,
+        [
+            ("hist_1000;;USGG10YR@BEST AskYield".to_string(), 31),
+            ("hist_1000".to_string(), 31),
+        ],
+    );
+
+    let side = |id: &str, alone: &str, end: &str, open: &str, high: &str, low: &str, close: &str, avg: &str| {
+        let xml = format!(
+            "<ResultSetBar><id>{id}</id><eoq>true</eoq><tz>UTC</tz><Events>\
+             <Bar><time>{alone}</time><open>3.8</open><close>3.85</close>\
+             <high>3.9</high><low>3.75</low><weightedAvg>3.82</weightedAvg>\
+             <volume>10</volume><count>2</count></Bar>\
+             <Bar><time>20260713</time><open>3.8</open><close>3.85</close>\
+             <high>3.9</high><low>3.75</low><weightedAvg>3.82</weightedAvg>\
+             <volume>10</volume><count>2</count></Bar>\
+             <Bar><time>20260714</time><endTime>{end}</endTime><open>{open}</open><close>{close}</close>\
+             <high>{high}</high><low>{low}</low><weightedAvg>{avg}</weightedAvg>\
+             <volume>1000</volume><count>10</count></Bar></Events></ResultSetBar>",
+        );
+        let mut msg = Vec::new();
+        msg.extend_from_slice(b"35=W\x016118=");
+        msg.extend_from_slice(xml.as_bytes());
+        msg.push(0x01);
+        msg
+    };
+    // Each side answered one stamp the other did not: a bar only one side
+    // has states no pair and is not delivered. And where one side states the
+    // bar's bound and the other does not, the pair states the one that does.
+    let bid = side("hist_1000", "20260710", "", "4.0", "4.2", "3.9", "4.1", "4.05");
+    let ask = side("hist_1000;;USGG10YR@BEST AskYield", "20260711", "20260715", "4.3", "4.6", "4.2", "4.4", "4.35");
+
+    // The bid side alone is half an answer: nothing is filed yet.
+    hmds.process_hmds_message(&bid, &mut conn, &shared, &None, &mut hb);
+    assert!(shared.reference.drain_historical_data().is_empty(), "one side is not the pair");
+
+    hmds.process_hmds_message(&ask, &mut conn, &shared, &None, &mut hb);
+    let hist = shared.reference.drain_historical_data();
+    assert_eq!(hist.len(), 1, "the pair is filed once both sides are in");
+    let bars = &hist[0].1.bars;
+    assert_eq!(bars.len(), 2, "every stamp both sides answered, oldest first");
+    assert_eq!(bars[0].time, "20260713");
+    assert_eq!(bars[1].time, "20260714");
+    assert_eq!((bars[1].open, bars[1].high, bars[1].low, bars[1].close), (4.05, 4.6, 3.9, 4.35));
+    assert_eq!((bars[1].volume, bars[1].wap, bars[1].count), (-1, -1.0, 0), "the pair itself traded nothing");
+    assert_eq!(bars[1].end, "20260715", "the bound either side stated");
+    assert!(hmds.pending_historical.is_empty(), "both names are released");
+    assert_eq!(over(&shared), [31], "and the request is over");
+}
+
+/// A pair the venue refuses on one of its two queries failed as a whole: the
+/// name of the other query goes with it, or the answers still arriving under
+/// that name were filed for a caller just told the request failed.
+#[test]
+fn a_refusal_of_one_side_of_a_pair_fails_the_whole_request() {
+    let mut hmds = HmdsState::new();
+    let shared = SharedState::new();
+    let mut hb = HeartbeatState::new();
+    let mut conn: Option<Connection> = None;
+
+    hmds.send_historical_request_ex(32, 265598, "", "1 d", "1 day", "YIELD_BID_ASK",
+        true, false, false, "USGG10YR", "BOND", "SMART", &mut conn, &mut hb, &shared);
+    assert_eq!(hmds.pending_historical.len(), 2, "the pair is two queries under one number");
+
+    let msg = make_query_error_msg("hist_1000", "No historical market data");
+    hmds.process_hmds_message(&msg, &mut conn, &shared, &None, &mut hb);
+
+    assert!(hmds.pending_historical.is_empty(), "both names go with the failed request");
+    assert!(hmds.held.is_empty(), "and what was held for it");
+    let errors = shared.reference.drain_historical_errors();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].0, 32);
+    assert!(shared.reference.drain_historical_data().is_empty(), "no bars follow the refusal");
+    assert_eq!(over(&shared), [32], "the request is over");
 }
 
 #[test]
@@ -229,7 +326,7 @@ fn a_refused_bar_request_is_told_the_error_alone() {
     // series that will never complete.
     hmds.held.push(HeldSeries {
         req_id: 11, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None, actions: None, complete: false,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
     hmds.process_hmds_message(&make_bar_msg("hist_1003", false), &mut conn, &shared, &None, &mut hb);
 
@@ -1459,7 +1556,7 @@ fn a_page_that_states_no_zone_takes_the_one_the_series_stated() {
     hmds.pending_historical.push(("hist_1".to_string(), 7));
     hmds.held.push(HeldSeries {
         req_id: 7, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None, actions: None, complete: false,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
 
     hmds.process_hmds_message(&bar_page_msg("hist_1", false, "US/Eastern"), &mut conn, &shared, &None, &mut hb);
@@ -1510,7 +1607,7 @@ fn a_paged_series_is_delivered_oldest_first_whatever_order_the_pages_arrive_in()
     hmds.pending_historical.push(("hist_1".to_string(), 7));
     hmds.held.push(HeldSeries {
         req_id: 7, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None, actions: None, complete: false,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
 
     // Newest page first, oldest last, as the venue sends them.
@@ -2693,7 +2790,7 @@ fn an_unreadable_eoq_page_withdraws_the_stream_at_the_venue() {
     hmds.rtbar_subs.push(("hist_1".to_string(), 9, Some(4002), 0.01, 1.0));
     hmds.held.push(HeldSeries {
         req_id: 9, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None,
-        along: Default::default(),
+        along: Default::default(), pair: None,
         actions: None, complete: false,
     });
     let xml = "<ResultSetBar><id>hist_1</id><eoq>true</eoq><tz>US/Eastern</tz>\
@@ -2734,7 +2831,7 @@ fn a_refused_stream_half_is_told_nothing_and_leaves_the_request_kept() {
         } else {
             hmds.held.push(HeldSeries {
                 req_id: 9, fold: Fold::None, bars: Vec::new(), timezone: String::new(),
-                actions_query: None, actions: None, complete: false, along: Default::default(),
+                actions_query: None, actions: None, complete: false, along: Default::default(), pair: None,
             });
         }
         client.process_msgs(&mut crate::api::wrapper::tests::RecordingWrapper::default());
@@ -2807,7 +2904,7 @@ fn a_series_that_cannot_be_folded_withdraws_the_stream_it_was_asked_for_alongsid
     hmds.rtbar_subs.push(("hist_1".to_string(), 9, Some(4002), 0.01, 1.0));
     hmds.held.push(HeldSeries {
         req_id: 9, fold: Fold::Adjusted, bars: Vec::new(), timezone: String::new(),
-        along: Default::default(),
+        along: Default::default(), pair: None,
         actions_query: None, complete: false,
         // An action the venue named and this client cannot classify. It may be
         // one that moves the scale, so the fold refuses rather than hand back
@@ -3088,7 +3185,7 @@ fn a_series_whose_actions_could_not_be_asked_for_is_let_go() {
 
     hmds.held.push(HeldSeries {
         req_id: 21, fold: Fold::Adjusted, bars: Vec::new(), timezone: String::new(),
-        along: Default::default(),
+        along: Default::default(), pair: None,
         actions_query: None, actions: None, complete: true,
     });
 
@@ -3478,7 +3575,7 @@ fn an_unreadable_page_ends_a_kept_up_to_date_request_still_assembling() {
     hmds.keep_up_to_date_reqs.insert(9);
     hmds.held.push(HeldSeries {
         req_id: 9, fold: Fold::None, bars: Vec::new(), timezone: String::new(), actions_query: None, actions: None, complete: false,
-        along: Default::default(),
+        along: Default::default(), pair: None,
     });
     let xml = "<ResultSetBar><id>q9</id><eoq>true</eoq><tz>UTC</tz><Events><Bar><time>20260714-13:30:00</time><open>100.0</open></Bar></Events></ResultSetBar>";
     let mut msg = Vec::new();

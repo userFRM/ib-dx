@@ -1330,11 +1330,43 @@ fn the_head_timestamp_takes_the_rate_the_bar_query_refuses() {
     assert!(head_timestamp_data_type("NONSENSE").is_err());
 }
 
-/// One name that is two series is not answered with one of them.
+/// One name that is two series is asked as a gateway asks it: the bid side's
+/// series, with the ask side added to the query beside it, each query under an
+/// id of its own so the two answers come back told apart. Refused instead, a
+/// legal series was unreachable through the drop-in.
 #[test]
-fn a_name_meaning_two_series_is_refused_rather_than_half_answered() {
-    let why = BarDataType::from_api_str("YIELD_BID_ASK").expect_err("two series, not one");
-    assert!(why.contains("two series"), "{why}");
+fn a_pair_name_goes_out_as_both_series() {
+    let asked = BarDataType::from_api_str("YIELD_BID_ASK").expect("a name a gateway serves");
+    assert_eq!(asked.as_str(), "BidYield");
+
+    let req = HistoricalRequest {
+        query_id: "q1".to_string(),
+        con_id: 265598,
+        symbol: "USGG10YR".to_string(),
+        sec_type: "BOND".to_string(),
+        exchange: "SMART".to_string(),
+        data_type: asked,
+        end_time: "20260228-15:00:00".to_string(),
+        duration: "1 d".to_string(),
+        bar_size: BarSize::Day1,
+        use_rth: true,
+        keep_up_to_date: false,
+        include_expired: false,
+    };
+    let xml = build_query_xml(&req);
+    assert_eq!(xml.matches("<Query>").count(), 2, "one query per side: {xml}");
+    assert!(xml.contains("<data>BidYield</data>"), "{xml}");
+    assert!(xml.contains("<data>AskYield</data>"), "{xml}");
+    assert!(xml.contains("<id>q1</id>"), "{xml}");
+    // The ask side is named apart by the series it asks, the way a gateway
+    // names the two, so its answer is not filed as the bid side's.
+    assert!(xml.contains("<id>q1;;USGG10YR@BEST AskYield</id>"), "{xml}");
+    // Everything but the series and the id is the one ask, twice.
+    assert_eq!(xml.matches("<contractID>265598</contractID>").count(), 2, "{xml}");
+    assert_eq!(xml.matches("<step>1 day</step>").count(), 2, "{xml}");
+    // A name that is one series still goes out as one query.
+    let single = build_query_xml(&HistoricalRequest { data_type: BarDataType::YieldBid, ..req });
+    assert_eq!(single.matches("<Query>").count(), 1, "{single}");
 }
 
 /// A bar can be kept up to date if it folds from what the venue keeps sending.
