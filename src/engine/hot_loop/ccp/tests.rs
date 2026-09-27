@@ -3759,6 +3759,74 @@ fn a_question_held_for_a_replay_that_names_nothing_is_asked_anyway() {
     );
 }
 
+/// The window asked is the session's own day — the start of today to the
+/// start of tomorrow on the clock the session announced, not on UTC — and the
+/// question names the account it is about, as a gateway names it on every
+/// question it asks.
+///
+/// Asked on UTC, a session east of it read the day it keeps as starting hours
+/// into the one before, and what arrived as what the venue has finished
+/// carried the day before's orders too: every program reading today's
+/// completions carried them.
+#[test]
+fn the_finished_orders_question_asks_the_session_s_day_and_names_the_account() {
+    use std::io::Read;
+    let (conn, mut peer) = Connection::for_test();
+    peer.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+    let mut ccp = CcpState::new();
+    let shared = SharedState::new();
+    // On a session whose clock is central Europe's: a day there is not a day
+    // on UTC.
+    let mut settings = (*shared.settings()).clone();
+    settings.timezone = "Europe/Berlin".into();
+    shared.set_settings(std::sync::Arc::new(settings));
+    shared.set_session_account("DU1");
+    shared.orders.set_replay_done();
+    let mut hb = HeartbeatState::new();
+    let mut conn = Some(conn);
+
+    let before = jiff::Timestamp::now();
+    ccp.send_completed_orders_request(1, &mut conn, &mut hb, &shared);
+    let after = jiff::Timestamp::now();
+
+    let mut buf = [0u8; 8192];
+    let n = peer.read(&mut buf).unwrap_or(0);
+    let asked = String::from_utf8_lossy(&buf[..n]).replace('\x01', "|");
+
+    assert!(asked.contains("|1=DU1|"), "the account is named: {asked}");
+    let stated = |tag: &str| {
+        asked
+            .split(&format!("|{tag}="))
+            .nth(1)
+            .and_then(|rest| rest.split('|').next())
+            .unwrap_or_else(|| panic!("the frame states {tag}: {asked}"))
+            .to_string()
+    };
+    let zone = crate::protocol::datetime::clock_named("Europe/Berlin").unwrap();
+    let bound = |stamp: String| {
+        let secs = crate::protocol::datetime::ib_datetime_to_unix(&stamp)
+            .unwrap_or_else(|| panic!("a stamp on the wire reads: {stamp}"));
+        jiff::Timestamp::from_second(secs).unwrap().to_zoned(zone.clone())
+    };
+    let from = bound(stated("6536"));
+    let to = bound(stated("6537"));
+    assert_eq!(
+        (from.time(), to.time()),
+        (jiff::civil::Time::midnight(), jiff::civil::Time::midnight()),
+        "both ends are a midnight on the session's clock, not one on UTC",
+    );
+    // The day asked is the one being had. Held between a reading taken before
+    // the question and one after it, so a midnight falling inside the test
+    // does not fail it wrongly.
+    let first = before.to_zoned(zone.clone()).date();
+    let last = after.to_zoned(zone).date();
+    assert!(
+        from.date() >= first && from.date() <= last,
+        "the day asked is today, not yesterday: {from}",
+    );
+    assert_eq!(to.date(), from.date().tomorrow().unwrap(), "one day is asked, not two");
+}
+
 /// The hold and the window fit inside one caller's wait, and the hold is taken
 /// once per connection rather than once per question.
 ///

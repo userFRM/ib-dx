@@ -3977,18 +3977,37 @@ impl CcpState {
             return;
         };
         let ts = chrono_free_timestamp();
-        // The day the venue keeps, stated as it states every other time. Its
-        // own cutoff decides what falls inside, so the window runs from the
-        // start of yesterday to the start of tomorrow: that covers the day
-        // whichever side of the cutoff this session is on.
-        let from = crate::protocol::datetime::midnight_days_away(-1);
-        let to = crate::protocol::datetime::midnight_days_away(1);
-        let (from, to) = (from.to_string(), to.to_string());
+        // The day the venue keeps is a day on the session's own clock, not on
+        // UTC: the window runs from the start of today to the start of
+        // tomorrow in the zone the session announced, stated as every other
+        // time on the wire is stated. Asked on UTC instead, a session east of
+        // it read the day it keeps as starting hours into the one before, and
+        // what arrived as what the venue had finished carried the day before's
+        // orders too.
+        let zone = session_clock(shared);
+        let today = jiff::Timestamp::now().to_zoned(zone.clone()).date();
+        let bounds = today
+            .to_zoned(zone.clone())
+            .ok()
+            .zip(today.tomorrow().ok().and_then(|next| next.to_zoned(zone.clone()).ok()));
+        let Some((start, end)) = bounds else {
+            log::warn!(
+                "the start of the session's day cannot be read, so what the venue has \
+                 finished is not asked for"
+            );
+            self.end_completed_orders(turn, shared);
+            return;
+        };
+        let from = crate::protocol::datetime::unix_to_ib_utc_dash(start.timestamp().as_second());
+        let to = crate::protocol::datetime::unix_to_ib_utc_dash(end.timestamp().as_second());
+        // The account the question is about, as a gateway names it on every
+        // question it asks.
+        let account = shared.account_name("");
         let sent = conn.send_fix(&[
             (fix::TAG_MSG_TYPE, "H"),
             (fix::TAG_SENDING_TIME, &ts),
             (11, "*"), (55, "*"), (54, "*"),
-            (6533, "1"), (6536, &from), (6537, &to),
+            (1, account.as_str()), (6533, "1"), (6536, &from), (6537, &to),
         ]);
         match sent {
             Ok(()) => {
