@@ -130,8 +130,10 @@ pub struct TickTypeEnum;
 impl TickTypeEnum {
     /// The name a tick number goes by, or `NOTFOUND` where it names none.
     ///
-    /// The spelling is the reference client's, which is how a program written
-    /// against it reads a tick back: it keys what it collected on this.
+    /// The reference client's releases spell this call two ways: the current
+    /// one runs the words together, an earlier one keeps the underscore. A
+    /// program reads a tick back by whichever its release spells and keys
+    /// what it collected on the answer, so both are answered here.
     #[staticmethod]
     #[pyo3(name = "toStr")]
     fn to_str(idx: i64) -> &'static str {
@@ -140,6 +142,13 @@ impl TickTypeEnum {
             .and_then(|i| TICK_TYPE_NAMES.get(i))
             .copied()
             .unwrap_or("NOTFOUND")
+    }
+
+    /// The same call under the earlier release's spelling.
+    #[staticmethod]
+    #[pyo3(name = "to_str")]
+    fn to_str_former(idx: i64) -> &'static str {
+        Self::to_str(idx)
     }
 
     /// Every tick number and the name it goes by.

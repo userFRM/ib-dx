@@ -47,6 +47,9 @@ def test_every_tick_the_venue_numbers_has_a_name():
 
 def test_a_number_reads_back_as_the_name_it_was_filed_under():
     assert T.toStr(T.BID) == "BID"
+    # An earlier release spells the same call with an underscore, and a
+    # program moved from it labels every tick that way.
+    assert T.to_str(T.BID) == "BID"
     assert T.toStr(T.LAST_TIMESTAMP) == "LAST_TIMESTAMP"
     assert T.toStr(T.BID_EXCH) == "BID_EXCH"
     # Every name in the table round-trips.
