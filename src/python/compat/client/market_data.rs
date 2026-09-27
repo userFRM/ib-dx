@@ -204,11 +204,12 @@ impl EClient {
     /// starts live whatever the type, falls back to delayed data on a refusal
     /// where delayed data is on, and is served the frozen or delayed-frozen
     /// quote while the market is closed, where the logon enables frozen data;
-    /// the `market_data_type` callback reports the type served. A type this
-    /// client does not know is logged and leaves the feeds as they were.
+    /// the `market_data_type` callback reports the type served. A number
+    /// naming no type is refused under -1 with 321, *Invalid market data
+    /// type*, as a gateway refuses it, and leaves the feeds as they were.
     /// `req_mkt_data_ex` names a feed per request, which allows two feeds on
     /// one contract at once.
-    fn req_market_data_type(&self, market_data_type: i32) -> PyResult<()> {
+    fn req_market_data_type(&self, py: Python<'_>, market_data_type: i32) -> PyResult<()> {
         // Answered under 504 with no session, as every request is, and the
         // type is then not kept. It used to be: set before `connect`, it
         // applied to the session that followed. The reference client's sends
@@ -216,7 +217,11 @@ impl EClient {
         // after connecting, having never had another way; what a caller loses
         // here is only a setting the reference never let it make.
         let Some(_tx) = self.tx_or_report(-1)? else { return Ok(()) };
-        self.core.set_market_data_type(market_data_type);
+        // The request names no number of its own to answer under, so the
+        // refusal is reported under -1, as a gateway reports it.
+        if let Err(why) = self.core.set_market_data_type(market_data_type) {
+            return self.report_refusal(py, -1, why);
+        }
         Ok(())
     }
 

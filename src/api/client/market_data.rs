@@ -492,11 +492,16 @@ impl EClient {
     /// quote while the market is closed, where the logon enables frozen data;
     /// the `market_data_type` callback reports the type served. To name a feed
     /// for one request instead, [`req_mkt_data_ex`](EClient::req_mkt_data_ex)
-    /// takes it. A number naming no type leaves the feeds as they were, and
-    /// says so.
+    /// takes it. A number naming no type is refused under -1 with 321,
+    /// *Invalid market data type*, as a gateway refuses it, and leaves the
+    /// feeds as they were.
     pub fn req_market_data_type(&self, market_data_type: i32) {
         if self.session_over() { return self.report_reason(-1, &Refusal::not_connected("Not connected")); }
-        self.core.set_market_data_type(market_data_type);
+        // The request names no number of its own to answer under, so the
+        // refusal is reported under -1, as a gateway reports it.
+        if let Err(why) = self.core.set_market_data_type(market_data_type) {
+            self.report_reason(-1, &why);
+        }
     }
 
     /// Set news provider codes for per-contract news ticks.

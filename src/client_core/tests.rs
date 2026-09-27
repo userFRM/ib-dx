@@ -304,14 +304,16 @@ fn a_session_keeps_no_figure_for_a_subscription_it_is_not_holding() {
 /// The feeds stay as they were whatever it names, and the callback that
 /// reports a subscription's type reads what was stored — so storing the number
 /// would tell a caller their data is of a type the venue never stated and
-/// their subscription is not on.
+/// their subscription is not on. The number is refused in a gateway's words,
+/// bare here, for the surfaces to report under -1 as a gateway reports it.
 #[test]
 fn an_unknown_market_data_type_is_not_kept() {
     let core = ClientCore::new();
-    core.set_market_data_type(MDT_DELAYED);
+    core.set_market_data_type(MDT_DELAYED).unwrap();
     assert_eq!(core.subscription_mode(), 1);
 
-    core.set_market_data_type(99);
+    let why = core.set_market_data_type(99).expect_err("a number naming no type");
+    assert_eq!((why.code, why.message.as_str()), (321, "Invalid market data type"));
     assert_eq!(core.subscription_mode(), 1, "the last known type still stands");
 }
 
@@ -4024,9 +4026,9 @@ fn followers_keep_the_subscriptions_market_data_type() {
         snapshot: false, one_shot: false, data_type: data_type_for_mode(core.subscription_mode()), marked: false, unsent: 0,
     }, &crate::engine::hot_loop::ccp::order_message::display_name);
 
-    core.set_market_data_type(MDT_DELAYED);
+    core.set_market_data_type(MDT_DELAYED).unwrap();
     subscribe(1);
-    core.set_market_data_type(MDT_REALTIME);
+    core.set_market_data_type(MDT_REALTIME).unwrap();
     subscribe(2);
     assert_eq!(core.check_mdt_needed(1, true), Some(MDT_DELAYED));
     assert_eq!(core.check_mdt_needed(2, true), Some(MDT_DELAYED), "follower");

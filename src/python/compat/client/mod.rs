@@ -3055,6 +3055,30 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// A number naming no market-data type is refused under -1 on this
+    /// surface as on the Rust one, in the wire form a gateway wraps a
+    /// refusal it raised itself in, and the feeds stay as they were.
+    #[test]
+    fn an_unknown_market_data_type_is_refused_under_minus_one_too() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, _rx, _shared, w) = wired_client(py);
+            client.call_method1(py, "req_market_data_type", (3i32,)).unwrap();
+            client.call_method1(py, "req_market_data_type", (7i32,)).unwrap();
+            client.call_method0(py, "poll").unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            let said: Vec<(i64, i64, String)> = py
+                .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
+                .unwrap().extract().unwrap();
+            assert_eq!(
+                said,
+                [(-1, 321, "Error validating request:-'' : cause - Invalid market data type".to_string())],
+            );
+            assert_eq!(client.get().core.subscription_mode(), 1, "the feeds stay as they were");
+        });
+    }
+
     /// An execution the venue restated at logon is announced to nobody and
     /// answers the caller that asks for it — on this surface as on the Rust
     /// one, so a program written against either reads the same record.
@@ -3636,7 +3660,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
             for (data_type, named) in [(3, 1), (4, 3)] {
                 for direct in [false, true] {
                     let (client, rx, _shared, _w) = wired_client(py);
-                    client.get().core.set_market_data_type(data_type);
+                    client.get().core.set_market_data_type(data_type).unwrap();
                     let contract = Py::new(py, Contract {
                         con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(),
                         exchange: "IDEALPRO".into(), ..Default::default()
@@ -3906,17 +3930,22 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
     }
 
     /// A subscription states the contract's security type, and a caller that
-    /// gave an id alone stated none. The request goes to the engine as it
-    /// stands, and the engine asks the venue what the contract is before the
-    /// subscription goes out — rather than giving it up untyped, which left
+    /// gave an id beside its venue stated none. The request goes to the engine
+    /// as it stands, and the engine asks the venue what the contract is before
+    /// the subscription goes out — rather than giving it up untyped, which left
     /// the caller reading no quotes and told nothing under its own request id.
+    /// An id with no exchange beside it never reaches this: a gateway refuses
+    /// the request at its intake for the exchange nobody named, and so does
+    /// this client.
     #[test]
     fn a_quote_request_names_a_contract_given_by_id_alone() {
         Python::initialize();
         Python::attach(|py| {
             let (client, rx, shared, _w) = wired_client(py);
             let engine = crate::api::client::tests::Engine::new(rx, &shared);
-            let contract = Py::new(py, Contract { con_id: 893091670, ..Default::default() }).unwrap();
+            let contract = Py::new(py, Contract {
+                con_id: 893091670, exchange: "SMART".into(), ..Default::default()
+            }).unwrap();
 
             client
                 .call_method1(py, "req_mkt_data", (1i64, &contract, "", false, false))

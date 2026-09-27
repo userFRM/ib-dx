@@ -3340,15 +3340,16 @@ impl ClientCore {
     /// turns frozen data on; 3 and 4 turn delayed data on, 4 with
     /// delayed-frozen and 3 without; only 1 turns frozen data off, and it
     /// turns all three off.
-    pub fn set_market_data_type(&self, mdt: i32) {
+    ///
+    /// A number naming no type is refused and the feeds stay as they were:
+    /// the callback that reports a subscription's type reads what is stored,
+    /// so a number nobody recognises, stored, would reach the caller as the
+    /// venue's word for data that is not on it. The request reads no number
+    /// of its own to answer under, so the surfaces report the refusal under
+    /// -1, as a gateway reports it.
+    pub fn set_market_data_type(&self, mdt: i32) -> Result<(), Refusal> {
         if !matches!(mdt, MDT_REALTIME | MDT_FROZEN | MDT_DELAYED | MDT_DELAYED_FROZEN) {
-            // Kept out rather than kept: the feeds stay as they were whatever
-            // this names, and the callback that reports a subscription's type
-            // reads what is stored — so a number nobody recognises, stored,
-            // reaches the caller as the venue's word for data that is not on
-            // it.
-            log::warn!("req_market_data_type({mdt}) names no known type; the feeds stay as they were");
-            return;
+            return Err(Refusal::validation("Invalid market data type"));
         }
         self.market_data_type.store(mdt, Ordering::Relaxed);
         let _ = self.market_data_feeds.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |feeds| {
@@ -3359,6 +3360,7 @@ impl ClientCore {
                 _ => 0,
             })
         });
+        Ok(())
     }
 
     /// The per-subscription mode the session's feeds imply. A gateway asks

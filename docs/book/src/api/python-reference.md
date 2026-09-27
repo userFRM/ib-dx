@@ -1139,7 +1139,7 @@ def last_rtt_ms()
 
 #### `req_market_data_type`
 
-Name the feeds every subscription after this one may be served: 1 live, 2 frozen, 3 delayed, 4 delayed-frozen.  A type turns feeds on, as a gateway takes it: 2 turns frozen data on; 3 and 4 turn delayed data on, 4 with delayed-frozen and 3 without; only 1 turns frozen data off, and it turns all three off. A subscription starts live whatever the type, falls back to delayed data on a refusal where delayed data is on, and is served the frozen or delayed-frozen quote while the market is closed, where the logon enables frozen data; the `market_data_type` callback reports the type served. A type this client does not know is logged and leaves the feeds as they were. `req_mkt_data_ex` names a feed per request, which allows two feeds on one contract at once.
+Name the feeds every subscription after this one may be served: 1 live, 2 frozen, 3 delayed, 4 delayed-frozen.  A type turns feeds on, as a gateway takes it: 2 turns frozen data on; 3 and 4 turn delayed data on, 4 with delayed-frozen and 3 without; only 1 turns frozen data off, and it turns all three off. A subscription starts live whatever the type, falls back to delayed data on a refusal where delayed data is on, and is served the frozen or delayed-frozen quote while the market is closed, where the logon enables frozen data; the `market_data_type` callback reports the type served. A number naming no type is refused under -1 with 321, *Invalid market data type*, as a gateway refuses it, and leaves the feeds as they were. `req_mkt_data_ex` names a feed per request, which allows two feeds on one contract at once.
 
 ```python
 def req_market_data_type(market_data_type)

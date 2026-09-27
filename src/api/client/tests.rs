@@ -12378,6 +12378,27 @@ fn the_types_asked_pick_the_first_feed_and_the_fallback() {
     }
 }
 
+/// A number naming no market-data type is refused, as a gateway refuses it,
+/// and the feeds stay as they were. The request reads no number of its own to
+/// answer under, so the refusal is reported under -1, wrapped in the wire form
+/// every locally raised refusal goes out in. A program branching on the
+/// refusal hears it; a warning in a log was silence to the caller.
+#[test]
+fn an_unknown_market_data_type_is_refused_under_minus_one() {
+    let (client, _rx, _shared) = test_client();
+    client.req_market_data_type(3);
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    for number in [7, 0, -3] {
+        client.req_market_data_type(number);
+    }
+    client.process_msgs(&mut heard);
+    let wire = "error:-1:321:Error validating request:-'' : cause - Invalid market data type";
+    let refusals = heard.events.iter().filter(|e| e.as_str() == wire).count();
+    assert_eq!(refusals, 3, "{:?}", heard.events);
+    assert_eq!(client.core.subscription_mode(), 1, "the feeds stay as they were");
+}
+
 #[test]
 fn feed_changes_reach_watchers_in_record_order() {
     let (client, _rx, shared) = test_client();

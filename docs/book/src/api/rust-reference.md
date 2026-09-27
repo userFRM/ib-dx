@@ -1403,7 +1403,7 @@ pub fn last_rtt(&self) -> Option<std::time::Duration>
 
 #### `req_market_data_type`
 
-Which feeds the subscriptions after this one may be served: 1 live, 2 frozen, 3 delayed, 4 delayed and frozen. A type turns feeds on, as a gateway takes it: 2 turns frozen data on; 3 and 4 turn delayed data on, 4 with delayed-frozen and 3 without; only 1 turns frozen data off, and it turns all three off. A subscription starts live whatever the type, falls back to delayed data on a refusal where delayed data is on, and is served the frozen or delayed-frozen quote while the market is closed, where the logon enables frozen data; the `market_data_type` callback reports the type served. To name a feed for one request instead, `req_mkt_data_ex` takes it. A number naming no type leaves the feeds as they were, and says so.
+Which feeds the subscriptions after this one may be served: 1 live, 2 frozen, 3 delayed, 4 delayed and frozen. A type turns feeds on, as a gateway takes it: 2 turns frozen data on; 3 and 4 turn delayed data on, 4 with delayed-frozen and 3 without; only 1 turns frozen data off, and it turns all three off. A subscription starts live whatever the type, falls back to delayed data on a refusal where delayed data is on, and is served the frozen or delayed-frozen quote while the market is closed, where the logon enables frozen data; the `market_data_type` callback reports the type served. To name a feed for one request instead, `req_mkt_data_ex` takes it. A number naming no type is refused under -1 with 321, *Invalid market data type*, as a gateway refuses it, and leaves the feeds as they were.
 
 ```rust
 pub fn req_market_data_type(&self, market_data_type: i32)
