@@ -261,10 +261,14 @@ impl EClient {
             Record::Fill(fill) => self.deliver_fill(fill, wrapper),
             Record::OrderUpdate(update) => self.deliver_update(update, wrapper),
             // What the venue says a fill cost, naming the execution it belongs
-            // to. Pushed after the fill, so the fill is stored by now.
+            // to. Pushed after the fill, so the fill is stored by now. Told
+            // where the fill is told: to the order's client and no other, and
+            // to client zero for a charge naming no execution held here.
             Record::Charge(charge) => {
-                self.core.record_charge(&charge);
-                wrapper.commission_and_fees_report(&charge);
+                let stated = self.core.record_charge(&charge);
+                if stated == i64::from(self.shared.orders.api_client_id()) {
+                    wrapper.commission_and_fees_report(&charge);
+                }
             }
             // An execution the venue restated rather than announced. Filed for
             // `req_executions` and reported to nobody: a caller that asks is
@@ -698,6 +702,10 @@ impl EClient {
             fill.order_id, report.as_deref(), status.as_ref(),
         );
         let client = self.core.client_stated(fill.order_id, report.as_deref());
+        // A gateway tells a fill to the connection of the order's client and
+        // no other; the execution is filed for `req_executions` whatever
+        // order it is on, as a gateway serves that request account-wide.
+        let own = self.core.speaks_for_the_order(&self.shared, fill.order_id, client);
         // After the record is read: a status stating the order filled drops
         // it, and read afterwards the fill that completed an order went out
         // as client zero's, without the parent this client recorded.
@@ -759,13 +767,15 @@ impl EClient {
         // so a replay of this execution says the charge is unknown rather
         // than that it was nothing.
         self.core.push_execution(c.clone(), exec.clone(), CommissionAndFeesReport::default());
-        wrapper.order_status(
-            self.core.api_order_id(fill.order_id), status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
-            avg_price_f, perm_id, parent_id, price_f, i64::from(client), "", 0.0,
-        );
-        // Unsolicited executions carry request id -1. A market-data
-        // subscription id does not identify a `reqExecutions` request.
-        wrapper.exec_details(NO_REQUEST, &c, &exec);
+        if own {
+            wrapper.order_status(
+                self.core.api_order_id(fill.order_id), status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
+                avg_price_f, perm_id, parent_id, price_f, i64::from(client), "", 0.0,
+            );
+            // Unsolicited executions carry request id -1. A market-data
+            // subscription id does not identify a `reqExecutions` request.
+            wrapper.exec_details(NO_REQUEST, &c, &exec);
+        }
         self.core.update_order_fill(
             fill.order_id, status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
         );
@@ -804,6 +814,11 @@ impl EClient {
             .map(|t| t.order.client_id)
             .filter(|c| *c != 0)
             .unwrap_or(client_id);
+        // A gateway tells an order's status to the connection of the order's
+        // client and no other. `open_order` below is stated only for an order
+        // this session holds, which is its own; the status follows the same
+        // rule, so an order another client placed is not restated here.
+        let own = self.core.speaks_for_the_order(&self.shared, update.order_id, client);
         // Not for a preview: the answer to a preview is the margin the venue
         // states on its own reply, and a pair sent from the status alone
         // answered it with no margin figures.
@@ -819,11 +834,13 @@ impl EClient {
                 self.core.api_order_id(update.order_id), &tracked.contract, &tracked.order, &state,
             );
         }
-        wrapper.order_status(
-            self.core.api_order_id(update.order_id), status, update.filled_qty,
-            update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
-            i64::from(client), "", 0.0,
-        );
+        if own {
+            wrapper.order_status(
+                self.core.api_order_id(update.order_id), status, update.filled_qty,
+                update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
+                i64::from(client), "", 0.0,
+            );
+        }
         self.core.update_order_status(
             &self.shared, update.order_id, update.status, update.filled_qty,
             update.remaining_qty, update.instrument,
@@ -2067,6 +2084,154 @@ mod delivered_size_tests {
             pairs.0.iter().all(|(what, ..)| *what != "open_order"),
             "the status answered the preview in place of the venue's own reply: {:?}",
             pairs.0,
+        );
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use crate::api::wrapper::Wrapper;
+    use crate::bridge::RichOrderInfo;
+    use crate::types::model::{
+        CommissionAndFeesReport, Contract, Execution, ExecutionFilter, Order as ModelOrder,
+        OrderState,
+    };
+    use crate::types::{Fill, OrderStatus, OrderUpdate, PRICE_SCALE, QTY_SCALE, Side};
+
+    /// What the order callbacks said, each entry under its own name.
+    #[derive(Default)]
+    struct Told(Vec<String>);
+
+    impl Wrapper for Told {
+        fn open_order(
+            &mut self, order_id: i64, _contract: &Contract, _order: &ModelOrder,
+            _state: &OrderState,
+        ) {
+            self.0.push(format!("open_order {order_id}"));
+        }
+        fn order_status(
+            &mut self, order_id: i64, _status: &str, _filled: f64, _remaining: f64,
+            _avg_fill_price: f64, _perm_id: i64, _parent_id: i64, _last_fill_price: f64,
+            _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
+        ) {
+            self.0.push(format!("order_status {order_id}"));
+        }
+        fn exec_details(&mut self, _req_id: i64, _contract: &Contract, execution: &Execution) {
+            self.0.push(format!("exec {}", execution.exec_id));
+        }
+        fn commission_and_fees_report(&mut self, report: &CommissionAndFeesReport) {
+            self.0.push(format!("commission {}", report.exec_id));
+        }
+    }
+
+    /// The venue's book stating two orders: one another API client placed,
+    /// and one this session's own client placed.
+    fn the_book_stated(shared: &crate::bridge::SharedState) {
+        let row = |order_id: i64, client_id: i32, exec_id: &str| RichOrderInfo {
+            contract: Contract {
+                con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+                exchange: "SMART".into(), ..Default::default()
+            },
+            order: ModelOrder { order_id, client_id, ..Default::default() },
+            order_state: Default::default(),
+            last_exec: Execution { exec_id: exec_id.into(), ..Default::default() },
+        };
+        shared.orders.push_order_info(71, row(71, 7, "other"));
+        shared.orders.push_order_info(72, row(72, 1, "own"));
+    }
+
+    fn fill(order_id: u64) -> Fill {
+        Fill {
+            instrument: 0, order_id, side: Side::Buy,
+            price: 150 * PRICE_SCALE, qty: 10 * QTY_SCALE, remaining: 0, timestamp_ns: 0,
+            cum_qty: 10 * QTY_SCALE, avg_price: 150 * PRICE_SCALE,
+        }
+    }
+
+    /// A gateway tells the connection of the order's client and no other: the
+    /// status of an order the venue states another client placed says nothing
+    /// to this session, and the status of this client's own order is delivered.
+    #[test]
+    fn a_status_of_another_clients_order_says_nothing_to_this_one() {
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        shared.orders.set_api_client_id(1);
+        the_book_stated(&shared);
+        let update = |order_id: u64| OrderUpdate {
+            order_id, instrument: 0, status: OrderStatus::Submitted,
+            filled_qty: 0.0, remaining_qty: 100.0, avg_price: 0,
+            perm_id: 0, parent_id: 0, timestamp_ns: 0,
+        };
+        shared.orders.push_order_update(update(71));
+        shared.orders.push_order_update(update(72));
+
+        let mut told = Told::default();
+        client.process_msgs(&mut told);
+        assert_eq!(told.0, ["order_status 72".to_string()]);
+    }
+
+    /// The fill of another client's order is announced to nobody but its own,
+    /// and still filed for `req_executions`: a gateway serves the requests
+    /// account-wide while it tells each connection its own orders alone.
+    #[test]
+    fn a_fill_of_another_clients_order_says_nothing_to_this_one() {
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        shared.orders.set_api_client_id(1);
+        the_book_stated(&shared);
+        shared.orders.push_fill(fill(71));
+        shared.orders.push_fill(fill(72));
+
+        let mut told = Told::default();
+        client.process_msgs(&mut told);
+        assert_eq!(
+            told.0,
+            ["order_status 72".to_string(), "exec own".to_string()],
+        );
+        assert!(
+            client.core.snapshot_executions(&ExecutionFilter::default())
+                .iter().any(|stored| stored.execution.exec_id == "other"),
+            "the other client's fill is still filed for a request",
+        );
+    }
+
+    /// What a fill cost is told where the fill itself is told, and nowhere
+    /// else; the charge is stamped on the filed execution either way, as the
+    /// answer to a request carries what the venue stated.
+    #[test]
+    fn a_charge_of_another_clients_fill_says_nothing_to_this_one() {
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        shared.orders.set_api_client_id(1);
+        the_book_stated(&shared);
+        shared.orders.push_fill(fill(71));
+        shared.orders.push_fill(fill(72));
+        let charge = |exec_id: &str| CommissionAndFeesReport {
+            exec_id: exec_id.into(), commission_and_fees: 1.25,
+            currency: "USD".into(), ..Default::default()
+        };
+        shared.orders.push_charge(charge("other"));
+        shared.orders.push_charge(charge("own"));
+        shared.orders.push_charge(charge("unknown"));
+
+        let mut told = Told::default();
+        client.process_msgs(&mut told);
+        assert!(
+            told.0.contains(&"commission own".to_string()),
+            "the own fill's charge is told: {:?}", told.0,
+        );
+        assert!(
+            !told.0.contains(&"commission other".to_string()),
+            "the other client's fill's charge is not: {:?}", told.0,
+        );
+        assert!(
+            !told.0.contains(&"commission unknown".to_string()),
+            "a charge naming no execution held here states no client, and is told where client zero is told: {:?}",
+            told.0,
+        );
+        let other = client.core.snapshot_executions(&ExecutionFilter::default())
+            .into_iter().find(|stored| stored.execution.exec_id == "other")
+            .expect("the other client's fill is filed");
+        assert_eq!(
+            other.commission_and_fees.commission_and_fees, 1.25,
+            "and its charge is stamped on the filed execution",
         );
     }
 }

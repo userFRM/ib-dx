@@ -3460,16 +3460,23 @@ impl ClientCore {
 
     /// Note what an execution cost against the execution itself, so a replay
     /// of it carries the charge the venue stated rather than the nothing it
-    /// was stored with.
-    pub fn record_charge(&self, charge: &ApiCommissionAndFeesReport) {
+    /// was stored with. Answers with the client the named execution states:
+    /// a gateway tells a charge where it tells the fill, to the order's
+    /// client and no other. A charge naming no execution held here states
+    /// none.
+    pub fn record_charge(&self, charge: &ApiCommissionAndFeesReport) -> i64 {
         // A charge naming no execution stamps none. Matched on the empty name,
         // it was written onto every execution stored without one.
         if charge.exec_id.is_empty() {
-            return;
+            return 0;
         }
         let mut store = self.executions.lock().unwrap();
-        if let Some(at) = store.by_id.get(&charge.exec_id).copied() {
-            store.rows[at].commission_and_fees = charge.clone();
+        match store.by_id.get(&charge.exec_id).copied() {
+            Some(at) => {
+                store.rows[at].commission_and_fees = charge.clone();
+                store.rows[at].execution.client_id
+            }
+            None => 0,
         }
     }
 
@@ -3957,6 +3964,19 @@ impl ClientCore {
             .filter(|c| *c != 0)
             .or_else(|| report.map(|info| info.order.client_id))
             .unwrap_or(0)
+    }
+
+    /// Whether this session is the connection a gateway tells of an order:
+    /// the session placed it, or the client stated as placing it is this
+    /// session's client — the rule `reqOpenOrders` is scoped by, applied to
+    /// what is told unasked. An order placed away from the API is stated as
+    /// client zero's, and zero is this session's client only where this
+    /// session is client zero.
+    pub(crate) fn speaks_for_the_order(
+        &self, shared: &SharedState, order_id: u64, stated: i32,
+    ) -> bool {
+        self.open_orders.lock().unwrap().contains_key(&order_id)
+            || stated == shared.orders.api_client_id()
     }
 
     /// Which client placed an order, as the venue states it on tag 109.

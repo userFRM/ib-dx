@@ -547,10 +547,11 @@ impl EClient {
     /// Served for client 0. Any other client is refused, as a gateway refuses a
     /// client other than 0: asked to bind, with 321, as a request that fails
     /// validation; asked not to, with 327. On a gateway, client 0's flag turns
-    /// binding on or off; here what binding asks for is the default, since this
-    /// session is told about every order on the account, whoever entered it.
-    /// So `b_auto_bind` changes nothing whichever way it is set, and nothing
-    /// goes to the venue.
+    /// binding on or off; here an order's callbacks follow the gateway's
+    /// routing whichever way it is set — a session is told about the orders
+    /// its own client placed, and client 0 about the orders placed away from
+    /// the API as well. So `b_auto_bind` changes nothing whichever way it is
+    /// set, and nothing goes to the venue.
     ///
     /// `order_bound` does not follow from this call. It is fired once for each
     /// order the venue restates when the session opens that this session did
@@ -559,9 +560,9 @@ impl EClient {
     #[pyo3(signature = (b_auto_bind))]
     fn req_auto_open_orders(&self, b_auto_bind: bool) -> PyResult<()> {
         // Nothing goes to the wire. The request is refused for any client id
-        // but 0, and otherwise sets state that does not apply here: this
-        // session is told about every order on the account whether or not it
-        // placed them. The refusal is the only observable part.
+        // but 0, and otherwise sets state that does not apply here: an
+        // order's callbacks follow the gateway's routing whatever the flag
+        // says. The refusal is the only observable part.
         let Some(_tx) = self.tx_or_report(-1)? else { return Ok(()) };
         if self.client_id.load(std::sync::atomic::Ordering::Acquire) != 0 {
             let (code, reason) = if b_auto_bind {

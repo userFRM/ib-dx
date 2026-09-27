@@ -1154,7 +1154,7 @@ pub fn req_completed_orders(&self, api_only: bool)
 
 #### `req_auto_open_orders`
 
-Automatically bind future orders to this client. What binding asks for is the default here: this session is told about every order on the account, whoever entered it. Nothing goes to the venue. On a gateway, client 0's flag turns binding on or off; here every session is already told about every order, so `b_auto_bind` changes nothing. Any client but 0 is refused, as a gateway refuses one: asked to bind, with 321, as a request that fails validation; asked not to, with 327. `Wrapper::order_bound` does not follow from this call. It is fired once for each order the venue restates when the session opens that this session did not place, pairing its permanent id, the number the session that placed it sent it under, with the order id it is reached under here.
+Automatically bind future orders to this client. Nothing goes to the venue. On a gateway, client 0's flag turns binding on or off; here an order's callbacks follow the gateway's routing whichever way it is set — a session is told about the orders its own client placed, and client 0 about the orders placed away from the API as well — so `b_auto_bind` changes nothing. Any client but 0 is refused, as a gateway refuses one: asked to bind, with 321, as a request that fails validation; asked not to, with 327. `Wrapper::order_bound` does not follow from this call. It is fired once for each order the venue restates when the session opens that this session did not place, pairing its permanent id, the number the session that placed it sent it under, with the order id it is reached under here.
 
 ```rust
 pub fn req_auto_open_orders(&self, b_auto_bind: bool)
