@@ -1535,6 +1535,17 @@ impl OrderState {
     }
 }
 
+/// Same field, former word: both reference generations declare the charge on
+/// an order state as a plain commission, its bounds and its currency beside
+/// it, from before the fees were reported with it. A what-if answer read
+/// under those names arrived carrying everything and answered nothing.
+const STATE_WORDS: &[(&str, &str)] = &[
+    ("commission", "commission_and_fees"),
+    ("minCommission", "min_commission_and_fees"),
+    ("maxCommission", "max_commission_and_fees"),
+    ("commissionCurrency", "commission_and_fees_currency"),
+];
+
 #[pymethods]
 impl OrderState {
     /// Answer to the name the reference client gives a field as well as the
@@ -1548,18 +1559,18 @@ impl OrderState {
     /// Only reached when the attribute was not found, so it costs nothing on
     /// the names this class defines.
     fn __getattr__(slf: Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
-        by_reference_name(slf.as_any(), name, &[])
+        by_reference_name(slf.as_any(), name, STATE_WORDS)
     }
 
     /// The same names, written to: a field set under the reference client's
     /// spelling lands on this client's field.
     fn __setattr__(slf: Bound<'_, Self>, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
-        set_by_reference_name(slf.as_any(), name, &value, &[])
+        set_by_reference_name(slf.as_any(), name, &value, STATE_WORDS)
     }
 
     /// The same names, listed: `dir()` names them beside this client's.
     fn __dir__(slf: Bound<'_, Self>) -> PyResult<Vec<String>> {
-        reference_dir::<Self>(slf.as_any(), &[])
+        reference_dir::<Self>(slf.as_any(), STATE_WORDS)
     }
 
     #[new]

@@ -167,6 +167,18 @@ def test_order_state_defaults():
     assert os.commission_and_fees == float("1.7976931348623157e+308")
     assert os.min_commission_and_fees == float("1.7976931348623157e+308")
     assert os.max_commission_and_fees == float("1.7976931348623157e+308")
+    # Both reference generations also declare the charge under the former
+    # plain-commission names: a write under one lands on the same field and
+    # a read answers under it.
+    os.commission = 1.25
+    os.minCommission = 0.5
+    os.maxCommission = 2.0
+    os.commissionCurrency = "USD"
+    assert (os.commission_and_fees, os.min_commission_and_fees,
+            os.max_commission_and_fees, os.commission_and_fees_currency) == (
+        1.25, 0.5, 2.0, "USD")
+    assert (os.commission, os.minCommission, os.maxCommission,
+            os.commissionCurrency) == (1.25, 0.5, 2.0, "USD")
 
 
 # ── TagValue ──

@@ -239,7 +239,13 @@ pub(super) fn reference_dir<T: pyo3::PyTypeInfo>(
         .collect();
     for (theirs, ours) in aliases {
         listed.push((*theirs).to_string());
-        spelled.insert(letters(ours));
+        // The dedup counts words, not fields: an entry respelling a field's
+        // own words replaces the spelling generated for it, while an entry
+        // under other words — a former name — leaves the field's own
+        // reference spelling listed beside it, as programs read both.
+        if letters(theirs) == letters(ours) {
+            spelled.insert(letters(ours));
+        }
     }
     for carried in py.get_type::<T>().dir()?.iter() {
         let carried: String = carried.extract()?;
