@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the counts docs/evidence.md publishes against what exists.
+"""Check the counts docs/evidence.md and README.md publish against what exists.
 
 A number in a shipped document is a claim. Typed in once and left, it is a
 claim that goes quietly wrong: the suites grow, the figure does not, and a
@@ -23,6 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # matrix is the latter.
 STATUS = ROOT / "docs" / "evidence.md"
 MATRIX = ROOT / "docs/evidence.md"
+README = ROOT / "README.md"
 
 #: Row label in the table, and how to count what it describes.
 ROWS = {
@@ -31,6 +32,18 @@ ROWS = {
     "Python": "python",
     "Python, live": "python_live",
     "Paper compatibility suite": "paper",
+}
+
+#: Row labels in the README's Testing table, onto the same keys the inventory
+#: rows use. The two files word the same rows slightly apart — a comma here,
+#: the phase count riding in the label there — so the README gets its own
+#: label set mapping to one key space rather than a fuzzy match across two.
+README_ROWS = {
+    "Rust, unit and integration": "rust_offline",
+    "Rust, live": "rust_live",
+    "Python": "python",
+    "Python, live": "python_live",
+    "Paper compatibility": "paper",
 }
 
 #: How a phase of the paper suite names itself in its own output.
@@ -176,6 +189,65 @@ def published() -> dict[str, int]:
                     out[ROWS[label]] = int(digits)
                 break
     return out
+
+
+def readme_published() -> dict[str, int]:
+    """The counts the README's own Testing table states, under the same keys.
+
+    The README promises every count it publishes is read back against what is
+    there, and then shipped a table nothing read: a test added to the suite
+    failed this script on the inventory while the README's copy of the same
+    number stood still. Scoped to the Testing section, because the file
+    carries other tables whose rows are not counts of tests.
+    """
+    text = README.read_text()
+    start = text.index("## Testing")
+    end = text.find("\n## ", start)
+    section = text[start:end if end != -1 else len(text)]
+    out: dict[str, int] = {}
+    # The phase count rides in the row label here too, spelled its own way.
+    phases = re.search(r"Paper compatibility, (\d+) phases", section)
+    if phases:
+        out["phases"] = int(phases.group(1))
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        # Longest label first, as in published(): "Python, live" also starts
+        # with "Python".
+        for label in sorted(README_ROWS, key=len, reverse=True):
+            if cells[0].startswith(label) and README_ROWS[label] not in out:
+                digits = re.sub(r"[^0-9]", "", cells[1])
+                if digits:
+                    out[README_ROWS[label]] = int(digits)
+                break
+    return out
+
+
+def examples_said() -> tuple[int, int, int] | None:
+    """What the README's examples bullet states: (total, Rust, Python).
+
+    The total is checked as well as the split, because it is typed rather
+    than derived: an example added to one language moves the split and the
+    sentence's own sum with it, and a total left behind is a third figure
+    that has to agree.
+    """
+    m = re.search(
+        r"(\d+) runnable single-file programs, (\d+) in Rust and (\d+) in Python",
+        README.read_text(),
+    )
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def examples_counted() -> tuple[int, int, int]:
+    """The same three figures, globbed off the examples directory."""
+    rs = len(list((ROOT / "examples").glob("*.rs")))
+    py = len(list((ROOT / "examples").glob("*.py")))
+    return rs + py, rs, py
 
 
 #: Every status the legend defines. A mark outside this set is a typo or a
@@ -381,6 +453,32 @@ def main() -> int:
             wrong.append(f"{key}: docs/evidence.md says {said[key]:,}, {n:,} exist")
         else:
             print(f"{key}: {n:,}")
+
+    # The README ships a second copy of the table and a sentence counting the
+    # examples, and promises both are read back. Held to the same keys, so
+    # one figure cannot agree in one file and disagree in the other.
+    before = len(wrong)
+    readme_said = readme_published()
+    for key, n in have.items():
+        if key == "rust":
+            continue
+        if key not in readme_said:
+            wrong.append(f"{key}: README.md publishes nothing, {n:,} exist")
+        elif readme_said[key] != n:
+            wrong.append(f"{key}: README.md says {readme_said[key]:,}, {n:,} exist")
+    said_ex, have_ex = examples_said(), examples_counted()
+    if said_ex is None:
+        wrong.append("README.md states no example count")
+    elif said_ex != have_ex:
+        wrong.append(
+            f"examples: README.md says {said_ex[0]} programs, {said_ex[1]} in "
+            f"Rust and {said_ex[2]} in Python; {have_ex[0]} exist, {have_ex[1]} "
+            f"in Rust and {have_ex[2]} in Python"
+        )
+    if len(wrong) == before:
+        print(f"README.md: table agrees, {have_ex[0]} examples "
+              f"({have_ex[1]} Rust, {have_ex[2]} Python)")
+
     surface, surface_said = api_surface(), api_surface_published()
     for key, n in surface.items():
         if key not in surface_said:
