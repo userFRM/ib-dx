@@ -3366,6 +3366,22 @@ impl ClientCore {
     /// Record the feed accepted by the venue, in delivery order.
     pub fn note_mkt_data_type(&self, instrument: InstrumentId, data_type: i32) {
         self.mdt_by_instrument.lock().unwrap().insert(instrument, data_type);
+        // A frozen confirmation re-arms the model a snapshot holds: a gateway
+        // resets the mask of its frozen model on each confirmation, and a
+        // model tick arriving after one goes to a snapshot still waiting
+        // again, whatever it states.
+        let bit = match data_type {
+            MDT_FROZEN => SNAPSHOT_FROZEN_MODEL,
+            MDT_DELAYED_FROZEN => SNAPSHOT_DELAYED_FROZEN_MODEL,
+            _ => 0,
+        };
+        if bit != 0 {
+            for wait in self.snapshot_reqs.lock().unwrap().values_mut() {
+                if wait.slot == instrument {
+                    wait.stated &= !bit;
+                }
+            }
+        }
     }
 
     // ── Bulletin subscription management ──

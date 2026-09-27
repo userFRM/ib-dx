@@ -423,8 +423,10 @@ whether or not it moved; at its end it is sent each one it has not been sent,
 as it last stood for it, where any figure is stated: the bid's, the ask's and
 the last's, then the model. On a frozen or a delayed-frozen feed it is also
 sent the model once whatever it states, the first time it changes, which does
-not complete it; at its end a side is sent only stating every figure, and the
-model again where it was not sent that way, whatever it states.
+not complete it; each later confirmation of the frozen feed re-arms it, and a
+model that changes after one is sent to it again, whatever it states. At its
+end a side is sent only stating every figure, and the model again where it
+was not sent that way, whatever it states.
 
 What is not carried yet is on [Limits](./limits.md).
 

@@ -2916,6 +2916,15 @@ fn an_options_snapshot_is_sent_each_computation_once_and_whole() {
     assert_eq!(owed(Model, moved, 7), (13, vec![(6, moved)]), "and whole");
     let moved_again = [0.22, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
     assert_eq!(owed(Model, moved_again, 7), (13, Vec::new()), "and no more");
+    // A confirmation of the frozen feed again re-arms the model the snapshot
+    // holds, as each confirmation re-arms it on a gateway: the next change
+    // goes to it again, whatever it states.
+    core.note_mkt_data_type(7, 2);
+    let confirmed_again = [0.23, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0];
+    assert_eq!(owed(Model, confirmed_again, 7), (13, vec![(6, confirmed_again)]),
+        "a confirmation re-arms it");
+    assert_eq!(owed(Model, [0.24, 0.55, 5.0, 0.0, 0.02, 0.3, -0.1, 765.0], 7), (13, Vec::new()),
+        "and one model tick spends the arming");
     assert_eq!(owed(Bid, partial, 7), (10, Vec::new()));
     expire(6);
     assert_eq!(core.check_snapshot_done(6), Some(Vec::new()), "a side short of a figure is not sent at the end");
