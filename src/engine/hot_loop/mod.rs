@@ -1496,11 +1496,8 @@ impl HotLoop {
                     // so the ticks go on arriving under a stream the caller
                     // has withdrawn.
                     if self.hmds.tbt_subscriptions.iter().any(|s| s.caller_req_id == req_id) {
-                        let reason = format!(
-                            "request {req_id} is already carrying a tick stream: withdraw it \
-                             before asking for another under the same number",
-                        );
-                        log::error!("{reason}");
+                        let reason = "Duplicate ticker id".to_string();
+                        log::error!("tick-by-tick {req_id} refused: {reason}");
                         push_hmds_refusal(
                             &self.shared, req_id.max(0) as u32,
                             crate::error_codes::DUPLICATE_TICKER_ID, reason, false,
@@ -1983,7 +1980,7 @@ impl HotLoop {
                         // one of them.
                         push_hmds_refusal(
                             &self.shared, req_id, crate::error_codes::DUPLICATE_TICKER_ID,
-                            format!("a live bar stream is already running under request {req_id}: withdraw it before asking for another"),
+                            "Duplicate ticker id".to_string(),
                             false,
                         );
                     } else {
@@ -9058,7 +9055,12 @@ mod tests {
         hl.poll_control_commands();
         assert_eq!(hl.hmds.rtbar_subs.iter().filter(|(_, rid, ..)| *rid == 7).count(), 1);
         let told = shared.reference.drain_historical_errors();
-        assert!(told.iter().any(|(rid, code, _)| *rid == 7 && *code == 102), "{told:?}");
+        assert!(
+            told.iter().any(|(rid, code, words)| {
+                *rid == 7 && *code == 102 && words == "Duplicate ticker id"
+            }),
+            "in a gateway's words: {told:?}",
+        );
     }
 
     /// Withdrawing a request still parked for its contract's name acted, and

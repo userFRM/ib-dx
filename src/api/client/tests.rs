@@ -2431,8 +2431,8 @@ fn a_request_already_carrying_a_tick_stream_is_not_given_another() {
     let heard = settled(&client, &rx);
 
     assert!(
-        heard.iter().any(|e| e.starts_with("error:5:102:")),
-        "the number is already carrying a stream: {heard:?}",
+        heard.iter().any(|e| e == "error:5:102:Duplicate ticker id"),
+        "the number is already carrying a stream, in a gateway's words: {heard:?}",
     );
     assert_eq!(rx.engine().hmds.tbt_subscriptions.len(), 1, "the stream it was already carrying is untouched");
 }

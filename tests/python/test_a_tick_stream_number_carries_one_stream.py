@@ -42,7 +42,7 @@ def test_a_second_stream_under_a_live_number_is_refused():
     c.reqTickByTickData(5, contract(320227571, "QQQ"), "BidAsk", 0, False)
 
     c.poll()
-    assert [(r, code) for r, code, _ in w.seen] == [(5, 102)], (
+    assert w.seen == [(5, 102, "Duplicate ticker id")], (
         f"the number is already carrying a stream: {w.seen}"
     )
 
