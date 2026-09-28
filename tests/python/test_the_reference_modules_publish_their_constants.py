@@ -54,3 +54,56 @@ def test_a_funds_class_and_policy_are_the_enumeration_members():
     assert details.fundAssetType is contract.FundAssetType.MoneyMarket
     details.fundDistributionPolicyIndicator = "Y"
     assert details.fundDistributionPolicyIndicator is contract.FundDistributionPolicyIndicator.IncomeFund
+
+
+def test_the_errors_module_publishes_the_numbers_this_client_reports_itself():
+    # A program compares a callback's number against these rather than a bare
+    # 501, so the codes and the standing words are the contract.
+    from ibkr_dx import errors
+
+    assert (errors.ALREADY_CONNECTED.errorCode, errors.ALREADY_CONNECTED.errorMsg) == (501, "Already connected.")
+    assert (errors.NOT_CONNECTED.errorCode, errors.NOT_CONNECTED.errorMsg) == (504, "Not connected")
+    assert (errors.BAD_MESSAGE.errorCode, errors.BAD_MESSAGE.errorMsg) == (508, "Bad message")
+
+
+def test_the_order_status_module_publishes_the_states_a_callback_carries():
+    from ibkr_dx.order_status import OrderStatus
+
+    assert str(OrderStatus.Filled) == "Filled"
+    assert OrderStatus.get("filled") is OrderStatus.Filled
+    assert OrderStatus.get(" PendingSubmit ") is OrderStatus.PendingSubmit
+    assert OrderStatus.get("") is OrderStatus.Unknown
+    assert OrderStatus.get("no such state") is OrderStatus.Unknown
+    assert OrderStatus.Submitted.is_active() and not OrderStatus.Submitted.is_terminal()
+    assert OrderStatus.Filled.is_terminal() and not OrderStatus.Filled.is_active()
+
+
+def test_the_utils_module_publishes_its_helpers():
+    import time
+
+    from ibkr_dx import utils
+    from ibkr_dx.execution import OptionExerciseType
+
+    assert utils.isValidFloatValue(1.0) and not utils.isValidFloatValue(utils.UNSET_DOUBLE)
+    assert utils.isAsciiPrintable("host\tname") and not utils.isAsciiPrintable("hé")
+    assert utils.isPegBenchOrder("PEGBENCH") and utils.isPegBenchOrder("PEG BENCH")
+    assert utils.isPegMidOrder("PEG MID") and not utils.isPegMidOrder("PEGBENCH")
+    assert utils.isPegBestOrder("PEG BEST")
+    assert abs(utils.currentTimeMillis() - time.time() * 1000) < 5000
+    assert utils.listOfValues(OptionExerciseType)[0] is OptionExerciseType.NoneItem
+    assert utils.getEnumTypeFromString(OptionExerciseType, 2) is OptionExerciseType.Lapse
+    assert utils.getEnumTypeFromString(OptionExerciseType, "no such") is OptionExerciseType.NoneItem
+
+
+def test_the_common_module_publishes_the_plain_enum_holder():
+    from ibkr_dx import common
+
+    assert common.MarketDataType is int
+    assert common.FaDataType is int
+    assert common.Liquidities is int
+    assert common.LiquiditiesEnum.Added == 1
+    # The last name is spelled as the reference client spells it.
+    assert common.LiquiditiesEnum.toStr(3) == "RoudedOut"
+    assert common.LiquiditiesEnum.toStr(9) == "NOTFOUND"
+    made = common.Enum("a", "b")
+    assert made.b == 1 and made.toStr(0) == "a"

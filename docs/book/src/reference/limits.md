@@ -268,6 +268,17 @@ They are on [Venue behaviour](./venue-behaviour.md).
 Every other call and callback on the canonical list is served on both
 languages. The call-by-call matrix is [generated from the source](./coverage.md).
 
+## The synchronous wrapper its samples import
+
+The reference client publishes a second client beside the callback one: a
+synchronous wrapper its samples import (`from ibapi.sync_wrapper import
+TWSSyncWrapper`), which runs an event loop of its own and blocks on each
+request's answer. No module of that name is published here. The wrapper is a
+second engine rather than a view of this client's surface, so the one-rename
+promise does not reach it: a program written against the callback client
+ports by the rename, and a program written against the synchronous wrapper
+is rewritten in the callback style.
+
 ## Bars along a contract's id history
 
 A contract can trade under more than one id, ticker or listing over its life,

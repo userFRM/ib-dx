@@ -14,10 +14,10 @@ hedge are not here: a callback hands those back as well as taking them, so
 those classes live beside the classes that carry them.
 """
 
+import enum
 import math
 import sys
 from decimal import Decimal
-from enum import Enum
 
 #: An integer field nobody set.
 UNSET_INTEGER = 2**31 - 1
@@ -275,6 +275,36 @@ class FaDataTypeEnum:
     ALIASES = 3
 
 
+class Enum:
+    """The small numbered-name holder the reference client builds its plain
+    enums on (ibapi enum_implem.py): each name given becomes an attribute
+    holding its position, and a position reads back as its name.
+
+    A program star-importing `common` uses it unqualified there — the reference
+    client's own module imports it — so it has to exist before that program's
+    class bodies run.
+    """
+
+    def __init__(self, *args):
+        self.idx2name = {}
+        for idx, name in enumerate(args):
+            setattr(self, name, idx)
+            self.idx2name[idx] = name
+
+    def toStr(self, idx):
+        return self.idx2name.get(idx, "NOTFOUND")
+
+
+#: Which side of a trade added the liquidity, by the venue's numbering. The
+#: last name is spelled as the reference client spells it.
+LiquiditiesEnum = Enum("None", "Added", "Remove", "RoudedOut")
+
+#: The aliases the reference client's annotations name for the three kinds.
+FaDataType = int
+MarketDataType = int
+Liquidities = int
+
+
 #: A mid-offset that means "up to the midpoint" rather than a distance.
 COMPETE_AGAINST_BEST_OFFSET_UP_TO_MID = DOUBLE_INFINITY
 
@@ -332,7 +362,7 @@ def getEnumTypeName(cls, value):
     return first if first is not None else ""
 
 
-class OptionExerciseType(Enum):
+class OptionExerciseType(enum.Enum):
     """How an option position came to be exercised, as the reference client
     numbers it: each member is (the code, the name)."""
     NoneItem = (-1, "None")
@@ -346,7 +376,7 @@ class OptionExerciseType(Enum):
     AutoexerciseTrading = (200, "AutoexerciseTrading")
 
 
-class FundAssetType(Enum):
+class FundAssetType(enum.Enum):
     """A fund's asset class, as the reference client lists it: (the code, the name)."""
     NoneItem = ("None", "None")
     Others = ("000", "Others")
@@ -359,7 +389,7 @@ class FundAssetType(Enum):
     Alternative = ("007", "Alternative")
 
 
-class FundDistributionPolicyIndicator(Enum):
+class FundDistributionPolicyIndicator(enum.Enum):
     """Whether a fund accumulates or pays out, as the reference client lists it."""
     NoneItem = ("None", "None")
     AccumulationFund = ("N", "Accumulation Fund")
@@ -373,6 +403,68 @@ def member_for(cls, code):
         if member.value[0] == code:
             return member
     return next(iter(cls))
+
+
+def isValidFloatValue(val: float) -> bool:
+    """Whether a float field is one somebody set (ibapi utils.py:173)."""
+    return val != UNSET_DOUBLE
+
+
+def isValidIntValue(val: int) -> bool:
+    """Whether an integer field is one somebody set."""
+    return val != UNSET_INTEGER
+
+
+def isValidLongValue(val: int) -> bool:
+    """Whether a long field is one somebody set."""
+    return val != UNSET_LONG
+
+
+def isValidDecimalValue(val: Decimal) -> bool:
+    """Whether a decimal field is one somebody set."""
+    return val != UNSET_DECIMAL
+
+
+def isAsciiPrintable(val):
+    """Whether every character of a string can go to a gateway.
+
+    The reference client's own expression (ibapi utils.py:201): the printable
+    characters, plus the tab, the line feed and the carriage return.
+    """
+    return all(ord(c) >= 32 and ord(c) < 127 or ord(c) == 9 or ord(c) == 10 or ord(c) == 13 for c in val)
+
+
+def isPegBenchOrder(orderType: str):
+    """Whether an order type is a peg-to-benchmark one."""
+    return orderType in ("PEG BENCH", "PEGBENCH")
+
+
+def isPegMidOrder(orderType: str):
+    """Whether an order type is a peg-to-midpoint one."""
+    return orderType in ("PEG MID", "PEGMID")
+
+
+def isPegBestOrder(orderType: str):
+    """Whether an order type is a peg-to-best one."""
+    return orderType in ("PEG BEST", "PEGBEST")
+
+
+def currentTimeMillis():
+    """The wall clock in milliseconds, rounded as the reference client rounds it."""
+    import time
+
+    return round(time.time() * 1000)
+
+
+def listOfValues(cls):
+    """The members of an enum class, in declaration order."""
+    return list(map(lambda c: c, cls))
+
+
+#: The member whose first element a string is, or the first listed where none
+#: is — the lookup `member_for` already is, under the name the reference
+#: client's decoder reads a fund's kind through (ibapi utils.py:238).
+getEnumTypeFromString = member_for
 
 class RealTimeBar:
     """One five-second bar, as a callback hands it over.
@@ -417,4 +509,77 @@ class HistoricalSession:
         self.startDateTime = ""
         self.endDateTime = ""
         self.refDate = ""
+
+
+class CodeMsgPair:
+    """An error number and the standing words that go with it.
+
+    The reference client's `errors` module publishes one of these per number
+    it reports itself, and a program compares a callback's number against
+    `errors.NOT_CONNECTED.errorCode` rather than a bare 504.
+    """
+
+    def __init__(self, code, msg):
+        self.errorCode = code
+        self.errorMsg = msg
+
+
+#: A second connection asked for while one is up.
+ALREADY_CONNECTED = CodeMsgPair(501, "Already connected.")
+#: A request made with no session to send it on.
+NOT_CONNECTED = CodeMsgPair(504, "Not connected")
+#: A verification message this client answers itself.
+BAD_MESSAGE = CodeMsgPair(508, "Bad message")
+
+
+class OrderStatus(enum.Enum):
+    """The states an order goes through, as the callbacks state them.
+
+    A program compares the status an `orderStatus` or `openOrder` callback
+    carried against these, so the strings are the contract. `get` reads the
+    string a callback carried, whichever way round its letters are, and
+    answers `Unknown` for one no member names.
+    """
+
+    ApiPending = "ApiPending"
+    ApiCancelled = "ApiCancelled"
+    PreSubmitted = "PreSubmitted"
+    PendingCancel = "PendingCancel"
+    Cancelled = "Cancelled"
+    Submitted = "Submitted"
+    Filled = "Filled"
+    Inactive = "Inactive"
+    PendingSubmit = "PendingSubmit"
+    Unknown = "Unknown"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def get(cls, api_string: str) -> "OrderStatus":
+        """The member a status string names, case aside, or `Unknown`."""
+        if not api_string:
+            return cls.Unknown
+        for member in cls:
+            if member.value.lower() == api_string.strip().lower():
+                return member
+        return cls.Unknown
+
+    def is_active(self) -> bool:
+        """Whether further fills, or a withdrawal, are still possible."""
+        return self in (
+            OrderStatus.PreSubmitted,
+            OrderStatus.PendingCancel,
+            OrderStatus.Submitted,
+            OrderStatus.PendingSubmit,
+        )
+
+    def is_terminal(self) -> bool:
+        """Whether the order will not move again."""
+        return self in (
+            OrderStatus.Filled,
+            OrderStatus.Cancelled,
+            OrderStatus.Inactive,
+            OrderStatus.ApiCancelled,
+        )
 

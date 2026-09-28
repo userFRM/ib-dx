@@ -27,6 +27,8 @@ LAYOUT = [
     ("order_cancel", ["OrderCancel"]),
     ("order_condition", ["OrderCondition", "PriceCondition", "TimeCondition"]),
     ("execution", ["Execution", "ExecutionFilter", "OptionExerciseType"]),
+    ("errors", ["CodeMsgPair", "ALREADY_CONNECTED", "NOT_CONNECTED", "BAD_MESSAGE"]),
+    ("order_status", ["OrderStatus"]),
     ("commission_and_fees_report", ["CommissionAndFeesReport"]),
     ("commission_report", ["CommissionReport"]),
     ("scanner", ["ScannerSubscription", "ScanData", "NO_ROW_NUMBER_SPECIFIED"]),
@@ -39,9 +41,13 @@ LAYOUT = [
                 "BarData", "RealTimeBar", "HistogramData", "TickAttrib",
                 "TickAttribBidAsk", "TickAttribLast", "FamilyCode",
                 "HistoricalSession", "DepthMktDataDescription",
-                "UNSET_DOUBLE", "TickerId", "MarketDataTypeEnum"]),
+                "UNSET_DOUBLE", "TickerId", "MarketDataTypeEnum",
+                "Enum", "LiquiditiesEnum", "MarketDataType", "FaDataType", "Liquidities"]),
     ("const", ["UNSET_DOUBLE", "NO_VALID_ID", "MAX_MSG_LEN"]),
-    ("utils", ["iswrapper", "getTimeStrFromMillis", "decimalMaxString"]),
+    ("utils", ["iswrapper", "getTimeStrFromMillis", "decimalMaxString",
+               "isValidFloatValue", "currentTimeMillis", "isPegBenchOrder",
+               "getEnumTypeFromString", "listOfValues", "isAsciiPrintable",
+               "UNSET_DOUBLE"]),
 ]
 
 
