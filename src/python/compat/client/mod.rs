@@ -177,9 +177,12 @@ pub struct EClient {
     /// send them again, so without this a second request is answered with none
     /// of them and the account reads as having completed nothing. The Rust
     /// surface keeps the same
-    /// archive for the same reason, each with the venue's own name for it.
+    /// archive for the same reason, each with the venue's own name for it and
+    /// with the stamp it finished under, which bounds what is kept to the
+    /// venue's own window as the archive is filled.
     #[allow(clippy::type_complexity)]
     pub(crate) completed: Mutex<Vec<(
+        u64,
         crate::types::model::Contract,
         crate::types::model::Order,
         crate::types::model::OrderState,

@@ -317,8 +317,14 @@ pub struct EClient {
     /// second time, this client answered with none of them, which reads as an
     /// account that completed nothing today. Each is kept with the venue's
     /// own name for it, which tells it from another order finished under the
-    /// same number.
-    pub(crate) completed: Mutex<Vec<(ApiContract, ApiOrder, crate::types::model::OrderState, String)>>,
+    /// same number, and with the stamp it finished under, which tells it from
+    /// one the venue's own window no longer covers: the ask is bounded by the
+    /// session's day, and an entry older than that day is dropped as the
+    /// archive is filled — an answer restated what the venue could no longer
+    /// state, and a long session grew the archive, and the copy every answer
+    /// takes of it, without bound.
+    #[allow(clippy::type_complexity)]
+    pub(crate) completed: Mutex<Vec<(u64, ApiContract, ApiOrder, crate::types::model::OrderState, String)>>,
     pub(crate) core: ClientCore,
     pub(crate) session_token_bytes: Vec<u8>,
     pub(crate) session: crate::auth::resume::ResumableSession,

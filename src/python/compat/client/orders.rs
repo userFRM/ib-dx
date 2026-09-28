@@ -700,6 +700,10 @@ impl EClient {
 impl EClient {
     /// File what the venue has stated finished into the archive the answers
     /// are read from, where an answer is delivered.
+    ///
+    /// Kept under the venue's own window, as on the other surface: the ask is
+    /// bounded by the session's day, and what finished before that day is
+    /// dropped as the archive is filled.
     pub(crate) fn archive_completed_orders(&self, shared: &crate::bridge::SharedState) {
         // Read off the queue once and kept. It empties as it is read and
         // the venue does not send these again, so a second request would
@@ -707,6 +711,8 @@ impl EClient {
         // for any whose record has been retired.
         {
             let mut archive = self.completed.lock().unwrap();
+            let window = shared.completed_window_start_ns();
+            let now_ns = jiff::Timestamp::now().as_nanosecond().max(0) as u64;
             // What the venue has taken back goes first. A trade cancel or
             // correction returns a finished order to a working quantity,
             // and the bridge can only drop the completion it still holds —
@@ -714,7 +720,7 @@ impl EClient {
             // arrivals below, an order taken back and then finished again
             // keeps the new record and loses the superseded one.
             for (order_id, venue_order) in shared.orders.drain_order_corrections() {
-                archive.retain(|(_, order, _, named)| {
+                archive.retain(|(_, _, order, _, named)| {
                     order.order_id != order_id as i64 || *named != venue_order
                 });
                 // And the eviction armed for it when it finished. A bust or a
@@ -725,6 +731,9 @@ impl EClient {
             }
             for co in shared.orders.drain_completed_orders() {
                 let status_str = crate::types::order_status::order_status_str(co.status);
+                // The stamp the completion carries, and the filing moment
+                // where it carries none, as on the other surface.
+                let stamp = if co.timestamp_ns != 0 { co.timestamp_ns } else { now_ns };
                 // The order as the venue's answer stated it, where the
                 // completion carries that, and otherwise the record held under
                 // its number as the completion was taken, as on the other
@@ -779,15 +788,15 @@ impl EClient {
                 // caller was handed the same order twice. Under the venue's
                 // own name for it: two orders the venue finished under one
                 // number are two orders.
-                match archive.iter().position(|(_, held, _, named): &(_, crate::types::model::Order, _, String)| {
+                match archive.iter().position(|(_, _, held, _, named): &(_, _, crate::types::model::Order, _, String)| {
                     held.order_id == order.order_id
                         && (held.perm_id == order.perm_id
                             || held.perm_id == 0
                             || order.perm_id == 0)
                         && *named == co.venue_order
                 }) {
-                    Some(at) => archive[at] = (contract, order, state, co.venue_order),
-                    None => archive.push((contract, order, state, co.venue_order)),
+                    Some(at) => archive[at] = (stamp, contract, order, state, co.venue_order),
+                    None => archive.push((stamp, contract, order, state, co.venue_order)),
                 }
                 // Bound `order_cache` growth: terminal entries are no
                 // longer needed once what they carried has been read out.
@@ -798,6 +807,10 @@ impl EClient {
                 // no fill at all.
                 self.deferred_evictions.lock().unwrap().insert(co.order_id);
             }
+            // And the archive's own bound: what finished before the day the
+            // ask is bounded by is not one the venue could state, so it is
+            // not one this archive keeps.
+            archive.retain(|(stamp, ..)| *stamp >= window);
         }
     }
 
@@ -1446,6 +1459,45 @@ w = W()",
             assert_eq!(
                 answers(&client), 1,
                 "the one order read as two once the venue had named it",
+            );
+        });
+    }
+
+    /// A completion the venue's window no longer covers is not restated on
+    /// this surface either: its archive is its own copy of the same bound.
+    #[test]
+    fn a_completion_older_than_the_window_is_not_restated_on_this_surface_either() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, _rx, shared, wrapper) = wired_client(py);
+            let now_ns = std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos() as u64;
+            let two_days_ns = 2 * 86_400 * 1_000_000_000u64;
+            let completion = |order_id: u64, timestamp_ns: u64| crate::types::CompletedOrder {
+                venue_order: String::new(), stated: None, held: None,
+                order_id, instrument: 0, status: crate::types::OrderStatus::Filled,
+                filled_qty: 100, timestamp_ns,
+            };
+            shared.orders.refile_completed_order(completion(31, now_ns - two_days_ns));
+            shared.orders.refile_completed_order(completion(32, now_ns));
+            client.req_completed_orders(false).unwrap();
+            shared.push_call_record(crate::bridge::Record::Answer(
+                crate::bridge::Answer::CompletedOrders { api_only: false },
+            ));
+            client.dispatch_once(py, &shared).unwrap();
+            let calls = wrapper.bind(py).getattr("calls").unwrap();
+            let heard: Vec<i64> = (0..calls.len().unwrap())
+                .map(|i| calls.get_item(i).unwrap())
+                .filter(|call| {
+                    let name = call.get_item(0).unwrap().extract::<String>().unwrap();
+                    name == "completed_order" || name == "completedOrder"
+                })
+                .map(|call| call.get_item(2).unwrap().getattr("orderId").unwrap()
+                    .extract().unwrap())
+                .collect();
+            assert_eq!(
+                heard, [32],
+                "only what the venue's window still covers: {:?}", heard,
             );
         });
     }

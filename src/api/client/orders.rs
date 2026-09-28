@@ -649,9 +649,14 @@ impl EClient {
     /// are read from.
     ///
     /// The queue they arrive on empties on read and the venue does not resend
-    /// completed orders, so later answers read this archive.
+    /// completed orders, so later answers read this archive. Kept under the
+    /// venue's own window: the ask is bounded by the session's day, and what
+    /// finished before that day is dropped as the archive is filled — an
+    /// answer states no more than the venue could.
     pub(crate) fn archive_completed_orders(&self) {
         let mut archive = self.completed.lock().unwrap();
+        let window = self.shared.completed_window_start_ns();
+        let now_ns = jiff::Timestamp::now().as_nanosecond().max(0) as u64;
         // What the venue has taken back goes first. A trade cancel or
         // correction returns a finished order to a working quantity, and the
         // bridge can only drop the completion it still holds — this is the
@@ -659,7 +664,7 @@ impl EClient {
         // taken back and then finished again keeps the new record and loses
         // the superseded one.
         for (order_id, venue_order) in self.shared.orders.drain_order_corrections() {
-            archive.retain(|(_, order, _, named)| {
+            archive.retain(|(_, _, order, _, named)| {
                 order.order_id != order_id as i64 || *named != venue_order
             });
             // And the eviction armed for it when it finished. A bust or a
@@ -670,6 +675,11 @@ impl EClient {
         }
         for order in self.shared.orders.drain_completed_orders() {
             let status_str = crate::types::order_status::order_status_str(order.status);
+            // The stamp the completion carries, and the filing moment where
+            // it carries none: a record the venue restated arrives inside the
+            // window its own answer was asked under, so from here it belongs
+            // to the day it is read on.
+            let stamp = if order.timestamp_ns != 0 { order.timestamp_ns } else { now_ns };
             // The order as the venue's answer stated it, where the completion
             // carries that, and otherwise the record held under its number as
             // the completion was taken. The number is not the order: the venue
@@ -701,9 +711,10 @@ impl EClient {
                 if held.client_id == 0 {
                     held.client_id = self.core.placing_client(&self.shared, held.order_id as u64);
                 }
-                (contract, held, state, order.venue_order)
+                (stamp, contract, held, state, order.venue_order)
             } else {
                 (
+                    stamp,
                     Contract::default(),
                     Order { order_id: order.order_id as i64, ..Default::default() },
                     crate::types::model::OrderState {
@@ -720,11 +731,11 @@ impl EClient {
             // decides, as it does in the queue this was read off, under the
             // venue's own name for it: two orders the venue finished under one
             // number are two orders.
-            match archive.iter().position(|(_, held, _, named)| held.order_id == entry.1.order_id
-                && (held.perm_id == entry.1.perm_id
+            match archive.iter().position(|(_, _, held, _, named)| held.order_id == entry.2.order_id
+                && (held.perm_id == entry.2.perm_id
                     || held.perm_id == 0
-                    || entry.1.perm_id == 0)
-                && *named == entry.3)
+                    || entry.2.perm_id == 0)
+                && *named == entry.4)
             {
                 Some(at) => archive[at] = entry,
                 None => archive.push(entry),
@@ -735,6 +746,10 @@ impl EClient {
             // off the queue but not yet reported still needs it.
             self.deferred_evictions.lock().unwrap().insert(order.order_id);
         }
+        // And the archive's own bound: what finished before the day the ask
+        // is bounded by is not one the venue could state, so it is not one
+        // this archive keeps.
+        archive.retain(|(stamp, ..)| *stamp >= window);
     }
 
     // ── Executions ──

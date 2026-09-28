@@ -188,6 +188,23 @@ const COMPLETED_RETENTION: Duration = Duration::from_secs(300);
 /// legitimate replay could still be racing the ones being dropped.
 const COMPLETED_MAX: usize = 65_536;
 
+/// Where the venue's own completed-order window starts, in nanoseconds since
+/// the epoch.
+///
+/// The ask of the venue is bounded by the session's day: the start of today
+/// to the start of tomorrow in the zone the session announced, and what the
+/// venue states is what finished inside that window. Held to the same bound
+/// here — the queue arrivals sit on and the archive answers are read from —
+/// a session keeps no more than the venue could state. Zero where the
+/// session's day cannot be read, which bounds nothing rather than dropping
+/// what the venue is still stating.
+pub(crate) fn completed_window_start_ns(zone: &jiff::tz::TimeZone, now: jiff::Timestamp) -> u64 {
+    let Some(midnight) = now.to_zoned(zone.clone()).date().to_zoned(zone.clone()).ok() else {
+        return 0;
+    };
+    midnight.timestamp().as_nanosecond().max(0) as u64
+}
+
 /// Shared state between hot loop and external caller.
 /// Composed of domain-specific containers for clear ownership boundaries.
 pub struct SharedState {
@@ -351,6 +368,15 @@ impl SharedState {
     #[doc(hidden)]
     pub fn set_settings(&self, settings: std::sync::Arc<crate::settings::SessionSettings>) {
         *self.settings.lock().unwrap() = settings;
+    }
+
+    /// Where the venue's own completed-order window starts, on the clock the
+    /// session announced: the bound the ask of the venue carries, and the one
+    /// its answers are kept under here.
+    pub(crate) fn completed_window_start_ns(&self) -> u64 {
+        let zone = crate::protocol::datetime::clock_named(&self.settings().timezone)
+            .unwrap_or(jiff::tz::TimeZone::UTC);
+        completed_window_start_ns(&zone, jiff::Timestamp::now())
     }
 
     /// An empty one.

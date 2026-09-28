@@ -976,7 +976,7 @@ impl EClient {
                 // Copied before anything is called back: a callback may ask
                 // for these again, and the lock is not re-entrant.
                 let completed = self.completed.lock().unwrap().clone();
-                for (contract, order, state, _) in &completed {
+                for (_, contract, order, state, _) in &completed {
                     // Kept whole in the archive and filtered on the way out,
                     // so the same session can ask for all of them and for the
                     // numbered ones and be answered correctly either way.

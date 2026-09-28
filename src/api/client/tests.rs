@@ -8500,6 +8500,42 @@ fn completed_orders_are_still_there_when_they_are_asked_for_again() {
     );
 }
 
+/// The archive holds what the venue could still state: the ask carries the
+/// venue's own window over what it has finished — the session's day — and a
+/// completion stamped older than that window is dropped as the archive is
+/// filled, while a fresh one beside it is answered as before.
+#[test]
+fn a_completion_older_than_the_window_the_ask_carries_is_not_restated() {
+    let (client, _rx, shared) = test_client();
+    let now_ns = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+    let two_days_ns = 2 * 86_400 * 1_000_000_000u64;
+    let completion = |order_id: u64, timestamp_ns: u64| crate::types::CompletedOrder {
+        venue_order: String::new(), stated: None, held: None,
+        order_id, instrument: 0, status: crate::types::OrderStatus::Filled,
+        filled_qty: 100, timestamp_ns,
+    };
+    // Arriving as the venue's own restatement of its past, each under its
+    // own stamp: one from a day the window no longer covers, one from now.
+    shared.orders.refile_completed_order(completion(31, now_ns - two_days_ns));
+    shared.orders.refile_completed_order(completion(32, now_ns));
+
+    #[derive(Default)]
+    struct Heard(Vec<i64>);
+    impl Wrapper for Heard {
+        fn completed_order(
+            &mut self, _: &Contract, order: &Order, _: &crate::types::model::OrderState,
+        ) {
+            self.0.push(order.order_id);
+        }
+    }
+    let mut heard = Heard::default();
+    completed_orders_asked_and_answered(&client, false); client.process_msgs(&mut heard);
+    assert_eq!(heard.0, [32], "only what the venue's window still covers: {:?}", heard.0);
+}
+
 /// An order the venue has finished with is not reported as working.
 ///
 /// The record this client keeps of an order it placed is its own, and a

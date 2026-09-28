@@ -671,7 +671,7 @@ impl EClient {
         };
         shared.orders.push_completed_order(crate::types::CompletedOrder {
             venue_order: String::new(), stated: None, held: None,
-            order_id, instrument, status: st, filled_qty, timestamp_ns: 100,
+            order_id, instrument, status: st, filled_qty, timestamp_ns: 0,
         });
         shared.orders.push_order_info(order_id, crate::bridge::RichOrderInfo {
             contract: ApiContract {
