@@ -159,6 +159,17 @@ def test_the_base_a_program_writes_its_own_objects_on():
 def test_a_scan_row_and_a_mid_offset_that_means_the_midpoint():
     row = ibkr_dx.ScanData(rank=1, distance="", benchmark="", projection="", legsStr="")
     assert row.rank == 1 and row.contract is None
+    # The row's market name: the reference record carries it as its seventh
+    # field and its rendering prints it (ibapi scanner.py:31,44), so a program
+    # reading `row.marketName` or building a row under that keyword works.
+    assert row.marketName == ""
+    contract = ibkr_dx.Contract()
+    contract.symbol, contract.secType, contract.currency = "IBM", "STK", "USD"
+    named = ibkr_dx.ScanData(contract=contract, rank=2, marketName="ISLAND")
+    assert named.marketName == "ISLAND"
+    assert str(named) == ("Rank: 2, Symbol: IBM, SecType: STK, Currency: USD, "
+                          "Distance: , Benchmark: , Projection: , Legs String: , "
+                          "MarketName: ISLAND")
     # Not a distance: the offset that says "up to the midpoint" is unbounded.
     assert ibkr_dx.COMPETE_AGAINST_BEST_OFFSET_UP_TO_MID == float("inf")
 

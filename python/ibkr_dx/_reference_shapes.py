@@ -232,16 +232,38 @@ class Object:
 
 
 class ScanData:
-    """One row of a scan, as a callback hands it over."""
+    """One row of a scan, as a callback hands it over.
+
+    The fields are the reference record's (ibapi scanner.py:24-42), its
+    market name included, and a row renders the way it renders there.
+    """
 
     def __init__(self, contract=None, rank=0, distance="", benchmark="",
-                 projection="", legsStr=""):
+                 projection="", legsStr="", marketName=""):
         self.contract = contract
         self.rank = rank
         self.distance = distance
         self.benchmark = benchmark
         self.projection = projection
         self.legsStr = legsStr
+        self.marketName = marketName
+
+    def __str__(self):
+        return (
+            "Rank: %d, Symbol: %s, SecType: %s, Currency: %s, Distance: %s, "
+            "Benchmark: %s, Projection: %s, Legs String: %s, MarketName: %s"
+            % (
+                self.rank,
+                self.contract.symbol,
+                self.contract.secType,
+                self.contract.currency,
+                self.distance,
+                self.benchmark,
+                self.projection,
+                self.legsStr,
+                self.marketName,
+            )
+        )
 
 
 class OrderCondition:
