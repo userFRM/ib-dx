@@ -588,10 +588,20 @@ mod bar_date_tests {
             "0227 09:30:00 US/Eastern",
         );
         // A head timestamp carries no zone of its own: its third spelling is
-        // written from the stamp as it stands.
+        // the stamp as it stands, less the year.
         assert_eq!(bar_date_as_asked("20200101-00:00:00", 3, ""), "0101 00:00:00");
         // A day is a day on either.
         assert_eq!(bar_date_as_asked("20260227", 1, "US/Eastern"), "20260227");
+        // A bar kept up to date is a stamp in seconds, and is written in the
+        // same spellings on the zone the series stated.
+        assert_eq!(
+            bar_epoch_as_asked(1_772_202_600, None, 1, "US/Eastern", false),
+            "20260227 09:30:00 US/Eastern",
+        );
+        assert_eq!(
+            bar_epoch_as_asked(1_772_202_600, None, 3, "US/Eastern", false),
+            "0227 09:30:00 US/Eastern",
+        );
         // Nothing to read, and no zone to read it on: what the venue said.
         assert_eq!(bar_date_as_asked("not a stamp", 1, "US/Eastern"), "not a stamp");
         assert_eq!(

@@ -308,8 +308,6 @@ impl BarSize {
             })
     }
 
-    /// Whether a bar this long can be kept up to date.
-    ///
     /// How long one of these lasts.
     ///
     /// What a bar covers, so a bar still forming can be folded from the
