@@ -943,7 +943,7 @@ fn every_request_keeps_its_outcome_between_the_surrounding_records() {
         ("req_completed_orders", |c| c.req_completed_orders(false)),
         ("req_auto_open_orders", |c| c.req_auto_open_orders(false)),
         ("req_executions", |c| c.req_executions(9, &Default::default())),
-        ("req_mkt_data", |c| c.req_mkt_data(9, &super::tests::spy(), "", false, false)),
+        ("req_mkt_data", |c| c.req_mkt_data(9, &super::tests::spy(), "", false, false, &[])),
         ("req_market_data_type", |c| c.req_market_data_type(1)),
     ];
     for (name, call) in calls {

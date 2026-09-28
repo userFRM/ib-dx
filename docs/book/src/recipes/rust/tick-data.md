@@ -5,7 +5,7 @@ ask and last.
 
 ## What this shows
 
-- `req_mkt_data(req_id, &contract, generic_tick_list, snapshot, regulatory_snapshot)`.
+- `req_mkt_data(req_id, &contract, generic_tick_list, snapshot, regulatory_snapshot, mkt_data_options)`.
 - Reading prices off `tick_price`, where `tick_type` names which price it is:
   1 bid, 2 ask, 4 last, 9 close.
 - `cancel_mkt_data(req_id)` before disconnecting.
@@ -129,10 +129,10 @@ tick-by-tick stream uses its query identifier before acknowledgement and its
 assigned stream identifier afterwards; another caller sharing that stream
 keeps receiving data until it cancels too.
 
-`req_mkt_data_ex` takes `mkt_data_options: &[TagValue]` after `mode_9887`.
-Pass `&[]` when there are no options. `req_mkt_data` keeps its existing
-signature and supplies an empty list. With no session, both calls report
-504, *Not connected*, before checking the request.
+Both quote requests take `mkt_data_options: &[TagValue]`, in
+`req_mkt_data_ex` after `mode_9887`. Pass `&[]` when there are no options.
+With no session, both calls report 504, *Not connected*, before checking the
+request.
 
 The list accepts `manual=0` or `manual=1`. An unknown key is refused under
 10337, an invalid value under 10338, and a malformed list under 320.

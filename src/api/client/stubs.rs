@@ -857,10 +857,10 @@ mod expiry_tests {
         for wants_volatility in [true, false] {
             let (client, rx, shared) = test_client();
             let watched = option_contract(756733, "SPY");
-            client.try_req_mkt_data(7, &watched, "", false, false).unwrap();
+            client.try_req_mkt_data(7, &watched, "", false, false, &[]).unwrap();
             rx.pump();
             let other = option_contract(0, "QQQ");
-            client.try_req_mkt_data(7, &other, "", false, false).unwrap();
+            client.try_req_mkt_data(7, &other, "", false, false, &[]).unwrap();
             let refused = engine_refused(&rx, &shared);
             assert!(
                 matches!(refused.as_slice(), [(7, code, _)] if *code == i64::from(REQUEST_NOT_PROCESSED)),

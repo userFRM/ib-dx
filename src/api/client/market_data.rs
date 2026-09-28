@@ -135,14 +135,22 @@ impl EClient {
     /// delayed-frozen quote while the market is closed, where the logon
     /// enables frozen data. `market_data_type` names the feed served.
     /// `req_mkt_data_ex` selects its feed directly.
+    ///
+    /// `mkt_data_options` is checked as a gateway checks it — `manual`, `0` or
+    /// `1`, is the key it takes — and an entry it cannot read refuses the
+    /// request under its own id before anything is subscribed. The wire writes
+    /// the list as it writes it for the request naming its mode: checked, not
+    /// carried.
+    #[allow(clippy::too_many_arguments)]
     pub fn req_mkt_data(
         &self, req_id: i64, contract: &Contract,
         generic_tick_list: &str, snapshot: bool, regulatory_snapshot: bool,
+        mkt_data_options: &[crate::types::model::TagValue],
     ) {
         if self.number_unread(req_id) {
             return;
         }
-        if let Err(why) = self.try_req_mkt_data(req_id, contract, generic_tick_list, snapshot, regulatory_snapshot) {
+        if let Err(why) = self.try_req_mkt_data(req_id, contract, generic_tick_list, snapshot, regulatory_snapshot, mkt_data_options) {
             self.refuse_request(req_id, &why);
         }
     }
@@ -152,12 +160,20 @@ impl EClient {
     pub(crate) fn try_req_mkt_data(
         &self, req_id: i64, contract: &Contract,
         generic_tick_list: &str, snapshot: bool, regulatory_snapshot: bool,
+        mkt_data_options: &[crate::types::model::TagValue],
     ) -> Result<(), Refusal> {
         // The mode the caller asked for on `req_market_data_type`, which names
         // the type once for every subscription that follows. `req_mkt_data_ex`
         // states it per request instead.
         let mode = self.core.subscription_mode();
         if self.session_over() { return Err(Refusal::not_connected("Not connected")); }
+        if !mkt_data_options.is_empty() {
+            crate::client_core::ClientCore::check_option_list(
+                &crate::client_core::MKT_DATA_OPTIONS,
+                &crate::client_core::ClientCore::written_options(mkt_data_options),
+                &self.shared.reference.enabled_features(),
+            )?;
+        }
         self.ask_for_mkt_data(req_id, contract, generic_tick_list, snapshot, regulatory_snapshot, mode, None, None, true)
     }
 

@@ -26,7 +26,7 @@
 //! // Returns once the request is taken. What the engine answers — the ticks,
 //! // or a refusal on `error` — arrives through `process_msgs`, in order.
 //! client.req_mkt_data(1, &Contract { con_id: 756733, symbol: "SPY".into(), ..Default::default() },
-//!     "", false, false);
+//!     "", false, false, &[]);
 //!
 //! let mut wrapper = MyWrapper;
 //! loop {

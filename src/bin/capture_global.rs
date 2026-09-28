@@ -138,7 +138,7 @@ fn main() {
         let quantity = lot(&details);
 
         // Top of book.
-        client.req_mkt_data(req, &resolved, "", false, false);
+        client.req_mkt_data(req, &resolved, "", false, false, &[]);
         // Bars, which every market keeps whether or not it is open now.
         client.req_historical_data(
             1000 + req, &resolved, "", "2 D", "1 hour", "TRADES", false, 1, false,

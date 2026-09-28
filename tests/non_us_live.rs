@@ -249,7 +249,7 @@ fn a_subscription_naming_only_the_contract_id_is_answered() {
         currency: "USD".into(),
         ..Default::default()
     };
-    client.req_mkt_data(9002, &described, "", false, false);
+    client.req_mkt_data(9002, &described, "", false, false, &[]);
     let control_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut control = None;
     while std::time::Instant::now() < control_deadline {
@@ -273,7 +273,7 @@ fn a_subscription_naming_only_the_contract_id_is_answered() {
     // recorded here the same way the silence is, because what this phase is
     // for is the described subscription below it.
     // A refusal is a record in the session's order, read off the session.
-    client.req_mkt_data(req_id, &bare, "", false, false);
+    client.req_mkt_data(req_id, &bare, "", false, false, &[]);
     let refused = client.shared_state().drain_refused();
     for (_, _, why) in &refused {
         println!("  bare conId refused: {why}");

@@ -325,7 +325,7 @@ fn market_data_subscribe_ticks_unsubscribe() {
         con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
         exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
     };
-    client.req_mkt_data(1, &spy, "", false, false); nothing_refused(&shared);
+    client.req_mkt_data(1, &spy, "", false, false, &[]); nothing_refused(&shared);
     rx.pump();
     // The engine's record of taking it says which slot it is served on.
     let mut w = RecordingWrapper::default();
@@ -620,7 +620,7 @@ fn contract_lookup_then_subscribe() {
     assert!(w.events.iter().any(|e| e == "contract_details_end:20"));
 
     // Step 3: now subscribe to market data for this contract
-    client.req_mkt_data(21, &aapl(), "", false, false);
+    client.req_mkt_data(21, &aapl(), "", false, false, &[]);
 
     // Simulate ticks
     let q = Quote {

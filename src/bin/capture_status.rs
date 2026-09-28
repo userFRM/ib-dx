@@ -112,7 +112,7 @@ fn main() {
         // is which connection the venue answers a generic tick on, and news is
         // the one this client asks for over the trading connection.
         // A refusal is heard on the error callback, in its place.
-        client.req_mkt_data(req, &resolved, "292", false, false);
+        client.req_mkt_data(req, &resolved, "292", false, false, &[]);
     }
 
     // Long enough to span whatever is being watched for. A status changes

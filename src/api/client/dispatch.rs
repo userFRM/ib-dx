@@ -1481,7 +1481,7 @@ mod delivered_size_tests {
             right: "C".into(), multiplier: "100".into(),
             ..Default::default()
         };
-        client.try_req_mkt_data(1, &option, "", true, false).expect("taken");
+        client.try_req_mkt_data(1, &option, "", true, false, &[]).expect("taken");
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(1).expect("the engine took it");
         wire_the_quote_access(&shared, slot, 700_001);
@@ -1506,7 +1506,7 @@ mod delivered_size_tests {
         // Run out with a last's computation short of a figure: sent then,
         // ahead of the end (-1).
         let (client, rx, shared) = crate::api::client::tests::test_client();
-        client.try_req_mkt_data(3, &option, "", true, false).expect("taken");
+        client.try_req_mkt_data(3, &option, "", true, false, &[]).expect("taken");
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(3).expect("the engine took it");
         wire_the_quote_access(&shared, slot, 700_001);
@@ -1525,7 +1525,7 @@ mod delivered_size_tests {
         assert_eq!(heard.said, [(3, 12), (3, -1)]);
 
         let (client, rx, shared) = crate::api::client::tests::test_client();
-        client.try_req_mkt_data(2, &crate::api::client::tests::spy(), "", true, false)
+        client.try_req_mkt_data(2, &crate::api::client::tests::spy(), "", true, false, &[])
             .expect("taken");
         crate::api::client::tests::settled(&client, &rx);
         let slot = client.core.watching(2).expect("the engine took it");
@@ -1611,7 +1611,7 @@ mod delivered_size_tests {
                 ..quote
             };
             let (client, rx, shared) = crate::api::client::tests::test_client();
-            client.try_req_mkt_data(1, contract, "", true, false).expect("taken");
+            client.try_req_mkt_data(1, contract, "", true, false, &[]).expect("taken");
             crate::api::client::tests::settled(&client, &rx);
             let slot = client.core.watching(1).expect("the engine took it");
             let mut heard = Heard::default();
@@ -1648,7 +1648,7 @@ mod delivered_size_tests {
         }
         let (client, rx, shared) = crate::api::client::tests::test_client();
         for req_id in [1, 2] {
-            client.try_req_mkt_data(req_id, &crate::api::client::tests::spy(), "", false, false)
+            client.try_req_mkt_data(req_id, &crate::api::client::tests::spy(), "", false, false, &[])
                 .expect("taken");
         }
         crate::api::client::tests::settled(&client, &rx);
@@ -1673,7 +1673,7 @@ mod delivered_size_tests {
         // A request joining the option is sent the model as it stands, at
         // once and to it alone; the model's next change goes to every
         // watcher after it, and the same tick again goes to nobody.
-        client.try_req_mkt_data(3, &crate::api::client::tests::spy(), "", false, false)
+        client.try_req_mkt_data(3, &crate::api::client::tests::spy(), "", false, false, &[])
             .expect("taken");
         rx.pump();
         publish(0.3);
@@ -1739,7 +1739,7 @@ mod delivered_size_tests {
         // A number given up and asked under again is a request of its own,
         // sent the model it has not been sent.
         crate::api::client::tests::reported(&client, || client.cancel_mkt_data(1)).unwrap();
-        client.try_req_mkt_data(1, &crate::api::client::tests::spy(), "", false, false)
+        client.try_req_mkt_data(1, &crate::api::client::tests::spy(), "", false, false, &[])
             .expect("taken");
         rx.pump();
         let mut heard = Heard::default();
@@ -1766,7 +1766,7 @@ mod delivered_size_tests {
         // Taken afresh, the option has no model yet: a request joining it is
         // not sent the one worked out for the subscription before.
         for req_id in [4, 5] {
-            client.try_req_mkt_data(req_id, &crate::api::client::tests::spy(), "", false, false)
+            client.try_req_mkt_data(req_id, &crate::api::client::tests::spy(), "", false, false, &[])
                 .expect("taken");
             crate::api::client::tests::settled(&client, &rx);
         }

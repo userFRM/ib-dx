@@ -126,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2) Read a reference price for a realistic limit.
     println!("requesting quote...");
-    client.req_mkt_data(2, &contract, "", true, false);
+    client.req_mkt_data(2, &contract, "", true, false, &[]);
     pump_until(&client, &mut w, &state, Duration::from_secs(10), |s| s.last > 0.0 || s.ask > 0.0);
     let (last, close, ask) = {
         let s = state.lock().unwrap();

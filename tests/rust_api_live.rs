@@ -708,7 +708,7 @@ fn the_calls_no_other_live_test_names() {
 
     // The venues behind a quote's exchange mask, named by the BBO exchange the
     // subscription's acknowledgement states, so a quote is asked for first.
-    client.req_mkt_data(903, &spy(), "", false, false);
+    client.req_mkt_data(903, &spy(), "", false, false, &[]);
     poll_until(
         &client,
         &mut wrapper,
@@ -987,7 +987,7 @@ fn the_venue_sends_nothing_this_client_does_not_read() {
     // Everything a caller can ask for, so the venue has reason to send
     // everything it would ever send.
     let spy = spy();
-    client.req_mkt_data(1, &spy, "", false, false);
+    client.req_mkt_data(1, &spy, "", false, false, &[]);
     client.req_mkt_depth(2, &spy, 5, false);
     client.req_contract_details(3, &spy);
     client.req_positions(); client.process_msgs(&mut w);

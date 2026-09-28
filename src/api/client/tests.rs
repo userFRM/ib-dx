@@ -1665,7 +1665,7 @@ fn req_ids_calls_wrapper() {
 #[test]
 fn req_mkt_data_sends_subscribe() {
     let (client, rx, _shared) = test_client();
-    let _ = client.try_req_mkt_data(1, &spy(), "", false, false);
+    let _ = client.try_req_mkt_data(1, &spy(), "", false, false, &[]);
     let cmd2 = rx.try_recv().unwrap();
     match cmd2 {
         ControlCommand::Subscribe { contract: ContractRef { con_id, symbol, .. }, .. } => {
@@ -1679,7 +1679,7 @@ fn req_mkt_data_sends_subscribe() {
 #[test]
 fn req_mkt_data_defaults_to_realtime_mode() {
     let (client, rx, _shared) = test_client();
-    let _ = client.try_req_mkt_data(1, &spy(), "", false, false);
+    let _ = client.try_req_mkt_data(1, &spy(), "", false, false, &[]);
     match rx.try_recv().unwrap() {
         ControlCommand::Subscribe { mode_9887, .. } => assert_eq!(mode_9887, 0),
         other => panic!("expected Subscribe, got {other:?}"),
@@ -1711,8 +1711,8 @@ fn req_mkt_data_ex_propagates_mode_9887() {
 fn a_stream_outlives_the_snapshot_it_was_watching() {
     let (client, rx, _shared) = test_client();
     // The snapshot holds the contract, and a stream watches what is already up.
-    client.try_req_mkt_data(1, &spy(), "", true, false).expect("the snapshot");
-    client.try_req_mkt_data(2, &spy(), "", false, false).expect("watches what is up");
+    client.try_req_mkt_data(1, &spy(), "", true, false, &[]).expect("the snapshot");
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).expect("watches what is up");
     settled(&client, &rx);
     let slot = rx.engine().md_requests[&1].slot;
 
@@ -1738,8 +1738,8 @@ fn a_stream_outlives_the_snapshot_it_was_watching() {
 fn two_requests_for_one_contracts_headlines_ask_once() {
     let (client, rx, shared) = test_client();
     session_may_read_news(&shared);
-    client.try_req_mkt_data(1, &spy(), "292", false, false).expect("taken");
-    client.try_req_mkt_data(2, &spy(), "292", false, false).expect("taken");
+    client.try_req_mkt_data(1, &spy(), "292", false, false, &[]).expect("taken");
+    client.try_req_mkt_data(2, &spy(), "292", false, false, &[]).expect("taken");
     rx.pump();
     assert_eq!(rx.engine().farm.news_subscriptions.len(), 1, "asked once between them");
 
@@ -2170,8 +2170,8 @@ fn the_headlines_stop_with_the_last_caller_that_asked_for_them() {
     session_may_read_news(&shared);
     // Someone already watches the quotes, and asked for no headlines; a
     // second request watches the same contract and does want them.
-    client.try_req_mkt_data(1, &spy(), "", false, false).expect("taken");
-    client.try_req_mkt_data(2, &spy(), "292", false, false).expect("watches what is up");
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).expect("taken");
+    client.try_req_mkt_data(2, &spy(), "292", false, false, &[]).expect("watches what is up");
     rx.pump();
     let slot = rx.engine().md_requests[&1].slot;
     assert_eq!(rx.engine().farm.news_subscriptions.len(), 1);
@@ -2182,8 +2182,8 @@ fn the_headlines_stop_with_the_last_caller_that_asked_for_them() {
     assert!(rx.engine().farm.holds_market_data(slot), "the quotes stay up for the request still watching");
 
     // Two requests asking: the headlines outlast the first of them.
-    client.try_req_mkt_data(3, &spy(), "292", false, false).expect("taken");
-    client.try_req_mkt_data(4, &spy(), "292", false, false).expect("taken");
+    client.try_req_mkt_data(3, &spy(), "292", false, false, &[]).expect("taken");
+    client.try_req_mkt_data(4, &spy(), "292", false, false, &[]).expect("taken");
     crate::api::client::tests::reported(&client, || client.cancel_mkt_data(3)).expect("cancelled");
     rx.pump();
     assert_eq!(rx.engine().farm.news_subscriptions.len(), 1, "one of two left, so the headlines carry on");
@@ -2197,8 +2197,8 @@ fn the_headlines_stop_with_the_last_caller_that_asked_for_them() {
 #[test]
 fn a_second_caller_watches_the_subscription_that_is_up() {
     let (client, rx, _shared) = test_client();
-    client.try_req_mkt_data(1, &spy(), "", false, false).expect("taken");
-    client.try_req_mkt_data(2, &spy(), "", false, false)
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).expect("taken");
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[])
         .expect("a second caller watches it rather than being refused");
     settled(&client, &rx);
     let slot = rx.engine().md_requests[&1].slot;
@@ -2238,8 +2238,8 @@ fn a_second_symbol_is_not_a_duplicate_of_the_first_con_id_less_contract() {
         symbol: symbol.into(), sec_type: "STK".into(), exchange: "SMART".into(),
         currency: "USD".into(), ..Default::default()
     };
-    client.try_req_mkt_data(1, &by_symbol("SPY"), "", false, false).expect("taken");
-    client.try_req_mkt_data(2, &by_symbol("QQQ"), "", false, false).expect("taken");
+    client.try_req_mkt_data(1, &by_symbol("SPY"), "", false, false, &[]).expect("taken");
+    client.try_req_mkt_data(2, &by_symbol("QQQ"), "", false, false, &[]).expect("taken");
     rx.pump();
     assert!(rx.engine().md_requests.is_empty(), "both requests wait for naming");
     rx.name_subscription(1, &Contract { con_id: 756733, ..by_symbol("SPY") }, &shared);
@@ -2257,7 +2257,7 @@ fn a_second_symbol_is_not_a_duplicate_of_the_first_con_id_less_contract() {
 #[test]
 fn cancel_mkt_data_sends_unsubscribe() {
     let (client, rx, _shared) = test_client();
-    client.try_req_mkt_data(1, &spy(), "", false, false).expect("taken");
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).expect("taken");
     settled(&client, &rx);
     let slot = rx.engine().md_requests[&1].slot;
     crate::api::client::tests::reported(&client, || client.cancel_mkt_data(1)).unwrap();
@@ -4693,7 +4693,7 @@ fn an_unwireable_req_id_is_refused() {
     // from what the session holds, read the number whole, a negative one
     // included, and refuse one that does not fit alike.
     let whole: &[(&str, Call)] = &[
-        ("req_mkt_data", |c, id| c.req_mkt_data(id, &spy(), "", false, false)),
+        ("req_mkt_data", |c, id| c.req_mkt_data(id, &spy(), "", false, false, &[])),
         ("req_mkt_data_ex", |c, id| c.req_mkt_data_ex(id, &spy(), "", false, false, 0, &[])),
         ("req_spread_scan", |c, id| c.req_spread_scan(id, &spy(), &Default::default())),
         ("cancel_mkt_data", |c, id| c.cancel_mkt_data(id)),
@@ -9501,7 +9501,7 @@ fn a_chargeable_snapshot_is_asked_for_even_where_the_contract_is_watched() {
     let (client, rx, _shared) = test_client();
     // A subscription on this contract is already up and held by another
     // request, which is the state that used to swallow this one.
-    client.try_req_mkt_data(1, &spy(), "", false, false).expect("taken");
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).expect("taken");
     settled(&client, &rx);
     let slot = rx.engine().md_requests[&1].slot;
     let asked = |rx: &Engine| -> Vec<u32> {
@@ -9513,7 +9513,7 @@ fn a_chargeable_snapshot_is_asked_for_even_where_the_contract_is_watched() {
     let before = asked(&rx);
 
     // An ordinary request does follow it, and asks the venue for nothing.
-    client.try_req_mkt_data(2, &spy(), "", false, false).expect("it follows the stream");
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).expect("it follows the stream");
     settled(&client, &rx);
     assert_eq!(asked(&rx), before, "an ordinary request shares the subscription that is up");
 
@@ -9978,12 +9978,12 @@ fn a_number_this_session_has_spent_is_not_handed_out_again() {
 #[test]
 fn a_request_already_watching_a_contract_is_not_given_another() {
     let (client, rx, _shared) = test_client();
-    client.try_req_mkt_data(5, &spy(), "", false, false).expect("taken");
+    client.try_req_mkt_data(5, &spy(), "", false, false, &[]).expect("taken");
     settled(&client, &rx);
     let slot = client.core.watching(5).expect("it watches the contract");
 
     let elsewhere = Contract { symbol: "QQQ".into(), con_id: 320227571, ..spy() };
-    client.try_req_mkt_data(5, &elsewhere, "", false, false).expect("handed to the engine");
+    client.try_req_mkt_data(5, &elsewhere, "", false, false, &[]).expect("handed to the engine");
     let heard = settled(&client, &rx);
 
     assert!(
@@ -10659,7 +10659,7 @@ fn the_acknowledged_increment_reaches_the_caller_on_tick_req_params() {
 #[test]
 fn tick_req_params_is_once_per_request_and_a_reused_number_is_told_again() {
     let (client, rx, shared) = test_client();
-    client.try_req_mkt_data(1, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).unwrap();
     rx.pump();
     client.process_msgs(&mut RecordingWrapper::default());
     let params = crate::bridge::TickReqParams {
@@ -10668,7 +10668,7 @@ fn tick_req_params_is_once_per_request_and_a_reused_number_is_told_again() {
     shared.market.push_tick_req_params(0, crate::bridge::TickReqParams {
         snapshot_permissions: 1, ..params.clone()
     });
-    client.try_req_mkt_data(2, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).unwrap();
     shared.market.push_tick_req_params(0, params.clone());
     let mut w = RecordingWrapper::default();
     rx.pump();
@@ -10683,7 +10683,7 @@ fn tick_req_params_is_once_per_request_and_a_reused_number_is_told_again() {
     assert_eq!(w.events.iter().filter(|e| e.starts_with("tick_req_params:")).count(), 2);
 
     client.try_cancel_mkt_data(2).unwrap();
-    client.try_req_mkt_data(2, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).unwrap();
     rx.pump();
     client.process_msgs(&mut w);
     assert_eq!(w.events.iter().filter(|e| e.starts_with("tick_req_params:2:")).count(), 2);
@@ -10694,10 +10694,10 @@ fn tick_req_params_is_once_per_request_and_a_reused_number_is_told_again() {
 #[test]
 fn tick_req_params_withdrawn_before_delivery_go_to_the_number_used_again() {
     let (client, rx, shared) = test_client();
-    client.try_req_mkt_data(1, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(1, &spy(), "", false, false, &[]).unwrap();
     rx.pump();
     client.process_msgs(&mut RecordingWrapper::default());
-    client.try_req_mkt_data(2, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).unwrap();
     rx.pump();
     client.process_msgs(&mut RecordingWrapper::default());
     client.try_cancel_mkt_data(2).unwrap();
@@ -10710,7 +10710,7 @@ fn tick_req_params_withdrawn_before_delivery_go_to_the_number_used_again() {
     client.process_msgs(&mut w);
     let told = |w: &RecordingWrapper| w.events.iter().filter(|e| e.starts_with("tick_req_params:2:")).count();
     assert_eq!(told(&w), 0, "the withdrawn request: {:?}", w.events);
-    client.try_req_mkt_data(2, &spy(), "", false, false).unwrap();
+    client.try_req_mkt_data(2, &spy(), "", false, false, &[]).unwrap();
     rx.pump();
     client.process_msgs(&mut w);
     assert_eq!(told(&w), 1, "the request under the same number: {:?}", w.events);
@@ -11618,7 +11618,7 @@ fn a_described_tick_stream_is_looked_up_by_its_month_and_class() {
 fn a_quote_withdrawal_during_its_naming_opens_nothing() {
     let (client, rx, _shared) = test_client();
     let described = Contract { con_id: 0, currency: "USD".into(), ..spy() };
-    client.try_req_mkt_data(9, &described, "", false, false).expect("taken");
+    client.try_req_mkt_data(9, &described, "", false, false, &[]).expect("taken");
     rx.pump();
     assert_eq!(rx.engine().ccp.pending_named.len(), 1, "held while the venue names it");
 
@@ -12054,12 +12054,12 @@ fn a_request_asking_for_headlines_by_provider_asks_for_them() {
         _ => None,
     });
 
-    let why = client.try_req_mkt_data(1, &aapl, "1292", false, false)
+    let why = client.try_req_mkt_data(1, &aapl, "1292", false, false, &[])
         .expect_err("1292 is no number the venue knows a series by");
     assert_eq!(why.code, 321, "{why}");
     assert_eq!(headlines(1), None, "and nothing was asked");
 
-    client.try_req_mkt_data(2, &aapl, "mdoff,292:BRFG+DJNL", false, false).expect("taken");
+    client.try_req_mkt_data(2, &aapl, "mdoff,292:BRFG+DJNL", false, false, &[]).expect("taken");
     assert_eq!(
         headlines(2), Some(Some("BRFG*DJNL".to_string())),
         "the headlines are asked for from the providers named",
@@ -12426,9 +12426,9 @@ fn an_orders_option_list_is_checked_before_its_destination() {
 fn malformed_contract_expiry_is_refused_before_any_request_is_sent() {
     type Ask = fn(&EClient, &Contract);
     let requests: &[(&str, Ask)] = &[
-        ("market data", |c, ct| c.req_mkt_data(71, ct, "", false, false)),
+        ("market data", |c, ct| c.req_mkt_data(71, ct, "", false, false, &[])),
         ("market data with explicit mode", |c, ct| c.req_mkt_data_ex(71, ct, "", false, false, 1, &[])),
-        ("market data with news", |c, ct| c.req_mkt_data(71, ct, "292", false, false)),
+        ("market data with news", |c, ct| c.req_mkt_data(71, ct, "292", false, false, &[])),
         ("depth", |c, ct| c.req_mkt_depth(71, ct, 5, false)),
         ("tick by tick", |c, ct| c.req_tick_by_tick_data(71, ct, "Last", 0, false)),
         ("real time bars", |c, ct| c.req_real_time_bars(71, ct, 5, "TRADES", true)),
@@ -12562,7 +12562,7 @@ fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
             last_trade_date_or_contract_month: "20260230".into(), ..Default::default()
         },
     ] {
-        let why = reported(&client, || client.req_mkt_data(71, &contract, "", false, false))
+        let why = reported(&client, || client.req_mkt_data(71, &contract, "", false, false, &[]))
             .expect_err("an exchange nobody named");
         assert_eq!(
             (why.code, why.message.as_str()),
@@ -12575,7 +12575,29 @@ fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
     // The news type is exempt: a headline request names providers, not a
     // venue, and goes as it stands.
     let news = Contract { con_id: 265598, sec_type: "NEWS".into(), exchange: String::new(), ..Default::default() };
-    reported(&client, || client.req_mkt_data(72, &news, "", false, false)).expect("news is exempt");
+    reported(&client, || client.req_mkt_data(72, &news, "", false, false, &[])).expect("news is exempt");
+    assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
+}
+
+/// The options list the reference request takes is checked and refused under
+/// the request's own id, exactly as the request naming its mode checks it:
+/// an unknown key is refused naming it, and nothing is subscribed; an empty
+/// list goes as before.
+#[test]
+fn the_options_a_quote_request_states_are_checked() {
+    let (client, rx, _shared) = test_client();
+    let options = |pairs: &[(&str, &str)]| -> Vec<crate::types::model::TagValue> {
+        pairs.iter().map(|(t, v)| crate::types::model::TagValue { tag: (*t).into(), value: (*v).into() }).collect()
+    };
+    let why = reported(&client, || client.req_mkt_data(71, &spy(), "", false, false, &options(&[("foo", "1")])))
+        .expect_err("an unknown key");
+    assert_eq!(
+        (why.code, why.message.as_str()),
+        (10337, "Misc options key=foo is invalid in ReqMktData(1) request. Valid keys are: manual"),
+    );
+    assert!(next_command(&rx).is_none(), "a refused request subscribed nothing");
+    reported(&client, || client.req_mkt_data(72, &spy(), "", false, false, &options(&[])))
+        .expect("an empty list goes");
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
 }
 
@@ -12591,7 +12613,7 @@ fn a_snapshot_beside_a_generic_list_is_refused() {
     let (client, rx, shared) = test_client();
     session_may_read_news(&shared);
     for list in ["100,101", "100", "292", "292:BRFG+DJNL", "mdoff,100"] {
-        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, true, false))
+        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, true, false, &[]))
             .expect_err(list);
         assert_eq!(
             (why.code, why.message.as_str()),
@@ -12610,7 +12632,7 @@ fn a_snapshot_beside_a_generic_list_is_refused() {
         ("100", false, true),
     ].into_iter().enumerate() {
         let req_id = 72 + req_id as i64;
-        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, regulatory)) {
+        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, regulatory, &[])) {
             panic!("{list}, snapshot {snapshot}, regulatory {regulatory}: {why:?}");
         }
         assert!(
@@ -12654,7 +12676,7 @@ fn an_incorrect_generic_tick_list_is_refused_whole() {
         "abc", "999999", "mdoff", "100,abc", "393", "247", "499", "162", "595x",
         "292:", " ", ",",
     ] {
-        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, false, false))
+        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, false, false, &[]))
             .expect_err(list);
         assert_eq!(
             (why.code, why.message.as_str()),
@@ -12683,7 +12705,7 @@ fn odd_lot_quotes_are_refused_where_the_session_was_not_offered_them() {
         ("787", true),
     ].into_iter().enumerate() {
         let req_id = 90 + req_id as i64;
-        let why = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, false))
+        let why = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, false, &[]))
             .expect_err(&format!("{list}, snapshot {snapshot}"));
         assert_eq!(
             (why.code, why.message.as_str()),
@@ -12696,7 +12718,7 @@ fn odd_lot_quotes_are_refused_where_the_session_was_not_offered_them() {
     // it stands — the token read case-blind, wherever in the list it sits.
     for (req_id, list) in ["mdoff,787", "787,MDOFF"].into_iter().enumerate() {
         let req_id = 93 + req_id as i64;
-        reported(&client, || client.req_mkt_data(req_id, &spy(), list, false, false))
+        reported(&client, || client.req_mkt_data(req_id, &spy(), list, false, false, &[]))
             .unwrap_or_else(|why| panic!("{list}: {why:?}"));
         assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })), "{list} was not taken");
     }
@@ -12708,7 +12730,7 @@ fn odd_lot_quotes_are_refused_where_the_session_was_not_offered_them() {
 fn odd_lot_quotes_go_where_the_session_was_offered_them() {
     let (client, rx, shared) = test_client();
     shared.reference.set_enabled_features(vec!["ODDLOTBIDASK".into()]);
-    reported(&client, || client.req_mkt_data(96, &spy(), "787", false, false)).expect("taken");
+    reported(&client, || client.req_mkt_data(96, &spy(), "787", false, false, &[])).expect("taken");
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
 }
 
@@ -12754,7 +12776,7 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
         (&stated_cs, "456"),
     ].into_iter().enumerate() {
         let req_id = 80 + req_id as i64;
-        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false)) {
+        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false, &[])) {
             panic!("{list} on {}: {why:?}", contract.sec_type);
         }
         assert!(
@@ -12769,7 +12791,7 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
         (&index, "595", "IND", "595(Short-Term Volume X Mins)"),
     ].into_iter().enumerate() {
         let req_id = 95 + req_id as i64;
-        let why = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false))
+        let why = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false, &[]))
             .expect_err(&format!("{list} on {kind}"));
         assert_eq!(why.code, 321, "{list} on {kind}");
         assert!(why.message.contains(&format!("Legal ones for ({kind}) are: ")), "{list}: {}", why.message);
@@ -12778,12 +12800,12 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
     }
     // The suffix a series takes is not read as part of its number: a
     // dividends entry naming a suffix is the dividends series all the same.
-    reported(&client, || client.req_mkt_data(98, &spy(), "456:x", false, false)).expect("taken");
+    reported(&client, || client.req_mkt_data(98, &spy(), "456:x", false, false, &[])).expect("taken");
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
     // A session the venue has not said may read news is refused the
     // headlines, and the list it is told names every other series it has.
     let (bare, bare_rx, _bare_shared) = test_client();
-    let why = reported(&bare, || bare.req_mkt_data(99, &spy(), "292", false, false))
+    let why = reported(&bare, || bare.req_mkt_data(99, &spy(), "292", false, false, &[]))
         .expect_err("headlines on a session that may not read them");
     assert_eq!(why.code, 321);
     assert!(why.message.contains("Incorrect generic tick list of 292."), "{why}");
@@ -12793,7 +12815,7 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
     // A type the venue knows no name for is stated as the empty spelling, and
     // takes the series every type takes.
     let unknown = Contract { sec_type: "XYZ".into(), exchange: "SMART".into(), ..spy() };
-    let why = reported(&bare, || bare.req_mkt_data(100, &unknown, "456", false, false))
+    let why = reported(&bare, || bare.req_mkt_data(100, &unknown, "456", false, false, &[]))
         .expect_err("a series no type of its own takes");
     assert!(why.message.contains("Legal ones for () are: 100(Option Volume)"), "{why}");
     assert!(next_command(&bare_rx).is_none());
@@ -12811,7 +12833,7 @@ fn a_bag_quote_naming_no_legs_is_refused() {
         let combo = Contract {
             con_id, sec_type: "BAG".into(), exchange: "SMART".into(), ..Default::default()
         };
-        let why = reported(&client, || client.req_mkt_data(71, &combo, "", false, false))
+        let why = reported(&client, || client.req_mkt_data(71, &combo, "", false, false, &[]))
             .expect_err("a combination stating no legs");
         assert_eq!(
             (why.code, why.message.as_str()),
@@ -12829,7 +12851,7 @@ fn a_bag_quote_naming_no_legs_is_refused() {
         con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
         combo_legs: vec![leg], ..Default::default()
     };
-    reported(&client, || client.req_mkt_data(72, &stated, "", false, false))
+    reported(&client, || client.req_mkt_data(72, &stated, "", false, false, &[]))
         .expect("a combination stating legs is taken");
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
 }
@@ -12865,7 +12887,7 @@ fn the_types_asked_pick_the_first_feed_and_the_fallback() {
         for data_type in types {
             client.req_market_data_type(*data_type);
         }
-        client.req_mkt_data(1, &spy(), "", false, false);
+        client.req_mkt_data(1, &spy(), "", false, false, &[]);
         client.calculate_implied_volatility(2, &spy(), 12.5, 600.0);
         let asked: Vec<_> = rx.try_iter().filter_map(|command| match command {
             ControlCommand::Subscribe { req_id, mode_9887, delayed_mode, frozen, delayed_frozen, .. } => {

@@ -98,7 +98,7 @@ fn main() {
         let req_id = 1000 + i as i64;
         // A refusal, this client's or the venue's, is heard on the error
         // callback in its place, and ends the run below.
-        client.req_mkt_data(req_id, &contract, "", false, false);
+        client.req_mkt_data(req_id, &contract, "", false, false, &[]);
         asked += 1;
         // Read as we go: the venue answers the one that goes too far, and
         // asking the rest afterwards would not say which one it was.

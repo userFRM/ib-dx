@@ -207,7 +207,7 @@ fn disconnect_during_active_subscription() {
     shared.market.set_instrument_count(1);
 
     // Subscribe
-    let _ = { client.req_mkt_data(1, &spy(), "", false, false); outcome(&shared) };
+    let _ = { client.req_mkt_data(1, &spy(), "", false, false, &[]); outcome(&shared) };
     while rx.try_recv().is_ok() {}
 
     // Disconnect
@@ -641,7 +641,7 @@ fn rapid_subscribe_unsubscribe_no_stale_state() {
     let mut sent = Vec::new();
     const CYCLES: usize = 100;
     for _ in 0..CYCLES {
-        { client.req_mkt_data(1, &spy(), "", false, false); sent.extend(rx.try_iter()); outcome(&shared) }
+        { client.req_mkt_data(1, &spy(), "", false, false, &[]); sent.extend(rx.try_iter()); outcome(&shared) }
             .expect("the subscription was refused");
         { client.cancel_mkt_data(1); sent.extend(rx.try_iter()); outcome(&shared) }.unwrap();
     }

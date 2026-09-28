@@ -178,7 +178,7 @@ impl EClient {
         // tell it from a call still waiting on its answer under the same band.
         let asked = super::ask::ask_id_for(&self.shared, crate::bridge::RecordKind::Quotes);
         let req_id = asked.get();
-        self.try_req_mkt_data(req_id, contract, "", false, false)?;
+        self.try_req_mkt_data(req_id, contract, "", false, false, &[])?;
         Ok(asked.keep())
     }
 
