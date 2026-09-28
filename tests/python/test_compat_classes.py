@@ -247,6 +247,14 @@ def test_tick_type_constants():
     assert TickTypeEnum.VOLUME == 8
     assert TickTypeEnum.CLOSE == 9
     assert TickTypeEnum.OPEN == 14
+    # The reference's catalogue, member for member: between the shortable tick
+    # and the running volume stands its "no tick type" placeholder, and the
+    # fundamentals name this table held there is no member the reference has.
+    assert TickTypeEnum.SHORTABLE == 46
+    assert TickTypeEnum.NOT_USED == 47
+    assert TickTypeEnum.RT_VOLUME == 48
+    assert TickTypeEnum.toStr(47) == "NOT_USED"
+    assert not hasattr(TickTypeEnum, "FUNDAMENTAL_RATIOS")
 
 
 # ── Conditions ──

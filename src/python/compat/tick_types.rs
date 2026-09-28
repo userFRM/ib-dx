@@ -25,7 +25,7 @@ pub static TICK_TYPE_NAMES: [&str; 112] = [
     "AUCTION_IMBALANCE", "MARK_PRICE", "BID_EFP_COMPUTATION", "ASK_EFP_COMPUTATION",
     "LAST_EFP_COMPUTATION", "OPEN_EFP_COMPUTATION", "HIGH_EFP_COMPUTATION",
     "LOW_EFP_COMPUTATION", "CLOSE_EFP_COMPUTATION", "LAST_TIMESTAMP", "SHORTABLE",
-    "FUNDAMENTAL_RATIOS",
+    "NOT_USED",
     "RT_VOLUME", "HALTED", "BID_YIELD", "ASK_YIELD", "LAST_YIELD", "CUST_OPTION_COMPUTATION",
     "TRADE_COUNT", "TRADE_RATE", "VOLUME_RATE", "LAST_RTH_TRADE", "RT_HISTORICAL_VOL",
     "IB_DIVIDENDS", "BOND_FACTOR_MULTIPLIER", "REGULATORY_IMBALANCE", "NEWS_TICK",
@@ -235,15 +235,23 @@ mod tests {
         assert_eq!(TickTypeEnum::to_str(-1), "NOTFOUND");
     }
 
-    /// The tick between the shortable one and the running volume has a name.
+    /// The tick between the shortable one and the running volume is named the
+    /// way the reference names it.
     ///
-    /// A program reads a tick back by looking its number up in this table.
-    /// Held as a placeholder, the fundamentals figures arrived under a name
-    /// saying the number is unused, and a caller had no way to tell them from
-    /// a number the venue does not send at all.
+    /// A program reads a tick back by looking its number up in this table, and
+    /// the reference's table holds `NOT_USED` at 47 — its placeholder for "no
+    /// tick type" — and has no `FUNDAMENTAL_RATIOS` member at all. The gateway
+    /// routes 47 as the older number for the fundamentals series (258), which
+    /// limits.md records; that is the catalogue's routing, not a name this
+    /// public table states, so matching the reference here drops the name a
+    /// program written against it would never reach for and restores the one
+    /// it would.
     #[test]
-    fn the_fundamentals_tick_is_named() {
-        assert_eq!(TickTypeEnum::to_str(47), "FUNDAMENTAL_RATIOS");
+    fn the_unused_placeholder_is_named_as_the_reference_names_it() {
+        assert_eq!(TickTypeEnum::to_str(46), "SHORTABLE");
+        assert_eq!(TickTypeEnum::to_str(47), "NOT_USED");
+        assert_eq!(TickTypeEnum::to_str(48), "RT_VOLUME");
+        assert!(!TICK_TYPE_NAMES.contains(&"FUNDAMENTAL_RATIOS"));
     }
 
     #[test]
