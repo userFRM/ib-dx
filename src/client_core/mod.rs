@@ -2430,6 +2430,20 @@ impl ClientCore {
         let resolved = list_read
             .then(|| tick_catalogue::resolve(generic_tick_list, sec_type, news_capable))
             .flatten();
+        // The odd lot is served on a session the venue offered it on at
+        // logon, and refused on one it did not, under the number the refusal
+        // keeps of its own — unless the list also turns market data off,
+        // which asks for something else. The token is read case-blind,
+        // wherever in the list it sits.
+        if resolved.as_ref().is_some_and(|ids| ids.contains(&787))
+            && !generic_tick_list.to_lowercase().contains("mdoff")
+            && !shared.reference.enables("ODDLOTBIDASK")
+        {
+            return Err(Refusal::stated(
+                10367,
+                "Requesting \"Odd Lot Bid/Ask Quotes\" generic tick 787 is not allowed",
+            ));
+        }
         if !snapshot && list_read && resolved.is_none() {
             return Err(Refusal::validation(tick_catalogue::incorrect_list(
                 generic_tick_list, sec_type, news_capable,

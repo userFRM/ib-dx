@@ -450,6 +450,17 @@ answers one it does not hold — against -1, under 322, *Market rule with id =
 260 is missing*. Asking for a contract that uses the rule brings it in, and a
 request after that is answered.
 
+## The fundamentals series is not gated at the intake
+
+A gateway serves the company ratios on a market-data subscription — generic
+tick `258`, or its older number `47` — only where a flag of its own feature
+service says the account may have them, and refuses the request under 10358,
+*Fundamentals data is not allowed*, where it does not. The flag is state a
+gateway reads from a service of its own; nothing on the wire this session
+reads corresponds to it, so this client does not gate the series: the
+subscription goes out as any other legal series goes out, and the ratios
+arrive where the venue serves them.
+
 ## A frozen quote is the subscription's
 
 A gateway decides for each request whether it is served the frozen quote, by

@@ -12485,6 +12485,49 @@ fn an_incorrect_generic_tick_list_is_refused_whole() {
     }
 }
 
+/// The odd lot is served on a session the venue offered it on at logon. A
+/// list asking for it on a session it was not offered on is refused under
+/// its own number, against the request's own, before the list refusal and
+/// before the snapshot refusal — unless the list also turns market data off,
+/// which asks for something else and goes as it stands.
+#[test]
+fn odd_lot_quotes_are_refused_where_the_session_was_not_offered_them() {
+    let (client, rx, _shared) = test_client();
+    for (req_id, (list, snapshot)) in [
+        ("787", false),
+        ("100,787", false),
+        ("787", true),
+    ].into_iter().enumerate() {
+        let req_id = 90 + req_id as i64;
+        let why = reported(&client, || client.req_mkt_data(req_id, &spy(), list, snapshot, false))
+            .expect_err(&format!("{list}, snapshot {snapshot}"));
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (10367, "Requesting \"Odd Lot Bid/Ask Quotes\" generic tick 787 is not allowed"),
+            "{list}, snapshot {snapshot}",
+        );
+        assert!(next_command(&rx).is_none(), "{list} subscribed something");
+    }
+    // A list that turns market data off asks for something else, and goes as
+    // it stands — the token read case-blind, wherever in the list it sits.
+    for (req_id, list) in ["mdoff,787", "787,MDOFF"].into_iter().enumerate() {
+        let req_id = 93 + req_id as i64;
+        reported(&client, || client.req_mkt_data(req_id, &spy(), list, false, false))
+            .unwrap_or_else(|why| panic!("{list}: {why:?}"));
+        assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })), "{list} was not taken");
+    }
+}
+
+/// The odd lot is served on a session the venue offered it on: the list that
+/// asks for it is taken there, and nothing of the refusal is heard.
+#[test]
+fn odd_lot_quotes_go_where_the_session_was_offered_them() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_enabled_features(vec!["ODDLOTBIDASK".into()]);
+    reported(&client, || client.req_mkt_data(96, &spy(), "787", false, false)).expect("taken");
+    assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
+}
+
 /// The series a type takes are the ones a gateway takes for it: a series
 /// legal only for some types is refused for the rest, the numbers that alias
 /// a series are read as the series they name, and the headlines are legal
