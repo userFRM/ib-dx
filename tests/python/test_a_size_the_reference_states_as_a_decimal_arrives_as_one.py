@@ -26,6 +26,7 @@ class Heard(ibkr_dx.EWrapper):
         super().__init__()
         self.sizes = []
         self.statuses = []
+        self.orders = []
         self.fills = []
         self.holdings = []
         self.portfolio = []
@@ -42,6 +43,9 @@ class Heard(ibkr_dx.EWrapper):
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice,
                     permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
         self.statuses.append((filled, remaining))
+
+    def openOrder(self, orderId, contract, order, orderState):
+        self.orders.append((order.totalQuantity, order.filledQuantity))
 
     def execDetails(self, reqId, contract, execution):
         self.fills.append((execution.shares, execution.cumQty))
@@ -112,6 +116,7 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
     client.reqPositions()
     client.reqPositionsMulti(3, "DU1", "")
     client.reqAccountUpdates(True, "DU1")
+    client.reqOpenOrders()
     client.poll()
     # The engine names the holdings' contracts before it answers the ask,
     # and answers after it: one holding is the ask's answer, the other the
@@ -124,6 +129,7 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
     named = [
         ("tickSize", heard.sizes),
         ("orderStatus", heard.statuses),
+        ("openOrder", heard.orders),
         ("execDetails", heard.fills),
         ("position", heard.holdings),
         ("updatePortfolio", heard.portfolio),
@@ -144,7 +150,13 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
             )
 
     assert Decimal("100") in heard.sizes
-    assert heard.statuses == [(Decimal("3"), Decimal("2"))]
+    assert heard.statuses[0] == (Decimal("3"), Decimal("2"))
+    # The open-order ask restates the working order's status; nothing filled
+    # it since the venue's report, so the restated fill count reads unset.
+    assert heard.statuses[-1] == (UNSET_DECIMAL, Decimal("0"))
+    # The order the venue is working came back stated; nothing has filled it,
+    # so its filled quantity reads as the unset a fresh record carries.
+    assert heard.orders == [(Decimal("1"), UNSET_DECIMAL)]
     # Shares are the print's; cumQty is what the report stated, and this
     # report stated nothing past its own defaults.
     assert heard.fills == [(Decimal("3"), Decimal("0"))]
@@ -171,6 +183,11 @@ def test_a_fresh_record_leaves_its_size_unset():
         ibkr_dx.HistoricalTickLast().size,
         ibkr_dx.HistoricalTickBidAsk().sizeBid,
         ibkr_dx.HistoricalTickBidAsk().sizeAsk,
+        ibkr_dx.Order().totalQuantity,
+        ibkr_dx.Order().filledQuantity,
+        ibkr_dx.ContractDetails().minSize,
+        ibkr_dx.ContractDetails().sizeIncrement,
+        ibkr_dx.ContractDetails().suggestedSizeIncrement,
     ]
     for value in fresh:
         assert isinstance(value, Decimal), f"got {type(value).__name__} {value!r}"

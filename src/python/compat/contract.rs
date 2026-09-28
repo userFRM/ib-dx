@@ -337,6 +337,22 @@ impl DecimalField {
         }
     }
 
+    /// The digits of a value held as an `f64` whose unset value is `f64::MAX`:
+    /// the marker reads as unset, anything else as the digits of the float it
+    /// is.
+    pub fn from_unsettable(value: f64) -> Self {
+        if value == f64::MAX { Self::unset() } else { Self::from_float(value) }
+    }
+
+    /// The number held, for an engine field kept as an `f64` whose unset
+    /// value is `unset`: an empty hold — nothing stated — reads as the marker.
+    ///
+    /// ponytail: digits no `f64` reads (a signalling NaN is the only kind
+    /// `Decimal` writes) read as the marker too, rather than being refused.
+    pub fn as_f64(&self, unset: f64) -> f64 {
+        if self.0.is_empty() { unset } else { self.0.parse().unwrap_or(unset) }
+    }
+
     fn digits(&self) -> &str {
         if self.0.is_empty() { UNSET_DECIMAL_DIGITS } else { &self.0 }
     }
@@ -452,7 +468,7 @@ mod tests {
         let o = Order::default();
         assert_eq!(o.order_id, 0);
         assert_eq!(o.action, "");
-        assert_eq!(o.total_quantity, 0.0);
+        assert_eq!(o.total_quantity, DecimalField::unset());
         assert_eq!(o.order_type, "");
         assert_eq!(o.tif, "");
         assert!(o.transmit);
@@ -504,7 +520,7 @@ mod tests {
     fn to_api_carries_oca_type_trail_stop_and_lmt_price_offset() {
         let o = Order {
             action: "BUY".into(),
-            total_quantity: 1.0,
+            total_quantity: DecimalField::from_whole(1),
             order_type: "TRAIL LIMIT".into(),
             lmt_price: 10.0,
             lmt_price_offset: 0.5,

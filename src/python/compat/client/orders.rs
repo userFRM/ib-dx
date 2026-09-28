@@ -838,6 +838,7 @@ impl EClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::super::contract::DecimalField;
     use crate::bridge::SharedState;
     use std::sync::Arc;
 
@@ -1162,7 +1163,7 @@ w = W()",
     fn bracket_order(transmit: bool, parent_id: i64) -> Order {
         Order {
             action: "BUY".into(),
-            total_quantity: 100.0,
+            total_quantity: DecimalField::from_whole(100),
             order_type: "LMT".into(),
             lmt_price: 10.0,
             transmit,

@@ -1103,7 +1103,7 @@ impl EClient {
         }
         if own {
             let why_held = self.core.why_held(shared, update.order_id, status);
-            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, DecimalField::from_float(update.filled_qty),
+            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, DecimalField::from_unsettable(update.filled_qty),
                  DecimalField::from_float(update.remaining_qty), avg, update.perm_id, parent_id, last_fill,
                  i64::from(client), why_held.as_str(), 0.0f64));
         }
@@ -1257,7 +1257,7 @@ impl EClient {
                     owed!(out, py, "open_order", (self.core.api_order_id(*order_id), &c_py, &o_py, &state_py));
                     let why_held = self.core.why_held(shared, *order_id, &tracked.status);
                     owed!(out, py, "order_status",
-                        (self.core.api_order_id(*order_id), tracked.status.as_str(), DecimalField::from_float(tracked.filled), DecimalField::from_float(tracked.remaining),
+                        (self.core.api_order_id(*order_id), tracked.status.as_str(), DecimalField::from_unsettable(tracked.filled), DecimalField::from_float(tracked.remaining),
                          // What the venue said the fills went at.
                          tracked.avg_fill_price, tracked.order.perm_id, tracked.order.parent_id,
                          tracked.last_fill_price,
@@ -1428,7 +1428,7 @@ impl EClient {
             call_wrapper!(self, py, shared, "pnl", (update.req_id, update.daily_pnl, update.unrealized_pnl, update.realized_pnl));
         }
         for update in pnl_single {
-            call_wrapper!(self, py, shared, "pnl_single", (update.req_id, update.pos, update.daily_pnl,
+            call_wrapper!(self, py, shared, "pnl_single", (update.req_id, DecimalField::from_float(update.pos), update.daily_pnl,
                  update.unrealized_pnl, update.realized_pnl, update.value));
         }
 

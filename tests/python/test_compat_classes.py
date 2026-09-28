@@ -57,7 +57,8 @@ def test_order_defaults():
     o = Order()
     assert o.order_id == 0
     assert o.action == ""
-    assert o.total_quantity == 0.0
+    assert o.total_quantity == UNSET_DECIMAL
+    assert o.filled_quantity == UNSET_DECIMAL
     assert o.order_type == ""
     assert o.tif == ""
     assert o.transmit is True
@@ -71,6 +72,9 @@ def test_order_defaults():
     unset = [
         name for name, value in vars(Reference()).items()
         if type(value) in (int, float) and value in (UNSET_DOUBLE, UNSET_INTEGER)
+        # The filled quantity is born as the unset decimal here, as the
+        # reference states it as a decimal on the wire.
+        and name != "filledQuantity"
     ]
     assert unset, "the reference client starts figures unset"
     assert {name: getattr(o, name) for name in unset} == {

@@ -1,7 +1,7 @@
 //! The contract classes a caller works in, as the Python API names them.
 
 // The other families, and the two helpers every class here uses.
-use super::contract::{by_reference_name, reference_dir, enum_code, enum_member, set_by_reference_name, set_from_keywords};
+use super::contract::{by_reference_name, reference_dir, enum_code, enum_member, set_by_reference_name, set_from_keywords, DecimalField};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::sync::OnceLock;
@@ -711,7 +711,7 @@ pub struct ContractDetails {
     #[pyo3(get, set)]
     pub sec_id_list: ListField,
     #[pyo3(get, set)]
-    pub min_size: f64,
+    pub min_size: DecimalField,
     /// Unset until stated, as the reference client holds it; this client
     /// reads none off a definition.
     #[pyo3(get, set)]
@@ -753,9 +753,9 @@ pub struct ContractDetails {
     #[pyo3(get, set)]
     pub issue_date: String,
     #[pyo3(get, set)]
-    pub size_increment: f64,
+    pub size_increment: DecimalField,
     #[pyo3(get, set)]
-    pub suggested_size_increment: f64,
+    pub suggested_size_increment: DecimalField,
     #[pyo3(get, set)]
     pub last_price_precision: f64,
     #[pyo3(get, set)]
@@ -951,8 +951,8 @@ impl Clone for ContractDetails {
             under_symbol: self.under_symbol.clone(),
             last_trade_time: self.last_trade_time.clone(),
             issue_date: self.issue_date.clone(),
-            size_increment: self.size_increment,
-            suggested_size_increment: self.suggested_size_increment,
+            size_increment: self.size_increment.clone(),
+            suggested_size_increment: self.suggested_size_increment.clone(),
             last_price_precision: self.last_price_precision,
             last_size_precision: self.last_size_precision,
             settlement_method: self.settlement_method.clone(),
@@ -1012,7 +1012,7 @@ impl Clone for ContractDetails {
             isin: self.isin.clone(),
             cusip: self.cusip.clone(),
             sec_id_list: self.sec_id_list.clone(),
-            min_size: self.min_size,
+            min_size: self.min_size.clone(),
             min_algo_size: self.min_algo_size,
             maturity: self.maturity.clone(),
             event_contract1: self.event_contract1.clone(),
@@ -1054,7 +1054,7 @@ impl ContractDetails {
             isin: String::new(),
             cusip: String::new(),
             sec_id_list: ListField::new(),
-            min_size: f64::MAX,
+            min_size: DecimalField::unset(),
             min_algo_size: f64::MAX,
             maturity: String::new(),
             event_contract1: String::new(),
@@ -1071,8 +1071,8 @@ impl ContractDetails {
             under_symbol: String::new(),
             last_trade_time: String::new(),
             issue_date: String::new(),
-            size_increment: f64::MAX,
-            suggested_size_increment: f64::MAX,
+            size_increment: DecimalField::unset(),
+            suggested_size_increment: DecimalField::unset(),
             last_price_precision: f64::MAX,
             last_size_precision: f64::MAX,
             settlement_method: String::new(),
@@ -1177,7 +1177,7 @@ impl ContractDetails {
             isin: def.isin.clone(),
             cusip: def.cusip.clone(),
             sec_id_list: ListField::of(py, def.sec_id_list.iter().map(|(tag, value)| TagValue { tag: tag.clone(), value: value.clone() })).unwrap_or_default(),
-            min_size: def.min_size,
+            min_size: DecimalField::from_float(def.min_size),
             min_algo_size: f64::MAX,
             maturity: if bond { def.last_trade_date.clone() } else { String::new() },
             event_contract1: String::new(),
@@ -1194,8 +1194,8 @@ impl ContractDetails {
             under_symbol: def.under_symbol.clone(),
             last_trade_time: def.last_trade_time.clone(),
             issue_date: def.issue_date.clone(),
-            size_increment: def.size_increment,
-            suggested_size_increment: def.suggested_size_increment,
+            size_increment: DecimalField::from_float(def.size_increment),
+            suggested_size_increment: DecimalField::from_float(def.suggested_size_increment),
             last_price_precision: def.last_price_precision,
             last_size_precision: def.last_size_precision,
             settlement_method: def.settlement_method.clone(),

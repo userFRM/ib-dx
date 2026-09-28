@@ -11,7 +11,7 @@ Run: pytest tests/python/test_a_definition_carries_the_reference_fields.py -v
 """
 
 import ibkr_dx
-from ibkr_dx import UNSET_DOUBLE, ContractDetails, IneligibilityReason, TagValue
+from ibkr_dx import UNSET_DECIMAL, UNSET_DOUBLE, ContractDetails, IneligibilityReason, TagValue
 
 
 class Details(ibkr_dx.EWrapper):
@@ -58,10 +58,11 @@ def test_the_fields_start_unstated():
     d = ContractDetails()
     assert d.maturity == ""
     assert d.minAlgoSize == UNSET_DOUBLE
-    # The reference client leaves the size and precision figures unset too.
-    assert d.minSize == UNSET_DOUBLE
-    assert d.sizeIncrement == UNSET_DOUBLE
-    assert d.suggestedSizeIncrement == UNSET_DOUBLE
+    # The reference client leaves the size and precision figures unset too,
+    # and the three sizes it decodes are Decimals.
+    assert d.minSize == UNSET_DECIMAL
+    assert d.sizeIncrement == UNSET_DECIMAL
+    assert d.suggestedSizeIncrement == UNSET_DECIMAL
     assert d.lastPricePrecision == UNSET_DOUBLE
     assert d.lastSizePrecision == UNSET_DOUBLE
     assert (d.eventContract1, d.eventContractDescription1, d.eventContractDescription2) == ("", "", "")

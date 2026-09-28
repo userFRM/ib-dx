@@ -225,7 +225,7 @@ impl EWrapper {
 
     /// The same for one position, with the size held.
     fn pnl_single(
-        &self, _req_id: i64, _pos: f64, _daily_pnl: f64,
+        &self, _req_id: i64, _pos: Py<PyAny>, _daily_pnl: f64,
         _unrealized_pnl: f64, _realized_pnl: f64, _value: f64,
     ) {}
 

@@ -19,7 +19,7 @@ pub struct Order {
     #[pyo3(get, set)]
     pub action: String,
     #[pyo3(get, set)]
-    pub total_quantity: f64,
+    pub total_quantity: DecimalField,
     #[pyo3(get, set)]
     pub order_type: String,
     #[pyo3(get, set)]
@@ -177,7 +177,7 @@ pub struct Order {
     #[pyo3(get, set)]
     pub fa_percentage: String,
     #[pyo3(get, set)]
-    pub filled_quantity: f64,
+    pub filled_quantity: DecimalField,
     #[pyo3(get, set)]
     pub hedge_max_size: i32,
     #[pyo3(get, set)]
@@ -346,7 +346,7 @@ impl Clone for Order {
             // Original fields
             order_id: self.order_id,
             action: self.action.clone(),
-            total_quantity: self.total_quantity,
+            total_quantity: self.total_quantity.clone(),
             order_type: self.order_type.clone(),
             lmt_price: self.lmt_price,
             aux_price: self.aux_price,
@@ -424,7 +424,7 @@ impl Clone for Order {
             fa_group: self.fa_group.clone(),
             fa_method: self.fa_method.clone(),
             fa_percentage: self.fa_percentage.clone(),
-            filled_quantity: self.filled_quantity,
+            filled_quantity: self.filled_quantity.clone(),
             hedge_max_size: self.hedge_max_size,
             hedge_param: self.hedge_param.clone(),
             hedge_type: self.hedge_type.clone(),
@@ -512,7 +512,7 @@ impl Default for Order {
             // Original fields
             order_id: 0,
             action: String::new(),
-            total_quantity: 0.0,
+            total_quantity: DecimalField::unset(),
             order_type: String::new(),
             lmt_price: f64::MAX,
             aux_price: f64::MAX,
@@ -590,7 +590,7 @@ impl Default for Order {
             fa_group: String::new(),
             fa_method: String::new(),
             fa_percentage: String::new(),
-            filled_quantity: f64::MAX,
+            filled_quantity: DecimalField::unset(),
             // The reference client's unset integer.
             hedge_max_size: i32::MAX,
             hedge_param: String::new(),
@@ -677,7 +677,7 @@ impl Default for Order {
 impl Order {
     #[new]
     #[pyo3(signature = (
-        order_id=0, action="".to_string(), total_quantity=0.0, order_type="".to_string(),
+        order_id=0, action="".to_string(), total_quantity=DecimalField::unset(), order_type="".to_string(),
         lmt_price=f64::MAX, aux_price=f64::MAX, tif="".to_string(), outside_rth=false,
         display_size=0, min_qty=i32::MAX, hidden=false, good_after_time="".to_string(),
         good_till_date="".to_string(), oca_group="".to_string(), trailing_percent=f64::MAX,
@@ -687,7 +687,7 @@ impl Order {
     fn new(
         order_id: i64,
         action: String,
-        total_quantity: f64,
+        total_quantity: DecimalField,
         order_type: String,
         lmt_price: f64,
         aux_price: f64,
@@ -929,7 +929,7 @@ impl Order {
         Ok(Self {
             order_id: a.order_id,
             action: a.action.clone(),
-            total_quantity: a.total_quantity,
+            total_quantity: DecimalField::from_float(a.total_quantity),
             order_type: a.order_type.clone(),
             lmt_price: a.lmt_price,
             aux_price: a.aux_price,
@@ -1012,7 +1012,7 @@ impl Order {
             fa_group: a.fa_group.clone(),
             fa_method: a.fa_method.clone(),
             fa_percentage: a.fa_percentage.clone(),
-            filled_quantity: a.filled_quantity,
+            filled_quantity: DecimalField::from_unsettable(a.filled_quantity),
             hedge_max_size: a.hedge_max_size,
             hedge_param: a.hedge_param.clone(),
             hedge_type: a.hedge_type.clone(),
@@ -1117,7 +1117,7 @@ impl Order {
         crate::types::model::Order {
             order_id: self.order_id,
             action: self.action.clone(),
-            total_quantity: self.total_quantity,
+            total_quantity: self.total_quantity.as_f64(0.0),
             order_type: self.order_type.clone(),
             lmt_price: self.lmt_price,
             aux_price: self.aux_price,
@@ -1198,7 +1198,7 @@ impl Order {
             fa_group: self.fa_group.clone(),
             fa_method: self.fa_method.clone(),
             fa_percentage: self.fa_percentage.clone(),
-            filled_quantity: self.filled_quantity,
+            filled_quantity: self.filled_quantity.as_f64(f64::MAX),
             hedge_max_size: self.hedge_max_size,
             hedge_param: self.hedge_param.clone(),
             hedge_type: self.hedge_type.clone(),
@@ -1950,7 +1950,6 @@ camel_aliases_copy! {
     Order {
         get_lmt_price_alias set_lmt_price_alias lmtPrice lmt_price f64;
         get_order_id_alias set_order_id_alias orderId order_id i64;
-        get_total_quantity_alias set_total_quantity_alias totalQuantity total_quantity f64;
         get_adjustable_trailing_unit_alias set_adjustable_trailing_unit_alias adjustableTrailingUnit adjustable_trailing_unit i32;
         get_adjusted_trailing_amount_alias set_adjusted_trailing_amount_alias adjustedTrailingAmount adjusted_trailing_amount f64;
         get_adjusted_stop_price_alias set_adjusted_stop_price_alias adjustedStopPrice adjusted_stop_price f64;
@@ -1979,7 +1978,6 @@ camel_aliases_copy! {
         get_display_size_alias set_display_size_alias displaySize display_size i32;
         get_dont_use_auto_price_for_hedge_alias set_dont_use_auto_price_for_hedge_alias dontUseAutoPriceForHedge dont_use_auto_price_for_hedge bool;
         get_exempt_code_alias set_exempt_code_alias exemptCode exempt_code i32;
-        get_filled_quantity_alias set_filled_quantity_alias filledQuantity filled_quantity f64;
         get_hedge_max_size_alias set_hedge_max_size_alias hedgeMaxSize hedge_max_size i32;
         get_ignore_open_auction_alias set_ignore_open_auction_alias ignoreOpenAuction ignore_open_auction bool;
         get_imbalance_only_alias set_imbalance_only_alias imbalanceOnly imbalance_only bool;
@@ -2048,6 +2046,8 @@ camel_aliases_copy! {
 
 camel_aliases_owned! {
     Order {
+        get_total_quantity_alias set_total_quantity_alias totalQuantity total_quantity DecimalField;
+        get_filled_quantity_alias set_filled_quantity_alias filledQuantity filled_quantity DecimalField;
         get_order_type_alias set_order_type_alias orderType order_type String;
         get_active_stop_time_alias set_active_stop_time_alias activeStopTime active_stop_time String;
         get_adjusted_order_type_alias set_adjusted_order_type_alias adjustedOrderType adjusted_order_type String;

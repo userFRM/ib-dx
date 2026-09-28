@@ -2851,7 +2851,7 @@ The same for one position, with the size held.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `req_id` | `int` | Request identifier. Used to match responses to requests. |
-| `pos` | `float` | Position size (decimal shares). |
+| `pos` | `Py<PyAny>` | Position size (decimal shares). |
 | `daily_pnl` | `float` | Daily profit/loss. |
 | `unrealized_pnl` | `float` | Unrealized profit/loss. |
 | `realized_pnl` | `float` | Realized profit/loss. |

@@ -10,6 +10,7 @@ import os
 import time
 import pytest
 import threading
+from decimal import Decimal
 from conftest import give_back, inside_the_session, liquid_hours, wait_for
 from ibkr_dx import EWrapper, EClient, Contract, Order
 
@@ -274,6 +275,8 @@ class TestAccountAndPnL:
             refused = [e for e in self.wrapper.errors if e[0] == 9002]
             assert not refused, f"the position's profit request was refused: {refused}"
             assert got, "the account holds SPY and no profit was reported on it"
+            # The reference decodes the position as a Decimal; it arrives as one.
+            assert isinstance(self.wrapper.pnl_single_data["pos"], Decimal)
             assert self.wrapper.pnl_single_data["pos"] >= 1
             assert isinstance(self.wrapper.pnl_single_data["daily_pnl"], float)
         finally:
