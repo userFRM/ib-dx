@@ -1453,8 +1453,13 @@ impl DepthMktDataDescriptionPy {
         reference_dir::<Self>(slf.as_any(), &[])
     }
 
+    /// A fresh description reads the way the reference client's births:
+    /// every text empty and the aggregation group at its unset marker
+    /// (ibapi common.py:202), which is also what the decode of a venue's
+    /// unstated answer carries, so a program comparing against
+    /// `UNSET_INTEGER` reads a made row as it reads a delivered one.
     #[new]
-    #[pyo3(signature = (exchange="".to_string(), sec_type="".to_string(), listing_exch="".to_string(), service_data_type="".to_string(), agg_group=0))]
+    #[pyo3(signature = (exchange="".to_string(), sec_type="".to_string(), listing_exch="".to_string(), service_data_type="".to_string(), agg_group=i32::MAX))]
     fn new(exchange: String, sec_type: String, listing_exch: String, service_data_type: String, agg_group: i32) -> Self {
         Self { exchange, sec_type, listing_exch, service_data_type, agg_group }
     }

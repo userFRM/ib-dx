@@ -152,6 +152,17 @@ def test_contract_details_defaults():
     assert cd.contract.con_id == 0
 
 
+def test_depth_description_defaults_agg_group_to_the_unset_marker():
+    # The reference record births aggGroup unset (ibapi common.py:202), and a
+    # gateway's unstated answer decodes to the same marker: a program telling
+    # "the venue did not state a group" by comparing against UNSET_INTEGER has
+    # to read a fresh row the way it reads a delivered one.
+    from ibkr_dx import UNSET_INTEGER, DepthMktDataDescription
+
+    assert DepthMktDataDescription().aggGroup == UNSET_INTEGER
+    assert DepthMktDataDescription(agg_group=3).aggGroup == 3
+
+
 def test_contract_details_contract_is_mutable_in_place():
     # A getter handing back a clone makes this mutation a silent no-op, and
     # `cd.contract is cd.contract` False.
