@@ -2557,6 +2557,29 @@ fn build_tbt_query(
             }
         };
 
+        // A contract whose definition states its history is limited has the
+        // query's own window checked here, as a gateway checks it: the years
+        // the login states — one where it states none — and a day back from
+        // the contract's own reference date. A session holding the NIGHTLY
+        // feature is outside the window. A query reaching further back is
+        // refused under the gateway's code and in its own words, and the
+        // venue is never asked: asked anyway, the program a gateway serves
+        // gets a refusal and no bars where this one got bars and no error.
+        if !shared.reference.enables("NIGHTLY")
+            && let Some(def) = shared.reference.contract_definition(con_id as u32, exchange)
+            && def.history_limited
+            && let Some(why) = crate::protocol::datetime::limited_history_refusal(
+                &def.last_trade_date,
+                shared.reference.history_years(),
+                end_date_time,
+                duration,
+            )
+        {
+            log::error!("historical req_id={req_id}: {why}");
+            super::push_hmds_refusal(shared, req_id, crate::error_codes::LIMITED_HISTORY, why, true);
+            return false;
+        }
+
         let req = crate::control::historical::HistoricalRequest {
             query_id: String::new(),
             con_id: con_id as u32,

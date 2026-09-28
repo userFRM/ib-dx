@@ -1535,6 +1535,22 @@ mod industry_tests {
         assert_eq!(def.bond_notes, "notes");
     }
 
+    /// A definition states whether the contract's bars are limited to the
+    /// years a login states, on tag 6319 — the value and the flag beside it.
+    /// Unread, every contract looks unlimited and a query a gateway refuses
+    /// here is sent to the venue and served instead.
+    #[test]
+    fn a_definition_states_whether_its_history_is_limited() {
+        let def = parse_secdef_response(&secdef("55=ESU6\u{1}6319=2\u{1}"), true)
+            .expect("the definition parses");
+        assert!(def.history_limited, "a stated value limits it");
+        assert_eq!(def.history_limit, 2, "as stated");
+        let def = parse_secdef_response(&secdef("55=ESZ6\u{1}"), true)
+            .expect("the definition parses");
+        assert!(!def.history_limited, "a sibling month carrying no tag is unlimited");
+        assert_eq!(def.history_limit, -1, "and states no value");
+    }
+
     /// A fund is what it charges and what it is closed to. Without those it is
     /// a symbol.
     #[test]

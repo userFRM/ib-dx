@@ -113,6 +113,10 @@ pub fn wire_text(code: i64, reason: String) -> String {
 /// under.
 pub const DUPLICATE_TICKER_ID: i32 = 102;
 
+/// The code a bar query on a contract whose history the venue limits is
+/// refused under where it reaches past the window the login states.
+pub const LIMITED_HISTORY: i32 = 166;
+
 /// The code the reference client answers a verification request under, which
 /// it answers itself rather than sending: intent to authenticate is stated on
 /// the initial connect, and it never states it.

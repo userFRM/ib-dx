@@ -589,6 +589,99 @@ fn a_second_historical_ticks_request_under_a_live_req_id_is_refused() {
     assert_eq!(errors, vec![(7, 102, "Duplicate ticker id".to_string())]);
 }
 
+/// A contract whose definition states its history is limited has its bar
+/// queries checked against that window before anything goes out, as a gateway
+/// checks them: the window runs back the years the login states — one where it
+/// states none — and a day, from the contract's own reference date, which is
+/// the expiry its definition states at nine in the morning on the clock the
+/// query's end sits on. A query reaching further back is refused here under
+/// 166 in the gateway's words, and the venue is never asked; a query
+/// starting exactly on the boundary is still served. A session holding the
+/// NIGHTLY feature is outside the window. With no expiry stated the window
+/// counts from the present, which the refusal then names "now".
+#[test]
+fn a_bar_query_past_a_limited_contract_window_is_refused_under_166() {
+    enum Expected {
+        Sent,
+        Refused(&'static str),
+        RefusedStartingWith(&'static str),
+    }
+    for (expiry, end, duration, nightly, years, expected) in [
+        // The issue's own query: a flagged contract month, five years asked
+        // against one year of login history.
+        ("20260918", "20260925-15:00:00", "5 Y", false, 1, Expected::Refused(
+            "Historical data queries on this contract requesting any data earlier \
+             than 1 year(s) back from 20260918 09:00:00 UTC which is 20250917 \
+             09:00:00 UTC are rejected.  Your query would have run from 20210925 \
+             15:00:00 UTC to 20260925 15:00:00 UTC.",
+        )),
+        // A day of it, ending after the expiry, is well inside the window.
+        ("20260918", "20260925-15:00:00", "1 D", false, 1, Expected::Sent),
+        // A query starting exactly on the boundary is still served: the window
+        // refuses what starts before the boundary, not at it.
+        ("20260918", "20260917-09:00:00", "1 Y", false, 1, Expected::Sent),
+        // A NIGHTLY session is outside the window.
+        ("20260918", "20260925-15:00:00", "5 Y", true, 1, Expected::Sent),
+        // Two login years count two years back, and one day further.
+        ("20260918", "20260925-15:00:00", "3 Y", false, 2, Expected::Refused(
+            "Historical data queries on this contract requesting any data earlier \
+             than 2 year(s) back from 20260918 09:00:00 UTC which is 20240917 \
+             09:00:00 UTC are rejected.  Your query would have run from 20230925 \
+             15:00:00 UTC to 20260925 15:00:00 UTC.",
+        )),
+        // No expiry stated: the present is the reference, named "now".
+        ("", "20260925-15:00:00", "5 Y", false, 1, Expected::RefusedStartingWith(
+            "Historical data queries on this contract requesting any data earlier \
+             than 1 year(s) back from now which is ",
+        )),
+    ] {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let (conn, _peer) = Connection::for_test();
+        let mut conn = Some(conn);
+        shared.reference.cache_contract_definition(crate::control::contracts::ContractDefinition {
+            con_id: 649180671,
+            symbol: "ES".into(),
+            exchange: "CME".into(),
+            last_trade_date: expiry.into(),
+            history_limited: true,
+            history_limit: 2,
+            ..Default::default()
+        });
+        shared.reference.set_history_years(years);
+        if nightly {
+            shared.reference.set_enabled_features(vec!["NIGHTLY".to_string()]);
+        }
+
+        let sent = hmds.send_historical_request_ex(
+            7, 649180671, end, duration, "1 day", "TRADES",
+            true, false, false, "ES", "FUT", "CME", &mut conn, &mut hb, &shared,
+        );
+
+        let errors = shared.reference.drain_historical_errors();
+        let row = format!("{expiry:?} {end} {duration} nightly={nightly} years={years}");
+        match expected {
+            Expected::Sent => {
+                assert!(sent, "{row}: the query goes out");
+                assert_eq!(errors, vec![], "{row}");
+            }
+            Expected::Refused(text) => {
+                assert!(!sent, "{row}: nothing goes out");
+                assert_eq!(errors, vec![(7, 166, text.to_string())], "{row}");
+                assert!(hmds.held.is_empty(), "{row}: nothing is held for a refused query");
+            }
+            Expected::RefusedStartingWith(prefix) => {
+                assert!(!sent, "{row}: nothing goes out");
+                assert_eq!(errors.len(), 1, "{row}: {errors:?}");
+                let (id, code, message) = &errors[0];
+                assert_eq!((*id, *code), (7, 166), "{row}");
+                assert!(message.starts_with(prefix), "{row}: {message}");
+            }
+        }
+    }
+}
+
 /// The request carries no number of its own, but it is still told when it
 /// cannot be made: returned as though the question had gone out, the caller
 /// waited on an answer nothing was ever going to send.

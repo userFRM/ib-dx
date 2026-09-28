@@ -493,6 +493,14 @@ pub struct ContractDefinition {
     pub fund_asset_type: String,
     /// When it actually expires, where that differs from its last trading day.
     pub real_expiration_date: String,
+    /// Whether the venue limits how far back this contract's bars may be
+    /// asked, the flag side of tag 6319. Where it is set, a query reaching
+    /// further back than the window the login states is refused here rather
+    /// than sent.
+    pub history_limited: bool,
+    /// The value the venue stated beside that flag, tag 6319; -1 where it
+    /// stated none.
+    pub history_limit: i64,
     /// Why the contract may not be dealt in, each as the number the venue
     /// files the reason under and the words it states for that number.
     pub ineligibility_reason_list: Vec<(String, String)>,
@@ -659,6 +667,8 @@ impl Default for ContractDefinition {
             fund_distribution_policy_indicator: String::new(),
             fund_asset_type: String::new(),
             real_expiration_date: String::new(),
+            history_limited: false,
+            history_limit: -1,
             ineligibility_reason_list: Vec::new(),
             callable: false,
             puttable: false,
@@ -1336,6 +1346,14 @@ fn parse_secdef_record(
     if let Some(v) = tags.get(&8502) { def.fund_distribution_policy_indicator = v.clone(); }
     if let Some(v) = tags.get(&8503) { def.fund_asset_type = v.clone(); }
     if let Some(v) = tags.get(&8383) { def.real_expiration_date = v.clone(); }
+    // Whether this contract's bars are limited to the years a login states,
+    // and the value stated beside the flag. A sibling contract month carries
+    // no 6319 and is unlimited; a value of nought states the flag without
+    // limiting.
+    if let Some(v) = tags.get(&6319) && let Ok(x) = v.trim().parse::<i64>() {
+        def.history_limit = x;
+        def.history_limited = x != 0;
+    }
     // The least a contract is dealt in and the step between its sizes, which a
     // gateway states as one figure, worked out in this order: a size rule
     // whose finest band is under one unit deals in that band; a least size

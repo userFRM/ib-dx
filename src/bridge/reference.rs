@@ -2,7 +2,7 @@
 
 use super::*;
 use super::record::{Queue, Stamps};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use crate::control::historical::{HistoricalResponse, HeadTimestampResponse};
@@ -308,6 +308,9 @@ pub struct ReferenceState {
     /// Feature tokens the venue enables for this account, from logon tag 6542
     /// and from the account configuration that follows it.
     enabled_features: Mutex<Vec<String>>,
+    /// How many years back a contract the venue flags as limited holds its
+    /// bars, from logon tag 6774. One where the logon states none.
+    history_years: AtomicI32,
     /// The accounts the logon names as the login's own, and whether the login
     /// is an advisor's (logon tag 6108).
     login: Mutex<(Vec<String>, bool)>,
@@ -450,6 +453,7 @@ impl ReferenceState {
             trading_over: Mutex::new(None),
             order_permissions: Mutex::new(HashMap::new()),
             enabled_features: Mutex::new(Vec::new()),
+            history_years: AtomicI32::new(1),
             login: Mutex::new((Vec::new(), false)),
             all_non_prop_leaves_out: AtomicBool::new(false),
             refusals_told: AtomicBool::new(false),
@@ -1615,6 +1619,12 @@ impl ReferenceState {
         self.enabled_features.lock().unwrap().iter().any(|f| f == feature)
     }
 
+    /// How many years back a contract the venue flags as limited holds its
+    /// bars, as the login stated it.
+    pub fn history_years(&self) -> i32 {
+        self.history_years.load(Ordering::Relaxed)
+    }
+
     /// The accounts the logon names as the login's own, family-linked ones
     /// left out, and whether the login is an advisor's.
     pub fn login(&self) -> (Vec<String>, bool) {
@@ -2062,6 +2072,10 @@ impl ReferenceState {
     #[doc(hidden)] pub fn set_enabled_features(&self, features: Vec<String>) {
         self.settle_island_grant(&features);
         *self.enabled_features.lock().unwrap() = features;
+    }
+
+    #[doc(hidden)] pub fn set_history_years(&self, years: i32) {
+        self.history_years.store(if years > 0 { years } else { 1 }, Ordering::Relaxed);
     }
 
     #[doc(hidden)] pub fn set_news_providers(&self, providers: Vec<crate::types::NewsProvider>) {

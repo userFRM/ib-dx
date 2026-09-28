@@ -104,6 +104,10 @@ pub(super) struct LogonAck {
     pub trading_port: Option<u16>,
     /// How many quote subscriptions this session may hold; the venue states it on the logon.
     pub market_data_allowance: usize,
+    /// How many years back a contract the venue flags as limited holds its
+    /// bars, tag 6774; one where the logon states no positive number, which
+    /// is the default a gateway counts the window with.
+    pub history_years: i32,
 }
 
 pub(super) fn market_data_allowance(fields: &std::collections::HashMap<u32, String>) -> usize {
@@ -120,6 +124,17 @@ pub(super) fn market_data_allowance(fields: &std::collections::HashMap<u32, Stri
         .filter_map(|tag| fields.get(&tag)?.parse::<i32>().ok())
         .find(|&stated| stated > 0)
         .map_or(40, |stated| stated as usize)
+}
+
+/// How many years back a contract the venue flags as limited holds its bars,
+/// tag 6774 on the logon. One where the logon states none or a number that is
+/// not positive: a gateway counts a limited contract's window in that many
+/// years, and one year is what it falls back to.
+pub(super) fn history_years(fields: &std::collections::HashMap<u32, String>) -> i32 {
+    fields.get(&6774)
+        .and_then(|v| v.trim().parse::<i32>().ok())
+        .filter(|&stated| stated > 0)
+        .unwrap_or(1)
 }
 
 /// The messages one answer carried, each whole.
@@ -403,6 +418,7 @@ impl LogonAck {
             // waiting for the opening requests it waited until the deadline.
             if the_ack_is_among(&messages) {
                 ack.market_data_allowance = market_data_allowance(&fields);
+                ack.history_years = history_years(&fields);
                 // And what rode in with it. The venue pushes what it holds the
                 // moment the logon is answered, so the envelope carrying the
                 // acknowledgement carries the session's own traffic beside it —
@@ -1460,6 +1476,23 @@ mod tests {
             let mut wire = answered_with(&[&fields]);
             let ack = LogonAck::read(&mut wire, &mut Vec::new(), a_minute_from_now()).unwrap();
             assert_eq!(ack.market_data_allowance, expected, "{stated:?}");
+        }
+    }
+
+    /// How many years a limited contract holds its bars back is stated by the
+    /// login on tag 6774. A logon stating no positive number leaves the
+    /// default of one, which is what a gateway counts the window in.
+    #[test]
+    fn the_logon_states_the_limited_history_years() {
+        for (stated, expected) in [
+            (Some("3"), 3), (Some("1"), 1), (Some("0"), 1),
+            (Some("-2"), 1), (None, 1), (Some("unreadable"), 1),
+        ] {
+            let mut fields = vec![(35, "A"), (1, "DU111111")];
+            fields.extend(stated.map(|v| (6774, v)));
+            let mut wire = answered_with(&[&fields]);
+            let ack = LogonAck::read(&mut wire, &mut Vec::new(), a_minute_from_now()).unwrap();
+            assert_eq!(ack.history_years, expected, "{stated:?}");
         }
     }
 

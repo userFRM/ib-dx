@@ -346,6 +346,9 @@ pub struct Gateway {
     pub enabled_features: String,
     /// Raw enabled-feature token list from CCP logon tag 6542.
     pub raw_enabled_features: String,
+    /// How many years back a contract the venue flags as limited holds its
+    /// bars, logon tag 6774; one where the logon states no positive number.
+    pub history_years: i32,
     /// Whether the logon names accounts `AllNonProp` leaves out.
     pub all_non_prop_leaves_out: bool,
     /// Where the executions this session opened with start, as the opening
@@ -2484,6 +2487,7 @@ impl Gateway {
             raw_smart_combo_currencies,
             enabled_features,
             raw_enabled_features,
+            history_years,
             all_non_prop_leaves_out,
             white_branding_id,
             refusals_told,
@@ -2674,6 +2678,7 @@ impl Gateway {
             raw_smart_combo_currencies,
             enabled_features,
             raw_enabled_features,
+            history_years,
             all_non_prop_leaves_out,
             executions_held_from,
             white_branding_id,
@@ -2833,6 +2838,8 @@ impl Gateway {
         shared.reference.set_enabled_features(
             self.raw_enabled_features.split(',').filter(|t| !t.is_empty()).map(str::to_string).collect(),
         );
+        // How many years a limited contract's bars reach back, logon tag 6774.
+        shared.reference.set_history_years(self.history_years);
         shared.reference.set_all_non_prop_leaves_out(self.all_non_prop_leaves_out);
         shared.reference.set_executions_held_from(
             crate::protocol::datetime::ib_datetime_to_unix(&self.executions_held_from),

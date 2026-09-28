@@ -543,21 +543,7 @@ pub fn historical_range(
 ) -> Option<(String, String)> {
     let clock = clock_named(zone)?;
     let end = request_end(end_date_time)?;
-    let (count, unit) = duration
-        .trim()
-        .split_once(' ')
-        .unwrap_or((duration.trim(), "S"));
-    let count: i64 = count.parse().ok()?;
-    let span = jiff::Span::new();
-    let span = match unit.to_ascii_uppercase().as_str() {
-        "S" => span.try_seconds(count),
-        "D" => span.try_days(count),
-        "W" => span.try_weeks(count),
-        "M" => span.try_months(count),
-        "Y" => span.try_years(count),
-        _ => return None,
-    }
-    .ok()?;
+    let span = duration_span(duration)?;
     let start = end.checked_sub(span).ok()?;
     let stated = |at: &jiff::Zoned| {
         format!(
@@ -566,6 +552,85 @@ pub fn historical_range(
         )
     };
     Some((stated(&start), stated(&end)))
+}
+
+/// The length a duration string names, counted on a calendar: a count and
+/// the unit it counts in, or nothing where either does not read.
+fn duration_span(duration: &str) -> Option<jiff::Span> {
+    let (count, unit) = duration
+        .trim()
+        .split_once(' ')
+        .unwrap_or((duration.trim(), "S"));
+    let count: i64 = count.parse().ok()?;
+    let span = jiff::Span::new();
+    match unit.to_ascii_uppercase().as_str() {
+        "S" => span.try_seconds(count),
+        "D" => span.try_days(count),
+        "W" => span.try_weeks(count),
+        "M" => span.try_months(count),
+        "Y" => span.try_years(count),
+        _ => return None,
+    }
+    .ok()
+}
+
+/// The words a gateway refuses a limited contract's bar query with, where the
+/// query reaches past the window the definition and the login give it;
+/// nothing where the query is inside the window or the window cannot be
+/// worked out.
+///
+/// The window reaches back the stated years and a day from the contract's own
+/// reference date: the expiry its definition states, at nine in the morning on
+/// the clock the query's end sits on, as a gateway anchors that day. A
+/// definition stating no expiry leaves the present as the reference, which the
+/// refusal then names "now". A query starting exactly on the boundary is
+/// served; one starting before it is refused.
+///
+/// The four moments are written the way a gateway writes its own dates: the
+/// stamp and the zone's short name beside it.
+// ponytail: the zone abbreviations come from this machine's tz database for
+// the clock the query's end names; a gateway writes its server's. For a query
+// stating no end, both are UTC and the texts agree.
+pub fn limited_history_refusal(
+    last_trade_date: &str,
+    years: i32,
+    end_date_time: &str,
+    duration: &str,
+) -> Option<String> {
+    let end = request_end(end_date_time)?;
+    let start = end.checked_sub(duration_span(duration)?).ok()?;
+    let stated = |at: &jiff::Zoned| at.strftime("%Y%m%d %H:%M:%S %Z").to_string();
+    let tz = end.time_zone().clone();
+    // The contract's own reference date at nine in the morning, or the
+    // present where the definition states no expiry.
+    let (reference, base) = match day_number(last_trade_date).filter(|&d| d >= 0) {
+        Some(days) => {
+            let (y, m, d) = days_to_ymd(days as u64);
+            let at = jiff::civil::DateTime::new(y as i16, m as i8, d as i8, 9, 0, 0, 0)
+                .ok()?
+                .to_zoned(tz)
+                .ok()?;
+            (stated(&at), at)
+        }
+        None => ("now".to_string(), jiff::Zoned::now().with_time_zone(tz)),
+    };
+    let window = jiff::Span::new()
+        .try_years(i64::from(years))
+        .ok()?
+        .try_days(1)
+        .ok()?;
+    let boundary = base.checked_sub(window).ok()?;
+    if start.timestamp() >= boundary.timestamp() {
+        return None;
+    }
+    Some(format!(
+        "Historical data queries on this contract requesting any data earlier \
+         than {years} year(s) back from {reference} which is {} are rejected.  \
+         Your query would have run from {} to {}.",
+        stated(&boundary),
+        stated(&start),
+        stated(&end),
+    ))
 }
 
 #[cfg(test)]
