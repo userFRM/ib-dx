@@ -10,6 +10,8 @@ import importlib.util
 import pathlib
 import re
 
+from ibkr_dx import EWrapper
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
@@ -52,3 +54,25 @@ def test_the_generated_pages_link_nowhere_missing():
     for page, _ in (generator.generate_rust_md(version), generator.generate_python_md(version)):
         left = UNRESOLVED.findall(page)
         assert not left, f"links a book page cannot follow: {left[:5]}"
+
+
+def test_the_generator_sees_every_callback_the_class_carries():
+    """The page documents what the parser reads off the source.
+
+    A lint allowance standing between `#[pymethods]` and its `impl` ended the
+    block match, and the generated page lost every callback while the class
+    itself carried them all — the runtime surface intact, the documentation
+    of it empty.
+    """
+    parsed = {
+        method["name"]
+        for method in _generator().parse_pymethods(
+            ROOT / "src" / "python" / "compat" / "wrapper.rs"
+        )
+    }
+    carried = {
+        name for name in dir(EWrapper)
+        if name.islower() and not name.startswith("_")
+    }
+    assert carried, "the class carries no callbacks to see"
+    assert carried <= parsed, f"callbacks the parser cannot see: {sorted(carried - parsed)[:5]}"

@@ -590,7 +590,12 @@ def parse_pymethods(path: Path) -> list[dict]:
     results = []
     blocks = re.split(r'#\[pymethods\]', text)
     for block in blocks[1:]:
-        impl_m = re.match(r'\s*impl\s+\w+\s*\{', block)
+        # An attribute or a comment may stand between `#[pymethods]` and the
+        # `impl` it opens. A lint allowance there used to end this match, and
+        # every method of the block went undocumented while the class itself
+        # carried them all — a page that lost its whole section, not a page
+        # that said something stale.
+        impl_m = re.match(r'(?:\s*(?:#|//)[^\n]*\n)*\s*impl\s+\w+\s*\{', block)
         if not impl_m:
             continue
         start = impl_m.end() - 1

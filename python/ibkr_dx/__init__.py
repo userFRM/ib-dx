@@ -155,18 +155,25 @@ def _answer_to_both_spellings(cls) -> None:
     in nearly every override — its own sample does — so the rest of each
     override never ran, and the dispatch loop logged the failure and carried on
     without it.
+
+    A method both clients spell the same (`error`, `pnl`, `position`) is
+    wrapped in place rather than skipped: the reference client's keywords for
+    it are its own words — `reqId`, `position` — and only the stand-in remaps
+    them, so without the wrap a keyword call under either spelling raised.
     """
     for ours in list(vars(cls)):
         if ours.startswith("_"):
             continue
         theirs = _reference_name(ours)
-        if theirs == ours or hasattr(cls, theirs):
+        if theirs != ours and hasattr(cls, theirs):
             continue
         under_ours = getattr(cls, ours)
         # A value read off the instance, not a call: `clientId` is what
         # `client_id` answers. Wrapped as a call, reading it handed back the
         # wrapper itself.
         if not callable(under_ours):
+            if theirs == ours:
+                continue
             setattr(cls, theirs, property(
                 lambda self, ours=ours: getattr(self, ours), doc=under_ours.__doc__,
             ))
@@ -186,13 +193,31 @@ def _one_word(name: str) -> str:
 
 #: Parameters this client names something else entirely, by letters alone. The
 #: rest of the reference client's names differ from ours only in underscores and
-#: capitals, which `_one_word` settles; these three are different words, so
-#: nothing but a list of them will do. A name absent from the method it is
-#: passed to is handed on untouched, and the method refuses it as before.
+#: capitals, which `_one_word` settles; these are different words (or, for
+#: `orderBound`, the same words paired differently), so nothing but a list of
+#: them will do. A name absent from the method it is passed to is handed on
+#: untouched, and the method refuses it as before. Where a method has a
+#: parameter of its own that spells one of these keys, this list answers the
+#: reference client's word for it only where another of its words claims the
+#: parameter the letters alone fold that key to, as `orderBound`'s parameters
+#: are the reference's in a different order of words.
 _THEIR_WORD_FOR_IT = {
     "tickerid": "req_id",
     "fadata": "fa_data_type",
     "implvoloptions": "implied_vol_options",
+    "requestid": "req_id",
+    "val": "value",
+    "position": "pos",
+    "time": "date",
+    "cxml": "xml",
+    "accountname": "account",
+    "newsmessage": "message",
+    "originexch": "orig_exchange",
+    "totaldividends": "implied_future",
+    "xyzchallange": "xyz_challenge",
+    "permid": "order_id",
+    "clientid": "api_client_id",
+    "orderid": "api_order_id",
 }
 
 
@@ -211,8 +236,17 @@ def _under_our_names(method):
     except (TypeError, ValueError):
         return {}
     ours = {_one_word(name): name for name in params if name != "self"}
+    # A word on the list moves a parameter the letters alone already claim
+    # only where the list also claims the one they fold it to: `orderBound`
+    # pairs the reference's words differently — its `permId` arrives on
+    # `order_id`, so its `orderId` has to move to `api_order_id`. Elsewhere
+    # the fold owns the keyword: `order_status` carries a `perm_id` of its
+    # own, no word on the list claims it, and moving `permId` to `order_id`
+    # collided with the caller's `orderId` — the remap was thrown away whole
+    # and the reference's own keywords were refused.
+    claimed = {mine for _, mine in _THEIR_WORD_FOR_IT.items() if mine in params}
     for theirs, mine in _THEIR_WORD_FOR_IT.items():
-        if mine in params:
+        if mine in params and (theirs not in ours or ours[theirs] in claimed):
             ours[theirs] = mine
     return ours
 
@@ -237,10 +271,15 @@ def _standing_in_front_of(method, cls, theirs: str):
 
     def theirs_calls_ours(self, *args, **kwargs):
         if kwargs:
-            kwargs = {
+            remapped = {
                 ours_by_letters.get(_one_word(given), given): value
                 for given, value in kwargs.items()
             }
+            # A caller who gave one figure under both spellings is not
+            # silently folded into one: the method itself refuses what it
+            # was handed, as it always has.
+            if len(remapped) == len(kwargs):
+                kwargs = remapped
         return method(self, *args, **kwargs)
 
     theirs_calls_ours.__name__ = theirs
