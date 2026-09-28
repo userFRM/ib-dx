@@ -165,9 +165,8 @@ const ALIASES: &[(i32, i32, Legal)] = &[
 /// reads as none of them — an empty one included — is stated as the empty
 /// spelling and takes the series every type takes.
 const TYPE_NAMES: [&str; 25] = [
-    "STK", "CFD", "OPT", "FOP", "WAR", "IOPT", "FUT", "FWD", "BAG", "CASH", "IND", "BOND",
-    "BILL", "FUND", "FIXED", "SLB", "NEWS", "CMDTY", "BSK", "ICU", "ICS", "PHYSS", "CRYPTO",
-    "PDC", "EC",
+    "STK", "CFD", "OPT", "FOP", "WAR", "IOPT", "FUT", "FWD", "BAG", "CASH", "IND", "BOND", "BILL",
+    "FUND", "FIXED", "SLB", "NEWS", "CMDTY", "BSK", "ICU", "ICS", "PHYSS", "CRYPTO", "PDC", "EC",
 ];
 
 /// The type a request's spelling reads as, under the venue's own reading:
@@ -249,10 +248,7 @@ fn resolve_one(entry: &str, kind: &str, news_capable: bool) -> Option<i32> {
 
 /// What an older number resolves to.
 fn alias_of(n: i32) -> Option<(i32, Legal)> {
-    ALIASES
-        .binary_search_by_key(&n, |alias| alias.0)
-        .ok()
-        .map(|at| (ALIASES[at].1, ALIASES[at].2))
+    ALIASES.binary_search_by_key(&n, |alias| alias.0).ok().map(|at| (ALIASES[at].1, ALIASES[at].2))
 }
 
 /// The series a list resolves to, as a gateway resolves one — each entry to
@@ -302,9 +298,7 @@ pub(crate) fn incorrect_list(list: &str, sec_type: &str, news_capable: bool) -> 
         legal.push_str(name);
         legal.push(')');
     }
-    format!(
-        "Incorrect generic tick list of {list}.  Legal ones for ({kind}) are: {legal}"
-    )
+    format!("Incorrect generic tick list of {list}.  Legal ones for ({kind}) are: {legal}")
 }
 
 #[cfg(test)]
