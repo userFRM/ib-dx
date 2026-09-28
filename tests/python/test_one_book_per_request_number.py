@@ -37,9 +37,9 @@ def test_withdrawing_a_book_that_is_not_held_says_so():
     c.cancelMktDepth(7, False)
 
     c.poll()
-    assert w.seen == [(7, 310, "no book is held under request 7")], (
-        f"nothing is held under that number: {w.seen}"
-    )
+    assert w.seen == [
+        (7, 310, "Can't find the subscribed market depth with tickerId:7")
+    ], f"nothing is held under that number: {w.seen}"
 
 
 def test_a_second_book_under_a_live_number_is_refused():

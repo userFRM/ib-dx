@@ -55,6 +55,6 @@ def test_withdrawing_a_stream_that_is_not_held_says_so():
     c.cancelTickByTickData(999)
 
     c.poll()
-    assert [(r, code) for r, code, _ in w.seen] == [(999, 300)], (
+    assert w.seen == [(999, 300, "Can't find EId with tickerId:999")], (
         f"nothing is held under that number: {w.seen}"
     )

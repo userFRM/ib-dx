@@ -2691,7 +2691,7 @@ impl ClientCore {
         if !self.depth_reqs.lock().unwrap().remove(&req_id) {
             return Err(Refusal::stated(
                 NO_SUCH_BOOK,
-                format!("no book is held under request {req_id}"),
+                format!("Can't find the subscribed market depth with tickerId:{req_id}"),
             ));
         }
         Ok(())

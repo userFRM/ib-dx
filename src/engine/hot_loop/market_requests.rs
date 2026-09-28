@@ -499,7 +499,7 @@ impl HotLoop {
                 req_id,
                 Refusal::stated(
                     NO_SUCH_SUBSCRIPTION,
-                    format!("no contract is being watched under request {req_id}"),
+                    format!("Can't find EId with tickerId:{req_id}"),
                 ),
             );
         };

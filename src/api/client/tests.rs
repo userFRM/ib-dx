@@ -2279,8 +2279,8 @@ fn cancel_mkt_data_under_a_number_that_holds_nothing_says_so() {
     crate::api::client::tests::reported(&client, || client.cancel_mkt_data(999)).expect("handed to the engine");
     let heard = settled(&client, &rx);
     assert!(
-        heard.iter().any(|e| e.starts_with("error:999:300:")),
-        "nothing is being watched under that number: {heard:?}",
+        heard.iter().any(|e| e == "error:999:300:Can't find EId with tickerId:999"),
+        "nothing is being watched under that number, in a gateway's words: {heard:?}",
     );
 }
 
@@ -2448,8 +2448,8 @@ fn cancel_tick_by_tick_under_a_number_that_holds_nothing_says_so() {
     crate::api::client::tests::reported(&client, || client.cancel_tick_by_tick_data(999)).expect("handed to the engine");
     let heard = settled(&client, &rx);
     assert!(
-        heard.iter().any(|e| e.starts_with("error:999:300:")),
-        "nothing is held under that number: {heard:?}",
+        heard.iter().any(|e| e == "error:999:300:Can't find EId with tickerId:999"),
+        "nothing is held under that number, in a gateway's words: {heard:?}",
     );
 }
 
@@ -4920,8 +4920,11 @@ fn a_request_number_holds_one_book_and_says_when_it_holds_none() {
 
     let withdrawn = crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7));
     assert!(
-        withdrawn.as_ref().is_err_and(|why| why.code == 310),
-        "nothing is held under that number: {withdrawn:?}",
+        withdrawn.as_ref().is_err_and(|why| {
+            why.code == 310
+                && why.message == "Can't find the subscribed market depth with tickerId:7"
+        }),
+        "nothing is held under that number, in a gateway's words: {withdrawn:?}",
     );
     assert!(rx.try_recv().is_err(), "and nothing was asked of the engine for it");
 

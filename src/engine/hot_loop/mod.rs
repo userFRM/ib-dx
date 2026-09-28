@@ -1540,7 +1540,7 @@ impl HotLoop {
                         self.shared.push_refused(
                             crate::types::model::ErrorOrigin::Request { id: req_id, ends: true },
                             i64::from(crate::error_codes::NO_SUCH_SUBSCRIPTION),
-                            format!("no tick stream is held under request {req_id}"),
+                            format!("Can't find EId with tickerId:{req_id}"),
                         );
                         continue;
                     };
@@ -1998,10 +1998,7 @@ impl HotLoop {
                     if self.hmds.keep_up_to_date_reqs.contains(&req_id) {
                         push_hmds_refusal(
                             &self.shared, req_id, crate::error_codes::NO_SUCH_SUBSCRIPTION,
-                            format!(
-                                "no live bar stream of its own is running under request {req_id}: \
-                                 the bars under it belong to a historical request kept up to date",
-                            ),
+                            format!("Can't find EId with tickerId:{req_id}"),
                             false,
                         );
                         continue;
@@ -2016,7 +2013,7 @@ impl HotLoop {
                         // says nothing beside it.
                         push_hmds_refusal(
                             &self.shared, req_id, crate::error_codes::NO_SUCH_SUBSCRIPTION,
-                            format!("no live bar stream is running under request {req_id}"),
+                            format!("Can't find EId with tickerId:{req_id}"),
                             false,
                         );
                     }
@@ -9033,8 +9030,10 @@ mod tests {
         assert!(hl.hmds.keep_up_to_date_reqs.contains(&7), "and the request is still kept up to date");
         let told = shared.reference.drain_historical_errors();
         assert!(
-            told.iter().any(|(rid, code, _)| *rid == 7 && *code == 300),
-            "no bar stream of its own runs under the number: {told:?}",
+            told.iter().any(|(rid, code, words)| {
+                *rid == 7 && *code == 300 && words == "Can't find EId with tickerId:7"
+            }),
+            "no bar stream of its own runs under the number, in a gateway's words: {told:?}",
         );
     }
 
@@ -10047,7 +10046,8 @@ mod withdrawal_tests {
             ("a head timestamp", crate::types::ControlCommand::CancelHeadTimestamp { req_id: 9 }, 300, None),
             ("corporate actions", crate::types::ControlCommand::CancelCorporateActions { req_id: 9 }, 300, None),
             ("a histogram", crate::types::ControlCommand::CancelHistogramData { req_id: 9 }, 300, None),
-            ("live bars", crate::types::ControlCommand::CancelRealTimeBar { req_id: 9 }, 300, None),
+            ("live bars", crate::types::ControlCommand::CancelRealTimeBar { req_id: 9 }, 300,
+             Some("Can't find EId with tickerId:9")),
         ] {
             let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
             let (tx, rx) = std::sync::mpsc::sync_channel(4);
