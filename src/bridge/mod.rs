@@ -367,6 +367,7 @@ impl SharedState {
     /// Stated once, as the session opens, before the engine's threads start.
     #[doc(hidden)]
     pub fn set_settings(&self, settings: std::sync::Arc<crate::settings::SessionSettings>) {
+        self.orders.note_session_zone(&settings.timezone);
         *self.settings.lock().unwrap() = settings;
     }
 

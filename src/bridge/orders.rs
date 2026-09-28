@@ -132,6 +132,10 @@ pub struct OrderState {
     pub(super) restated_executions: Queue<(api::Contract, api::Execution)>,
     pub(super) what_if_responses: Queue<WhatIfResponse>,
     completed_orders: Mutex<Vec<CompletedOrder>>,
+    /// The zone the session keeps its books in: the window a completed-order
+    /// ask carries runs from the start of today to the start of tomorrow in
+    /// it, and the queue keeps nothing older than that window's start.
+    zone: Mutex<jiff::tz::TimeZone>,
     /// Whether the venue has said it has stated every finished order it holds.
     completed_orders_ended: std::sync::atomic::AtomicU64,
     completed_orders_asked: std::sync::atomic::AtomicU64,
@@ -270,6 +274,7 @@ impl OrderState {
             restated_executions: Queue::new(stamps),
             what_if_responses: Queue::with_capacity(stamps, 8),
             completed_orders: Mutex::new(Vec::with_capacity(64)),
+            zone: Mutex::new(jiff::tz::TimeZone::UTC),
             completed_orders_ended: std::sync::atomic::AtomicU64::new(0),
             completed_orders_asked: std::sync::atomic::AtomicU64::new(0),
             completed_orders_ended_on: std::sync::atomic::AtomicU64::new(0),
@@ -1085,7 +1090,26 @@ impl OrderState {
         if already {
             return;
         }
-        self.completed_orders.lock().unwrap().push(order);
+        // Bounded by the window a completed-order ask carries — the start of
+        // today in the session's zone — so a caller that never asks does not
+        // leave every completion of the session waiting here: each arrival
+        // drops the records the window no longer covers. A record with no
+        // stamp is the venue's own account of the past, which the window
+        // says nothing about; it is kept.
+        let window = crate::bridge::completed_window_start_ns(
+            &self.zone.lock().unwrap(), jiff::Timestamp::now(),
+        );
+        let mut queued = self.completed_orders.lock().unwrap();
+        queued.retain(|held| held.timestamp_ns == 0 || held.timestamp_ns >= window);
+        queued.push(order);
+    }
+
+    /// Note the zone the session keeps its books in, which is the zone the
+    /// completed-order window is measured in.
+    pub(super) fn note_session_zone(&self, named: &str) {
+        if let Some(zone) = crate::protocol::datetime::clock_named(named) {
+            *self.zone.lock().unwrap() = zone;
+        }
     }
 
     /// Remember that this order finished, and keep that memory bounded.
@@ -1293,5 +1317,28 @@ mod report_tests {
         orders.note_order_finished(7, "Filled", "Filled");
         assert_eq!(cached.order_state.status, "Submitted");
         assert_eq!(orders.get_order_info(7).unwrap().order_state.status, "Filled");
+    }
+
+    /// The queue of finished orders is bounded even when nobody asks: a
+    /// completion stamped older than the window the ask itself carries is
+    /// dropped as later ones arrive.
+    #[test]
+    fn the_queue_of_finished_orders_keeps_only_what_the_window_covers() {
+        let orders = OrderState::new();
+        let now_ns = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos() as u64;
+        let two_days_ns = 2 * 86_400 * 1_000_000_000u64;
+        let completion = |order_id: u64, timestamp_ns: u64| CompletedOrder {
+            venue_order: String::new(), stated: None, held: None,
+            order_id, instrument: 0, status: OrderStatus::Filled,
+            filled_qty: 100, timestamp_ns,
+        };
+        for id in 0..100 {
+            orders.push_completed_order(completion(id, now_ns - two_days_ns));
+        }
+        orders.push_completed_order(completion(100, now_ns));
+        let drained = orders.drain_completed_orders();
+        let ids: Vec<u64> = drained.iter().map(|c| c.order_id).collect();
+        assert_eq!(ids, [100], "only what the window still covers: {} records", drained.len());
     }
 }
