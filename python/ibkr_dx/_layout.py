@@ -125,6 +125,7 @@ def install(surface: dict) -> dict:
         "news": (held("NewsProvider", "NEWS_MSG", "EXCHANGE_AVAIL_MSG", "EXCHANGE_UNAVAIL_MSG"),
                  "A news provider, and the kinds of bulletin."),
         "object_implem": (held("Object"), "The base that client's plain objects are written on."),
+        "enum_implem": (held("Enum"), "The class that client's constant classes are built on."),
         "common": (
             held("BarData", "RealTimeBar", "HistogramData", "NewsProvider",
                  "DepthMktDataDescription", "SmartComponent", "TickAttrib",

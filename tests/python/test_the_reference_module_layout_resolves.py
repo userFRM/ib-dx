@@ -37,6 +37,7 @@ LAYOUT = [
     ("ticktype", ["TickType", "TickTypeEnum"]),
     ("account_summary_tags", ["AccountSummaryTags"]),
     ("object_implem", ["Object"]),
+    ("enum_implem", ["Enum"]),
     ("common", ["Object", "floatMaxString", "intMaxString", "decimalMaxString",
                 "BarData", "RealTimeBar", "HistogramData", "TickAttrib",
                 "TickAttribBidAsk", "TickAttribLast", "FamilyCode",
