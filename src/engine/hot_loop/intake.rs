@@ -1682,6 +1682,13 @@ impl HotLoop {
     /// Forget a placement that was kept and never sent, with what hangs from
     /// it, and say whether the order is now gone entirely. A revision kept
     /// under the number goes too, and the order it revises stays live.
+    ///
+    /// A placement withdrawn is a placement a gateway discards, and its
+    /// cancel is answered as one answers the cancel of an order a gateway
+    /// holds: the member's status goes to the cancelled-for-held status with
+    /// nothing filled, nothing remaining and no price on it, and the discard
+    /// is said under 202 — for the parent and each kept child withdrawn with
+    /// it, each ahead of the record that forgets it.
     fn withdraw_kept_placement(&mut self, order_id: u64) -> bool {
         let placement = self.intake.keeps_a_placement(order_id);
         let Some(kept) = self.intake.release(order_id) else { return false };
@@ -1692,8 +1699,23 @@ impl HotLoop {
             self.shared.push_call_record(Record::OrderBook(OrderBook::RevisionForgotten(order_id)));
             return false;
         }
-        let mut parents = vec![order_id];
-        while let Some(parent) = parents.pop() {
+        let mut going = vec![kept];
+        while let Some(kept) = going.pop() {
+            let parent = kept.order_id;
+            self.shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: parent,
+                instrument: 0,
+                status: crate::types::OrderStatus::ApiCancelled,
+                filled_qty: 0.0,
+                remaining_qty: 0.0,
+                avg_price: 0,
+                perm_id: 0,
+                parent_id: kept.parent_id,
+                timestamp_ns: 0,
+            });
+            self.shared.orders.push_order_notice(
+                parent, OrderOp::Cancel, 202, "Order Canceled - reason:Order was discarded".into(),
+            );
             self.intake.placed.remove(&parent);
             self.intake.attached.discard_local_order(parent);
             self.shared.orders.forget_local_api_order(parent);
@@ -1706,8 +1728,9 @@ impl HotLoop {
                 .map(|k| k.order_id)
                 .collect();
             for child in children {
-                self.intake.release(child);
-                parents.push(child);
+                if let Some(kept) = self.intake.release(child) {
+                    going.push(kept);
+                }
             }
         }
         true

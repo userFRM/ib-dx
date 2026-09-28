@@ -10939,12 +10939,16 @@ fn a_withdrawal_by_permanent_id_reaches_the_order_held_under_that_number() {
     }
 }
 
-/// Withdrawing a held parent takes what hangs from it out of the hold.
+/// Withdrawing a held parent takes what hangs from it out of the hold, and
+/// answers as a gateway answers the cancel of an order it holds: each
+/// member's status goes to the cancelled-for-held status with nothing filled,
+/// nothing remaining and no price on it, and the discard is said under 202.
 ///
 /// The children stayed held under the cancelled parent's number: when the
 /// caller later transmitted the stop-loss, the family gathered under that
 /// number went out as exits naming a parent the venue was never given, and
-/// their records read as working orders.
+/// their records read as working orders. Withdrawn in silence, a program's
+/// trade never reached its end and a cancel-then-await flow hung.
 #[test]
 fn withdrawing_a_held_parent_withdraws_the_children_held_under_it() {
     let (client, rx, _shared) = test_client();
@@ -10957,9 +10961,20 @@ fn withdrawing_a_held_parent_withdraws_the_children_held_under_it() {
     client.try_place_order(90, &spy(), &leg(90, 0)).expect("held");
     client.try_place_order(91, &spy(), &leg(91, 90)).expect("held under it");
     crate::api::client::tests::reported(&client, || client.cancel_order(90, "")).expect("withdrawn");
+    let heard = settled(&client, &rx);
     assert!(client.core.tracked_order(91).is_none(), "the child's record goes with the parent's");
     assert!(!rx.keeps(91), "and nothing is held under the child's number");
     assert!(rx.try_recv().is_err(), "nothing reached the engine");
+    for id in [90, 91] {
+        assert!(
+            heard.iter().any(|e| e == &format!("order_status:{id}:ApiCancelled:0:0:0")),
+            "the withdrawn member's status: {heard:?}",
+        );
+        assert!(
+            heard.iter().any(|e| e == &format!("error:{id}:202:Order Canceled - reason:Order was discarded")),
+            "and its discard is said under 202: {heard:?}",
+        );
+    }
 }
 
 /// Asked for the API orders alone, a caller is answered with those.
