@@ -1602,8 +1602,9 @@ impl HotLoop {
             crate::types::Side::ShortSell => ("SSHORT", "BUY"),
         };
         let oca_group = parent_id.to_string();
-        // Each leg recorded as the wire states it: the entry lives a day and
-        // stands alone; each exit is good till cancelled, in the group, and
+        // Each leg recorded as the wire states it: no leg states a life the
+        // caller did not state, so each is recorded at the day an unstated TIF
+        // sends; the entry stands alone, and each exit is in the group and
         // reduces the other on a fill.
         let leg = |order_id: i64,
                    action: &str,
@@ -1619,7 +1620,7 @@ impl HotLoop {
                 order_type: order_type.into(),
                 lmt_price,
                 aux_price,
-                tif: if exit { "GTC" } else { "DAY" }.into(),
+                tif: "DAY".into(),
                 parent_id: parent,
                 oca_group: if exit { oca_group.clone() } else { String::new() },
                 oca_type: if exit { 3 } else { 0 },

@@ -2526,6 +2526,35 @@ mod modify_wire_tests {
             "the cancel names the submitted id: {cancelled}"
         );
     }
+
+    /// No reference bracket states a TIF on any leg, so the legs carry the
+    /// life an unstated-TIF order sends — the DAY byte an ordinary submit
+    /// gives it — and never a GTC the caller did not state, which would keep
+    /// the exits working past the session they were placed in.
+    #[test]
+    fn a_brackets_legs_carry_the_life_an_unstated_order_sends() {
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        let (_parent, _tp, _sl) = context.submit_bracket(
+            instrument,
+            Side::Buy,
+            1,
+            100 * crate::types::PRICE_SCALE,
+            110 * crate::types::PRICE_SCALE,
+            90 * crate::types::PRICE_SCALE,
+        );
+        let submitted = drain(&mut context);
+
+        assert_eq!(
+            submitted.matches("|59=0|").count(),
+            3,
+            "all three legs state the DAY byte an unstated TIF sends: {submitted}"
+        );
+        assert!(
+            !submitted.contains("|59=1|"),
+            "no leg states a GTC the caller did not state: {submitted}"
+        );
+    }
 }
 mod outside_rth_polarity_tests {
     use super::super::*;

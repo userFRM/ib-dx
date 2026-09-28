@@ -542,7 +542,7 @@ fn a_brackets_legs_are_recorded_as_the_wire_states_them() {
         let exit = client.core.tracked_order(id as u64).expect("tracked");
         assert_eq!(
             (exit.action.as_str(), exit.order_type.as_str(), exit.lmt_price, exit.aux_price, exit.tif.as_str(), exit.oca_group.as_str(), exit.oca_type, exit.parent_id),
-            ("BUY", order_type, lmt, aux, "GTC", parent.to_string().as_str(), 3, parent),
+            ("BUY", order_type, lmt, aux, "DAY", parent.to_string().as_str(), 3, parent),
             "leg {id}",
         );
     }

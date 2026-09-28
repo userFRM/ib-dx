@@ -418,7 +418,7 @@ pub(crate) fn drain_and_send_orders(
                     qty,
                     take_profit,
                     b'2',
-                    b'1',
+                    b'0',
                     0,
                 ));
                 context.record_placement(
@@ -436,7 +436,7 @@ pub(crate) fn drain_and_send_orders(
                     (38, &qty_str),
                     (40, "2"), // Limit
                     (44, &tp_price_str),
-                    (59, "1"), // GTC
+                    (59, "0"), // DAY
                     (167, &sec_type_str),
                     (100, &destination),
                     (6210, &destination),
@@ -453,7 +453,7 @@ pub(crate) fn drain_and_send_orders(
 
                 // 3. Stop-loss child: stop exit, linked to parent, in OCA group
                 context.insert_order(crate::types::Order::new(
-                    sl_id, instrument, exit_side, qty, stop_loss, b'3', b'1', stop_loss,
+                    sl_id, instrument, exit_side, qty, stop_loss, b'3', b'0', stop_loss,
                 ));
                 context.record_placement(
                     sl_id,
@@ -473,7 +473,7 @@ pub(crate) fn drain_and_send_orders(
                     (38, &qty_str),
                     (40, "3"), // Stop
                     (99, &sl_price_str),
-                    (59, "1"), // GTC
+                    (59, "0"), // DAY
                     (167, &sec_type_str),
                     (100, &destination),
                     (6210, &destination),
