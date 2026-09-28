@@ -910,6 +910,117 @@ impl EClient {
         )))
     }
 
+    /// The capabilities a program asks its gateway to switch on, which the
+    /// reference client keeps and sends on its handshake. There is no gateway
+    /// between this client and the venue to read them, so capabilities stated
+    /// cannot be carried — answered as `set_connect_options` answers, and for
+    /// the same reason said rather than swallowed.
+    fn set_optional_capabilities(&self, py: Python<'_>, opt_capab: &str) -> PyResult<()> {
+        if opt_capab.is_empty() {
+            return Ok(());
+        }
+        self.report_refusal(py, -1, crate::error_codes::Refusal::validation(format!(
+            "optional capabilities {opt_capab:?} were stated and cannot be carried: the \
+             reference client hands these to a gateway to read, and there is no gateway \
+             between this client and the venue",
+        )))
+    }
+
+    /// The parameter an order states that a session at the level this client
+    /// answers cannot carry, named as the reference client names it, or `None`
+    /// where the order states none. Its own check ported (ibapi/client.py:2819): a
+    /// field counts as stated where it carries something — a flag set, an
+    /// option present, a number off the unset value it is born with — and the
+    /// gates are the levels the reference client gates them at: 216 for the
+    /// first block of additional parameters, 217 for the second, 223 for
+    /// `hedgeMaxSize` and 226 for `conditionsIncludeOvernight`. Before a
+    /// session the level reads as nought, as it does there, and every gate
+    /// asks.
+    fn validate_order_parameters(
+        &self,
+        order: &super::class_orders::Order,
+    ) -> Option<&'static str> {
+        let level = self.server_version().unwrap_or(0);
+        if level < 216 {
+            if order.deactivate {
+                return Some("deactivate");
+            }
+            if order.post_only {
+                return Some("postOnly");
+            }
+            if order.allow_pre_open {
+                return Some("allowPreOpen");
+            }
+            if order.ignore_open_auction {
+                return Some("ignoreOpenAuction");
+            }
+        }
+        if level < 217 {
+            if order.route_marketable_to_bbo.is_some() {
+                return Some("routeMarketableToBbo");
+            }
+            if order.seek_price_improvement.is_some() {
+                return Some("seekPriceImprovement");
+            }
+            if order.what_if_type != i32::MAX {
+                return Some("whatIfType");
+            }
+        }
+        if level < 223 && order.hedge_max_size != i32::MAX {
+            return Some("hedgeMaxSize");
+        }
+        if level < 226 && order.conditions_include_overnight {
+            return Some("conditionsIncludeOvernight");
+        }
+        None
+    }
+
+    /// The attached-order field a session below level 218 cannot carry, named
+    /// as the reference client names it, or `None`. Its own check ported
+    /// (ibapi/client.py:2853), read against the order's own fields: an id counts as
+    /// stated when it is off the unset value it is born with and a type when
+    /// it is not empty.
+    fn validate_attached_orders_parameters(
+        &self,
+        order: &super::class_orders::Order,
+    ) -> Option<&'static str> {
+        if self.server_version().unwrap_or(0) < 218 {
+            let unset = i64::from(i32::MAX);
+            if order.sl_order_id != unset {
+                return Some("slOrderId");
+            }
+            if !order.sl_order_type.is_empty() {
+                return Some("slOrderType");
+            }
+            if order.pt_order_id != unset {
+                return Some("ptOrderId");
+            }
+            if !order.pt_order_type.is_empty() {
+                return Some("ptOrderType");
+            }
+        }
+        None
+    }
+
+    /// Whether the host a connection names can go on the wire. The reference
+    /// client's own check (ibapi/client.py:352) — every character printable, or one
+    /// of the three the wire tolerates — and where it fails, said on `error`
+    /// under 579 naming the string, rather than raised: this client states its
+    /// refusals on the wrapper. The options that client checks beside the host
+    /// are never kept here, so there is nothing else to check.
+    fn validate_invalid_symbols(&self, py: Python<'_>, host: &str) -> PyResult<()> {
+        let carriable = host.chars().all(|c| {
+            c == '\t' || c == '\n' || c == '\r' || ('\u{20}'..='\u{7e}').contains(&c)
+        });
+        if carriable {
+            return Ok(());
+        }
+        self.report_refusal(py, -1, crate::error_codes::Refusal::stated(
+            crate::error_codes::INVALID_SYMBOL,
+            format!("Invalid symbol in string - {host}"),
+        ))
+    }
+
     /// Nothing to start, once there is a session. The reference client sends
     /// its client id here and its gateway begins the exchange on receiving it.
     /// Here the id is kept on the client and never sent — one session holds

@@ -81,6 +81,8 @@ LOCAL = {
     "backlog", "checkconnected", "errorfrom", "eventslost", "instrumentof", "lastrtt", "lastrttms",
     "nextorderid", "nextsharedid", "parsealgoparams", "poll", "questionretired", "refuse", "reset", "run",
     "serverversion", "sessionover", "setconnectoptions",
+    "setoptionalcapabilities", "validateattachedordersparameters",
+    "validateinvalidsymbols", "validateorderparameters",
     "unreadwire", "waitfordata", "reqconfig", "reqconfigprotobuf",
     "updateconfig", "updateconfigprotobuf",
 }
@@ -125,12 +127,16 @@ PLUMBING = {"keep_record", "shared_state", "session_token_bytes", "session", "co
 #: order are conveniences of the Rust surface's own. No reference client names
 #: any of the three. `question_retired` is where a Rust wrapper hears a
 #: question's cancel take effect; the Python surface says nothing at a cancel,
-#: as ibapi's does.
+#: as ibapi's does. The optional-capabilities setter and the three client-side
+#: validators are the Python surface's own: a Rust client checks a request
+#: where it builds one, so it has no pre-flight call to make.
 #: Checked as `LOCAL` is: one no longer on the surface said to have it, or now
 #: on the one said to have no use for it, fails the run.
 ONE_SURFACE = {
     "checkconnected": "rust", "awaitorder": "python", "parsealgoparams": "python",
     "questionretired": "python",
+    "setoptionalcapabilities": "rust", "validateattachedordersparameters": "rust",
+    "validateinvalidsymbols": "rust", "validateorderparameters": "rust",
 }
 
 

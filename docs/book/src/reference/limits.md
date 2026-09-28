@@ -397,6 +397,20 @@ Python's `set_connect_options` (also `setConnectOptions`, and ibapi's
 gateway to read, and there is no gateway between this client and the venue.
 Stating none is stating nothing.
 
+`set_optional_capabilities` is of the same standing and answers the same way:
+the reference client names the capabilities in the same greeting, for the
+gateway to switch on, and nothing here reads them. A caller that states any
+hears it on `error` under 321 rather than getting a session that is not the
+one it asked for.
+
+The reference client's client-side validators are ported as pure functions of
+their arguments, answering what they answer there: the parameter an order
+states that a session at the level this client answers cannot carry, by the
+name that client gives it, and a string a connection names that the wire
+cannot carry, said on `error` under 579. The level a session answers here is
+217, so a field the reference gates above 217 is named even where a gateway at
+a higher level would carry it.
+
 ## A withdrawal's time
 
 A withdrawal states who is withdrawing the order and whether a person entered

@@ -316,6 +316,7 @@ ib_async's transport, has a method by that name.
 | `sessionOver` | this client | · | · | · | ● | ● |
 | `setConnectionOptions` | this client | ● | ● | ● | · | ◐ |
 | `setNewsProviders` | venue | · | · | · | ● | ● |
+| `setOptionalCapabilities` | this client | · | · | · | — | ◐ |
 | `shortSaleRestricted` | venue | · | · | · | ● | ● |
 | `shortSaleRestrictedByInstrument` | venue | · | · | · | ● | ● |
 | `statedFigures` | venue | · | · | · | ● | ● |
@@ -326,6 +327,9 @@ ib_async's transport, has a method by that name.
 | `twsConnectionTime` | venue | ● | ● | · | ● | ● |
 | `unreadWire` | this client | · | · | · | ● | ● |
 | `update_config` / `update_config_proto_buf` | this client | · | · | · | ◐ | ◐ |
+| `validateAttachedOrdersParameters` | this client | · | · | · | — | ● |
+| `validateInvalidSymbols` | this client | · | · | · | — | ● |
+| `validateOrderParameters` | this client | · | · | · | — | ● |
 | `valuesElsewhere` | venue | · | · | · | ● | ● |
 | `waitForData` | this client | · | · | · | ● | ● |
 | `whatIfOrder` | venue | · | · | ● | ● | ● |

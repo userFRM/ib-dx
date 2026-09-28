@@ -122,6 +122,13 @@ pub const LIMITED_HISTORY: i32 = 166;
 /// the initial connect, and it never states it.
 pub const BAD_MESSAGE: i32 = 508;
 
+/// The code a string that cannot go on the wire is refused under.
+///
+/// The reference client checks the host a connection names — and the options
+/// it keeps for its gateway — for characters the wire cannot carry, and
+/// reports one that fails under this number, naming the string.
+pub const INVALID_SYMBOL: i32 = 579;
+
 /// The code a second connection asked for while a session is up is answered
 /// under.
 ///

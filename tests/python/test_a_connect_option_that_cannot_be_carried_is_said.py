@@ -38,3 +38,16 @@ def test_stating_none_says_nothing():
     w, c = _client()
     c.setConnectOptions("")
     assert not w.seen, w.seen
+
+
+def test_capabilities_that_were_stated_are_said():
+    w, c = _client()
+    c.setOptionalCapabilities("xyz")
+    c.poll()
+    assert any("xyz" in msg for _, msg in w.seen), w.seen
+
+
+def test_stating_no_capabilities_says_nothing():
+    w, c = _client()
+    c.setOptionalCapabilities("")
+    assert not w.seen, w.seen

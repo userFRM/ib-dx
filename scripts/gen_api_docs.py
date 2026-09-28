@@ -1325,6 +1325,11 @@ STUB_METHODS: set[str] = {
     # set one and heard nothing has a session that is not the one they asked
     # for and no way to learn it.
     "set_connect_options",
+    # The capabilities a reference client names in its greeting for the gateway
+    # to enable, of the same standing as the connect options: nothing here
+    # reads them, and one a caller states is answered on the error callback
+    # rather than swallowed.
+    "set_optional_capabilities",
     # Configuration reads and updates always report 10357.
     "req_config", "update_config", "req_config_proto_buf", "update_config_proto_buf",
 }
