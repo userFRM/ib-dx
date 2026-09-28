@@ -138,6 +138,14 @@ def test_the_numbered_kinds_a_program_names():
     assert ibkr_dx.OrderCondition.Price == 1
     assert ibkr_dx.OrderCondition.PercentChange == 7
     assert ibkr_dx.getEnumTypeName(ibkr_dx.MarketDataTypeEnum, 3) == "DELAYED"
+    # A kind whose members carry (the code, the name) answers for the member
+    # a caller holds — the reference's own Execution carries members and its
+    # helper compares them (ibapi utils.py:244) — trailing space and all.
+    # Anything no member is, a bare code included, falls back to the first
+    # member's string, exactly as the reference's helper reads it.
+    assert ibkr_dx.getEnumTypeName(ibkr_dx.OptionExerciseType, ibkr_dx.OptionExerciseType.Assigned) == "Assigned "
+    assert ibkr_dx.getEnumTypeName(ibkr_dx.OptionExerciseType, ibkr_dx.OptionExerciseType.NoneItem) == "None"
+    assert ibkr_dx.getEnumTypeName(ibkr_dx.OptionExerciseType, 100) == "None"
 
 
 def test_the_base_a_program_writes_its_own_objects_on():

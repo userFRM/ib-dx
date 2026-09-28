@@ -301,12 +301,35 @@ def getTimeStrFromMillis(time):
 
 
 def getEnumTypeName(cls, value):
-    """The name a numbered kind goes by, or the first one where it names none."""
+    """The name a numbered kind goes by, or the first one where it names none.
+
+    A kind whose members carry (the code, the name) — the exercise and fund
+    kinds — answers the string the member itself carries, "Assigned " with its
+    trailing space and all; a plain numbered class answers the attribute's name.
+    The reference client's own helper (ibapi utils.py:244) reads that way, and
+    `Execution.__str__` (execution.py:80) spells an exercise event with it, so
+    a log line or CSV column a moved program builds on the helper reads the
+    same here.
+    """
+    first = None
     for name, held in vars(cls).items():
-        if not name.startswith("_") and held == value:
-            return name
-    named = [n for n in vars(cls) if not n.startswith("_")]
-    return named[0] if named else ""
+        if name.startswith("_"):
+            continue
+        carried = getattr(held, "value", None)
+        if isinstance(carried, tuple):
+            # ponytail: first non-underscore attribute wins the fallback; for
+            # the member-carrying classes that is the first member, as there.
+            first = carried[1] if first is None else first
+            # The member itself is compared, as the reference compares it —
+            # its Execution carries members, so a code no member is names
+            # nothing and takes the fallback.
+            if held == value:
+                return carried[1]
+        else:
+            first = name if first is None else first
+            if held == value:
+                return name
+    return first if first is not None else ""
 
 
 class OptionExerciseType(Enum):
