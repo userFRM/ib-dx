@@ -5727,7 +5727,7 @@ fn a_book_whose_contract_is_not_named_gives_its_number_back() {
     for withdrawn in [true, false] {
         let (mut ccp, mut context, shared) = u186_test_state();
         let core = crate::client_core::ClientCore::new();
-        core.hold_the_book(3, &shared).unwrap();
+        core.hold_the_book(3, false, &shared).unwrap();
         let book = crate::types::ControlCommand::SubscribeDepth {
             req_id: 3,
             contract: crate::types::ContractRef {
@@ -5742,10 +5742,10 @@ fn a_book_whose_contract_is_not_named_gives_its_number_back() {
         ccp.process_ccp_message(&secdef_not_found(&lookup), &mut None, &mut context, &shared,
             &None, &mut HeartbeatState::new(), "DU1");
         if withdrawn {
-            let refused = core.release_the_book(3, &shared).expect_err("no book is held");
+            let refused = core.release_the_book(3, false, &shared).expect_err("no book is held");
             assert_eq!(refused.code, crate::error_codes::NO_SUCH_BOOK);
         } else {
-            assert!(core.hold_the_book(3, &shared).is_ok(), "the number can be asked under again");
+            assert!(core.hold_the_book(3, false, &shared).is_ok(), "the number can be asked under again");
         }
     }
 }

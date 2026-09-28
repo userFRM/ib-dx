@@ -272,9 +272,8 @@ here:
 | `req_ids` | `num_ids` | The next valid id is answered whatever number is asked for |
 | `req_real_time_bars` | `bar_size` | A real-time bar is five seconds. The venue's request carries no bar size; a gateway reads the number and does not use it |
 
-Two more act on a gateway and change nothing here, and are on
-[Limits](./limits.md): `is_smart_depth` on `cancel_mkt_depth`, and
-`b_auto_bind` on `req_auto_open_orders`.
+One more acts on a gateway and changes nothing here, and is on
+[Limits](./limits.md): `b_auto_bind` on `req_auto_open_orders`.
 
 ## Stopping profit and loss
 

@@ -52,6 +52,6 @@ fn main() {
         println!("{kind} {} bytes", hex.len() / 2);
         println!("  {hex}");
     }
-    client.cancel_mkt_depth(1);
-    client.cancel_mkt_depth(2);
+    client.cancel_mkt_depth(1, true);
+    client.cancel_mkt_depth(2, false);
 }

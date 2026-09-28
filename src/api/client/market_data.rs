@@ -388,7 +388,7 @@ impl EClient {
                     "market data is unavailable for the rest of this session: {why}",
                 )));
             }
-            self.core.hold_the_book(req_id, &self.shared)?;
+            self.core.hold_the_book(req_id, is_smart_depth, &self.shared)?;
             self.send(ControlCommand::SubscribeDepth {
                 contract: ContractRef {
                     con_id: contract.con_id,
@@ -410,14 +410,19 @@ impl EClient {
 
 
     /// Cancel market depth. Matches `cancelMktDepth` in C++.
-    pub fn cancel_mkt_depth(&self, req_id: i64) {
+    ///
+    /// The mode names which of the two books under the number is withdrawn —
+    /// the smart one or the regular one — as it does for a gateway, and the
+    /// other one runs on.
+    pub fn cancel_mkt_depth(&self, req_id: i64, is_smart_depth: bool) {
         if let Err(why) = (|| -> Result<(), Refusal> {
             let wire = wire_req_id(req_id)?;
             // A caller withdrawing a book this client does not hold branches on
             // being told so, under the number the catalogue gives depth rather
-            // than the one a quote subscription is withdrawn under.
-            self.core.release_the_book(req_id, &self.shared)?;
-            self.send(ControlCommand::UnsubscribeDepth { req_id: wire })
+            // than the one a quote subscription is withdrawn under. A mode no
+            // book was asked in is a book this client does not hold.
+            self.core.release_the_book(req_id, is_smart_depth, &self.shared)?;
+            self.send(ControlCommand::UnsubscribeDepth { req_id: wire, is_smart_depth })
         })() {
             self.refuse_request(req_id, &why);
         }

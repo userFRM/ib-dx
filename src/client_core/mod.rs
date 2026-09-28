@@ -1746,11 +1746,14 @@ pub struct ClientCore {
     /// Every order this client placed and the venue has not finished.
     pub open_orders: Mutex<HashMap<u64, TrackedOrder>>,
 
-    /// Every number holding a book.
+    /// Every number holding a book, each with the mode it was asked in.
     ///
     /// Kept here rather than in the engine because the refusal has to reach
     /// the caller before anything is sent, and because both surfaces read it.
-    pub depth_reqs: std::sync::Arc<Mutex<HashSet<i64>>>,
+    /// A smart book and a regular book under one number are held apart, as a
+    /// gateway holds them apart: both run, and each is what its own withdrawal
+    /// names.
+    pub depth_reqs: std::sync::Arc<Mutex<HashSet<(i64, bool)>>>,
 
     /// Every number the venue has already worked an order under this session.
     ///
@@ -2614,16 +2617,21 @@ impl ClientCore {
         None
     }
 
-    /// Take a request number for a book, or say it already holds one.
+    /// Take a request number for a book of one mode, or say it already holds
+    /// one of that mode.
     ///
     /// Depth is routed by records the engine keeps, so neither surface could
     /// see that a number already held a book: two contracts' rows arrived
     /// interleaved under one number with nothing to tell them apart, the
     /// withdrawal named only the later contract and left the earlier one being
     /// served, and a reconnect brought back one book where there had been two.
-    pub fn hold_the_book(&self, req_id: i64, shared: &SharedState) -> Result<(), Refusal> {
+    /// The mode is half of the key, as it is for a gateway: a smart book and a
+    /// regular book under one number are two books, and both run.
+    pub fn hold_the_book(
+        &self, req_id: i64, is_smart_depth: bool, shared: &SharedState,
+    ) -> Result<(), Refusal> {
         self.forget_books_let_go(shared);
-        if !self.depth_reqs.lock().unwrap().insert(req_id) {
+        if !self.depth_reqs.lock().unwrap().insert((req_id, is_smart_depth)) {
             return Err(Refusal::stated(REQUEST_NOT_PROCESSED, "Duplicate ticker id"));
         }
         Ok(())
@@ -2685,10 +2693,15 @@ impl ClientCore {
         Ok(())
     }
 
-    /// Give the number back, or say it was holding no book.
-    pub fn release_the_book(&self, req_id: i64, shared: &SharedState) -> Result<(), Refusal> {
+    /// Give the named book back, or say no book of that mode was held: the
+    /// withdrawal takes the book of the mode it names, as a gateway's does,
+    /// and a mode nothing was asked in is refused rather than answered with
+    /// the other mode's book.
+    pub fn release_the_book(
+        &self, req_id: i64, is_smart_depth: bool, shared: &SharedState,
+    ) -> Result<(), Refusal> {
         self.forget_books_let_go(shared);
-        if !self.depth_reqs.lock().unwrap().remove(&req_id) {
+        if !self.depth_reqs.lock().unwrap().remove(&(req_id, is_smart_depth)) {
             return Err(Refusal::stated(
                 NO_SUCH_BOOK,
                 format!("Can't find the subscribed market depth with tickerId:{req_id}"),
@@ -2703,8 +2716,8 @@ impl ClientCore {
         let let_go = shared.market.take_books_let_go();
         if !let_go.is_empty() {
             let mut held = self.depth_reqs.lock().unwrap();
-            for req_id in let_go {
-                held.remove(&i64::from(req_id));
+            for (req_id, smart) in let_go {
+                held.remove(&(i64::from(req_id), smart));
             }
         }
     }

@@ -2237,9 +2237,10 @@ impl CcpState {
         {
             return;
         }
-        // A book's number is free again, as a gateway frees it.
-        if let crate::types::ControlCommand::SubscribeDepth { req_id, .. } = cmd {
-            shared.market.note_book_let_go(*req_id);
+        // A book's number is free again, as a gateway frees it — the book of
+        // the mode that was asked in, the other one under the number standing.
+        if let crate::types::ControlCommand::SubscribeDepth { req_id, is_smart_depth, .. } = cmd {
+            shared.market.note_book_let_go(*req_id, *is_smart_depth);
         }
         if let Some(req_id) = request_id(cmd) {
             super::push_hmds_refusal(

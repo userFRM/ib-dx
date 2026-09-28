@@ -193,8 +193,8 @@ fn main() {
     println!("\nTotal depth updates: {total}");
 
     // Cancel subscriptions
-    client.cancel_mkt_depth(aapl_id);
-    client.cancel_mkt_depth(tsla_id);
+    client.cancel_mkt_depth(aapl_id, is_smart);
+    client.cancel_mkt_depth(tsla_id, is_smart);
 
     // Validate
     for (req_id, book) in &wrapper.books {

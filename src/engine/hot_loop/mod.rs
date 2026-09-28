@@ -2043,16 +2043,25 @@ impl HotLoop {
                         &self.shared,
                     );
                 }
-                ControlCommand::UnsubscribeDepth { req_id } => {
-                    self.ccp.withdraw_named(req_id, |cmd| matches!(cmd, ControlCommand::SubscribeDepth { .. }));
+                ControlCommand::UnsubscribeDepth { req_id, is_smart_depth } => {
+                    // The lookup still being named goes with the book of the
+                    // mode that was asked in; a lookup for the other mode's
+                    // book is another request's and stands.
+                    self.ccp.withdraw_named(req_id, |cmd| {
+                        matches!(cmd, ControlCommand::SubscribeDepth { is_smart_depth: smart, .. } if *smart == is_smart_depth)
+                    });
                     self.farm.send_depth_unsubscribe(
                         req_id,
+                        is_smart_depth,
                         &mut self.farm_conn,
                         &mut self.hb,
                     );
-                    // Purge any already-buffered depth updates so callers never see
-                    // stale data
-                    self.shared.market.purge_depth_updates(req_id);
+                    // Purge any already-buffered depth updates so callers never
+                    // see stale data — once no mode is left under the number:
+                    // the other book's rows are its own and still wanted.
+                    if !self.farm.depth_fanout_map.iter().any(|(_, user, _)| *user == req_id) {
+                        self.shared.market.purge_depth_updates(req_id);
+                    }
                 }
                 ControlCommand::SubscribePnl { req_id, single, account } => {
                     if !self.shared.portfolio_for(&account).account_download_complete() {
@@ -2249,13 +2258,13 @@ impl HotLoop {
         // the withdrawal resolves TO — handed those, it looks for
         // a caller behind a caller and finds none, and no book is
         // withdrawn at all.
-        let mut books: Vec<u32> =
-            self.farm.depth_fanout_map.iter().map(|(_, user)| *user).collect();
+        let mut books: Vec<(u32, bool)> =
+            self.farm.depth_fanout_map.iter().map(|(_, user, smart)| (*user, *smart)).collect();
         books.sort_unstable();
         books.dedup();
-        for req_id in books {
+        for (req_id, smart) in books {
             self.farm.send_depth_unsubscribe(
-                req_id, &mut self.farm_conn, &mut self.hb,
+                req_id, smart, &mut self.farm_conn, &mut self.hb,
             );
         }
         // Unsubscribe all news subscriptions before stopping

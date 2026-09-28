@@ -5546,10 +5546,10 @@ mod depth_identity_tests {
         farm.send_depth_subscribe(1, 756733, "IEX", "", "STK", 10, false, &mut conn, &mut hb, &shared);
         farm.send_depth_subscribe(2, 756733, "ARCA", "", "STK", 10, false, &mut conn, &mut hb, &shared);
 
-        let asked_under: Vec<u32> = farm.depth_fanout_map.iter().map(|(sub, _)| *sub).collect();
+        let asked_under: Vec<u32> = farm.depth_fanout_map.iter().map(|(sub, ..)| *sub).collect();
         assert_eq!(asked_under.len(), 2, "one subscription each");
         assert_ne!(asked_under[0], asked_under[1], "and each under its own id");
-        for (sub, caller) in &farm.depth_fanout_map {
+        for (sub, caller, _) in &farm.depth_fanout_map {
             let venue = farm.depth_fanout_exchange.iter()
                 .find(|(s, _)| s == sub)
                 .map(|(_, v)| v.as_str())
@@ -5621,18 +5621,18 @@ mod depth_identity_tests {
         let shared = SharedState::new();
 
         farm.send_depth_subscribe(1, 756733, "IEX", "", "STK", 5, false, &mut conn, &mut hb, &shared);
-        assert!(farm.within_asked_depth(1, 0), "the top of the book");
-        assert!(farm.within_asked_depth(1, 4), "the fifth level");
-        assert!(!farm.within_asked_depth(1, 5), "and no deeper");
+        assert!(farm.within_asked_depth(1, false, 0), "the top of the book");
+        assert!(farm.within_asked_depth(1, false, 4), "the fifth level");
+        assert!(!farm.within_asked_depth(1, false, 5), "and no deeper");
 
         // A caller that named no depth is not held to one.
         farm.send_depth_subscribe(2, 756733, "IEX", "", "STK", 0, false, &mut conn, &mut hb, &shared);
-        assert!(farm.within_asked_depth(2, 99));
+        assert!(farm.within_asked_depth(2, false, 99));
 
         // Withdrawn, and the depth goes with it rather than outliving the
         // request and applying to whatever reuses the number.
-        farm.send_depth_unsubscribe(1, &mut conn, &mut hb);
-        assert!(farm.within_asked_depth(1, 99));
+        farm.send_depth_unsubscribe(1, false, &mut conn, &mut hb);
+        assert!(farm.within_asked_depth(1, false, 99));
     }
 
     /// A book on a market the routing table names for the top of the book
@@ -5682,7 +5682,7 @@ mod depth_identity_tests {
         assert_eq!(farm.depth_fanout_map[0].1, 7, "and it is the caller's");
         assert_ne!(farm.depth_fanout_map[0].0, 7, "asked under an id of ours");
 
-        farm.send_depth_unsubscribe(7, &mut conn, &mut hb);
+        farm.send_depth_unsubscribe(7, true, &mut conn, &mut hb);
         assert!(farm.depth_fanout_map.is_empty(), "nothing is left asking");
         assert!(farm.depth_subs.is_empty());
         assert!(farm.depth_fanout_exchange.is_empty());
@@ -5716,12 +5716,62 @@ mod depth_identity_tests {
         farm.send_depth_subscribe(7, 756733, "SMART", "", "STK", 10, true, &mut up, &mut hb, &shared);
 
         assert_eq!(
-            farm.depth_fanout_map.iter().filter(|(_, user)| *user == 7).count(), 1,
-            "one live subscription per caller: {:?} then {:?}",
+            farm.depth_fanout_map.iter().filter(|(_, user, _)| *user == 7).count(), 1,
+            "one live subscription per caller and mode: {:?} then {:?}",
             while_down, farm.depth_fanout_map,
         );
         assert_eq!(farm.depth_subs.len(), 1, "and one wire record for it");
         assert_eq!(farm.depth_fanout_exchange.len(), 1, "and one venue against it");
+    }
+
+    /// A smart book and a regular book under one caller number are two books,
+    /// as a gateway holds them apart: each has its own wire record, its own
+    /// depth, and its own reconnect entry, and a withdrawal of one leaves the
+    /// other running.
+    #[test]
+    fn a_smart_book_and_a_regular_book_under_one_number_are_two_books() {
+        let mut farm = FarmState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let (conn, _peer) = Connection::for_test();
+        let mut up = Some(conn);
+
+        farm.send_depth_subscribe(7, 756733, "SMART", "", "STK", 10, false, &mut up, &mut hb, &shared);
+        farm.send_depth_subscribe(7, 756733, "SMART", "", "STK", 5, true, &mut up, &mut hb, &shared);
+        assert_eq!(
+            farm.depth_fanout_map.iter().filter(|(_, user, _)| *user == 7).count(), 2,
+            "both books are asking",
+        );
+        assert_eq!(
+            farm.depth_resub_info.iter().filter(|(id, ..)| *id == 7).count(), 2,
+            "and each is kept for the reconnect",
+        );
+
+        farm.send_depth_unsubscribe(7, true, &mut up, &mut hb);
+        assert!(
+            farm.depth_fanout_map.iter().any(|(_, user, smart)| *user == 7 && !*smart),
+            "the regular book runs on: {:?}", farm.depth_fanout_map,
+        );
+        assert_eq!(
+            farm.depth_fanout_map.iter().filter(|(_, user, _)| *user == 7).count(), 1,
+            "and only the smart book went",
+        );
+        assert_eq!(
+            farm.depth_resub_info.iter().filter(|(id, ..)| *id == 7).count(), 1,
+            "only the regular book is kept for the reconnect",
+        );
+        assert!(
+            farm.depth_rows.iter().any(|(id, smart, rows)| *id == 7 && !*smart && *rows == 10),
+            "with the depth its own request asked for",
+        );
+        assert!(
+            !farm.depth_rows.iter().any(|(id, smart, _)| *id == 7 && *smart),
+            "and the smart book's depth went with it",
+        );
+        assert_eq!(
+            farm.depth_subs.iter().filter(|(_, smart)| !*smart).count(), 1,
+            "and the regular book's wire subscription stands: {:?}", farm.depth_subs,
+        );
     }
 
     /// A reconnect tells every book's caller to empty it before what follows.
@@ -5794,8 +5844,8 @@ mod depth_position_tests {
         let mut farm = FarmState::new();
         let mut hb = HeartbeatState::new();
         farm.depth_tag_to_req.push((0x11, 7, false, 0.01, 1.0, "IEX".to_string()));
-        farm.depth_rows.push((7, 10));
-        farm.send_depth_unsubscribe(7, &mut None, &mut hb);
+        farm.depth_rows.push((7, false, 10));
+        farm.send_depth_unsubscribe(7, false, &mut None, &mut hb);
         assert!(farm.depth_tag_to_req.is_empty(), "the tag record goes with the request");
         assert!(farm.depth_rows.is_empty(), "and so does the row count");
     }
@@ -5853,7 +5903,7 @@ mod depth_position_tests {
         let instrument = context.market.register(756733);
         farm.md_req_to_instrument.extend([(13, instrument), (14, instrument)]);
         farm.generic_tick_reqs.push((13, TRADING_STATUS_REQUEST_TYPE));
-        farm.depth_fanout_map.extend([(15, 90), (16, 90)]);
+        farm.depth_fanout_map.extend([(15, 90, true), (16, 90, true)]);
         farm.depth_subs.extend([(15, true), (16, true)]);
         let refused = crate::protocol::fix::fix_build(&[
             (crate::protocol::fix::TAG_MSG_TYPE, "3"),
@@ -6617,7 +6667,7 @@ mod withdrawal_wire_tests {
             "a book states 9839 the way every other entry does",
         );
 
-        farm.send_depth_unsubscribe(7, &mut conn, &mut hb);
+        farm.send_depth_unsubscribe(7, true, &mut conn, &mut hb);
         let withdrawals: Vec<Vec<u8>> = super::drain_inner(&mut peer)
             .into_iter()
             .filter(|msg| values_of(msg, 263).first().map(String::as_str) == Some("2"))
@@ -6874,7 +6924,7 @@ mod depth_bit_tests {
     #[test]
     fn the_place_a_withdrawal_empties_is_filled_from_the_book() {
         let (mut farm, shared) = farm_holding(0x1122, 7, "IEX");
-        farm.depth_rows.push((7, 3));
+        farm.depth_rows.push((7, false, 3));
 
         // Four levels on the bid: three inside the window, one below it.
         farm.handle_depth_35y(&framed_35y(&[(0x1122, vec![
@@ -7018,7 +7068,7 @@ mod depth_bit_tests {
     #[test]
     fn a_level_beyond_the_rows_asked_for_is_not_delivered() {
         let (mut farm, shared) = farm_holding(0x1122, 7, "IEX");
-        farm.depth_rows.push((7, 2));
+        farm.depth_rows.push((7, false, 2));
         farm.handle_depth_35y(&framed_35y(&[(0x1122, vec![
             level(0, "", 1, BID_PX, 100, BID_SZ, 5),
             level(0, "", 5, BID_PX, 100, BID_SZ, 5),
@@ -7173,7 +7223,7 @@ fn a_number_the_venue_hands_out_again_is_taken_for_what_it_now_names() {
         let context = Context::new();
         let shared = SharedState::new();
         // A book asked for under one wire number on the caller's behalf.
-        farm.depth_fanout_map.push((900, 7));
+        farm.depth_fanout_map.push((900, 7, false));
         farm.depth_subs.push((900, false));
         farm.depth_fanout_exchange.push((900, "ARCA".into()));
         farm.depth_resub_info.push((

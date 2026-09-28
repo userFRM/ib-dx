@@ -286,7 +286,7 @@ pub(super) fn phase_market_depth(conns: Conns) -> Conns {
         std::thread::sleep(Duration::from_millis(100));
     }
     control_tx
-        .send(ControlCommand::UnsubscribeDepth { req_id })
+        .send(ControlCommand::UnsubscribeDepth { req_id, is_smart_depth: true })
         .unwrap();
 
     // Aggregated depth is entitled separately from a single exchange book, so a
@@ -319,7 +319,7 @@ pub(super) fn phase_market_depth(conns: Conns) -> Conns {
             std::thread::sleep(Duration::from_millis(100));
         }
         control_tx
-            .send(ControlCommand::UnsubscribeDepth { req_id: direct_id })
+            .send(ControlCommand::UnsubscribeDepth { req_id: direct_id, is_smart_depth: false })
             .unwrap();
     }
 

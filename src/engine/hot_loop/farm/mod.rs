@@ -1136,13 +1136,16 @@ pub(crate) struct FarmState {
     quotes_for_no_one: std::collections::HashSet<u32>,
     /// Active depth subscriptions: (req_id, is_smart_depth).
     pub(crate) depth_subs: Vec<(u32, bool)>,
-    /// How deep each caller asked its book to be, by the caller's own id.
+    /// How deep each caller asked its book to be, by the caller's own id and
+    /// the mode the book was asked in: a smart book and a regular book under
+    /// one number are two books, as a gateway holds them apart, and each is as
+    /// deep as its own request said.
     ///
     /// The venue sends the levels it has and this number is not on the wire —
     /// the reference client asks for a depth and then shows that many, so a
     /// caller that asked for five and was handed ten was handed a book it did
     /// not ask for.
-    depth_rows: Vec<(u32, i32)>,
+    depth_rows: Vec<(u32, bool, i32)>,
     /// The book each stream is holding, by the venue's number for it: the bid
     /// side and the ask side, deepest last, as maker, price and size.
     ///
@@ -1164,12 +1167,12 @@ pub(crate) struct FarmState {
     /// subscriptions.
     pub(crate) depth_tag_to_req: Vec<(u32, u32, bool, f64, f64, String)>,
     /// Every book: the id this client asked the venue under, against the id
-    /// the caller asked for it under.
+    /// the caller asked for it under and the mode it asked in.
     ///
     /// Not only the smart-routed fan-out, whatever it was once for — the
     /// subscribe path fills this for every book, and withdrawing them all at a
     /// stop reads the caller's side of it.
-    pub(crate) depth_fanout_map: Vec<(u32, u32)>,
+    pub(crate) depth_fanout_map: Vec<(u32, u32, bool)>,
     /// Primary depth subscription params for reconnect: (req_id, con_id, exchange,
     /// sec_type, num_rows, is_smart_depth).
     depth_resub_info: Vec<(u32, i64, String, String, String, i32, bool)>,
@@ -3121,8 +3124,8 @@ impl FarmState {
                 self.md_req_to_instrument.iter().find(|(id, _)| *id == req_id)
             {
                 shared.market.push_subscription_failure(*instrument, told);
-            } else if let Some((_, asked_for)) =
-                self.depth_fanout_map.iter().find(|(sub, _)| *sub == req_id)
+            } else if let Some((_, asked_for, _)) =
+                self.depth_fanout_map.iter().find(|(sub, ..)| *sub == req_id)
             {
                 shared.reference.push_historical_error(*asked_for, DEPTH_VENUE_REFUSED, told);
             }
@@ -3136,8 +3139,8 @@ impl FarmState {
             let is_smart = *is_smart;
             // For SmartDepth fan-out, map back to the user's original req_id
             let user_req = self.depth_fanout_map.iter()
-                .find(|(sub, _)| *sub == req_id)
-                .map(|(_, user)| *user)
+                .find(|(sub, ..)| *sub == req_id)
+                .map(|(_, user, _)| *user)
                 .unwrap_or(req_id);
             // Which venue this subscription's levels stand on. Every
             // subscription is asked for at one named venue, so every level has
@@ -3150,9 +3153,11 @@ impl FarmState {
             // it is already streaming with the tag it is already using, so two
             // acks can name the same one. Two records then match every update
             // and the book applies each level twice. The generic-tick branch
-            // below already keeps one record per tag.
-            self.depth_tag_to_req.retain(|(tag, id, ..)| {
-                !(*tag == server_tag && *id == user_req)
+            // below already keeps one record per tag. The mode is part of what
+            // tells two records apart: the smart book and the regular book
+            // under one number arrive under tags of their own.
+            self.depth_tag_to_req.retain(|(tag, id, smart, ..)| {
+                !(*tag == server_tag && *id == user_req && *smart == is_smart)
             });
             self.depth_tag_to_req.push((
                 server_tag,
@@ -3493,14 +3498,14 @@ impl FarmState {
                 None => {
                     log::warn!("The venue refused a subscription: {reason}");
                     let fanned_out = self.depth_fanout_map.iter()
-                        .find(|(sub, _)| *sub == rid)
-                        .map(|(_, user)| *user);
+                        .find(|(sub, ..)| *sub == rid)
+                        .map(|(_, user, smart)| (*user, *smart));
                     // Naming nothing this client still asks under, the book was
                     // withdrawn or refused before this arrived, and there is no
                     // caller to tell. Handed on as it stood, the wire number was
                     // published as though it were a caller's request number, and
                     // whoever held that number was told a book had been refused.
-                    let Some(asked_for) = fanned_out else {
+                    let Some((asked_for, mode)) = fanned_out else {
                         log::info!("the refusal names {rid}, which no book here asks under any more");
                         continue;
                     };
@@ -3509,10 +3514,11 @@ impl FarmState {
                     // acknowledgement and every subscribe, and a later
                     // acknowledgement of the wire id would have filed the book
                     // under the wire number as though a caller held it.
-                    self.depth_fanout_map.retain(|(sub, _)| *sub != rid);
+                    self.depth_fanout_map.retain(|(sub, ..)| *sub != rid);
                     self.depth_subs.retain(|(sub, _)| *sub != rid);
                     self.depth_fanout_exchange.retain(|(sub, _)| *sub != rid);
-                    if self.depth_fanout_map.iter().any(|(_, u)| *u == asked_for) {
+                    if self.depth_fanout_map.iter().any(|(_, u, sm)| *u == asked_for && *sm == mode)
+                    {
                         continue;
                     }
                     // No venue is going to answer, so the book is over — and what
@@ -3526,9 +3532,13 @@ impl FarmState {
                     // handing levels to a number that had been told there was no
                     // book. The headlines beside this release their own replay
                     // record for exactly this reason.
-                    self.depth_resub_info.retain(|(id, ..)| *id != asked_for);
-                    self.depth_tag_to_req.retain(|(_, rid, ..)| *rid != asked_for);
-                    self.depth_rows.retain(|(id, _)| *id != asked_for);
+                    self.depth_resub_info.retain(|(id, _, _, _, _, _, sm)| {
+                        *id != asked_for || *sm != mode
+                    });
+                    self.depth_tag_to_req.retain(|(_, rid, sm, ..)| {
+                        *rid != asked_for || *sm != mode
+                    });
+                    self.depth_rows.retain(|(id, sm, _)| *id != asked_for || *sm != mode);
                     shared.reference.push_historical_error(
                         asked_for,
                         DEPTH_VENUE_REFUSED,
@@ -4409,10 +4419,14 @@ impl FarmState {
         // The caller's request, kept so a reconnect can ask for it again. What
         // is registered as a subscription is the id this client asks under,
         // one per venue, below.
-        // One record per request, not one per time it was asked for. A caller
-        // that asks twice under the same number without withdrawing gets two
-        // otherwise, and a reconnect then asks the venue for the book twice.
-        self.depth_resub_info.retain(|(id, ..)| *id != req_id);
+        // One record per request and mode, not one per time it was asked for.
+        // A caller that asks twice under the same number without withdrawing
+        // gets two otherwise, and a reconnect then asks the venue for the book
+        // twice. The book of the other mode under the number is another
+        // request's record and stands.
+        self.depth_resub_info.retain(|(id, _, _, _, _, _, sm)| {
+            *id != req_id || *sm != is_smart_depth
+        });
         self.depth_resub_info.push((
             req_id, con_id, exchange.to_string(), primary_exchange.to_string(),
             sec_type.to_string(), num_rows, is_smart_depth,
@@ -4439,13 +4453,14 @@ impl FarmState {
         // What the caller asked for is recorded whether or not the socket is
         // up. Recorded only when it was, a book asked for while the farm was
         // down could not be withdrawn, and the reconnect asked for it again.
-        self.depth_rows.retain(|(id, _)| *id != req_id);
+        self.depth_rows.retain(|(id, sm, _)| *id != req_id || *sm != is_smart_depth);
         if num_rows > 0 {
-            self.depth_rows.push((req_id, num_rows));
+            self.depth_rows.push((req_id, is_smart_depth, num_rows));
         }
 
-        // At most one live wire subscription per caller, whatever put a
-        // previous one there.
+        // At most one live wire subscription per caller and mode, whatever put
+        // a previous one there. The book of the other mode under the number is
+        // another subscription's record and stands.
         //
         // The three records below are what a row is routed by, and nothing
         // deduped them on the caller's number. Two ways in: a caller asking
@@ -4461,19 +4476,23 @@ impl FarmState {
         // again under the same number by design and must not be refused for
         // it. A caller asking twice is refused at the surface, before this.
         self.depth_subs.retain(|(under, _)| {
-            !self.depth_fanout_map.iter().any(|(u, user)| u == under && *user == req_id)
+            !self.depth_fanout_map.iter()
+                .any(|(u, user, sm)| u == under && *user == req_id && *sm == is_smart_depth)
         });
         self.depth_fanout_exchange.retain(|(under, _)| {
-            !self.depth_fanout_map.iter().any(|(u, user)| u == under && *user == req_id)
+            !self.depth_fanout_map.iter()
+                .any(|(u, user, sm)| u == under && *user == req_id && *sm == is_smart_depth)
         });
-        self.depth_fanout_map.retain(|(_, user)| *user != req_id);
+        self.depth_fanout_map.retain(|(_, user, sm)| {
+            *user != req_id || *sm != is_smart_depth
+        });
 
         let mut asked_under = Vec::with_capacity(venues.len());
         for venue in &venues {
             let under = self.next_md_req_id;
             self.next_md_req_id += 1;
             self.depth_subs.push((under, is_smart_depth));
-            self.depth_fanout_map.push((under, req_id));
+            self.depth_fanout_map.push((under, req_id, is_smart_depth));
             self.depth_fanout_exchange.push((under, venue.clone()));
             asked_under.push(under);
         }
@@ -4493,9 +4512,14 @@ impl FarmState {
         }
     }
 
+    /// Withdraw the book of one mode under a caller's number. The book of the
+    /// other mode, where one runs, is another subscription and stands: a
+    /// gateway reads the mode its cancel carries and withdraws the book that
+    /// was asked in it.
     pub(crate) fn send_depth_unsubscribe(
         &mut self,
         req_id: u32,
+        is_smart_depth: bool,
         farm_conn: &mut Option<Connection>,
         hb: &mut HeartbeatState,
     ) {
@@ -4503,15 +4527,17 @@ impl FarmState {
         // several. The caller's own id never went to the venue, so it is not
         // what is withdrawn.
         let asked_under: Vec<u32> = self.depth_fanout_map.iter()
-            .filter(|(_, user)| *user == req_id)
-            .map(|(sub, _)| *sub)
+            .filter(|(_, user, smart)| *user == req_id && *smart == is_smart_depth)
+            .map(|(sub, ..)| *sub)
             .collect();
         // Each entry as it was asked for, gathered before the records go:
         // withdrawn the way it was subscribed, by contract and venue and type
         // as well as number, or the venue leaves it being served.
         let mut entries: Vec<(u32, i64, String, String)> = Vec::new();
-        if let Some((_, con_id, _, _, sec_type, ..)) =
-            self.depth_resub_info.iter().find(|(id, ..)| *id == req_id)
+        if let Some((_, con_id, _, _, sec_type, ..)) = self
+            .depth_resub_info
+            .iter()
+            .find(|(id, _, _, _, _, _, smart)| *id == req_id && *smart == is_smart_depth)
         {
             let con_id = *con_id;
             let fix_sec_type = crate::control::contracts::sec_type_to_fix(sec_type).to_string();
@@ -4525,13 +4551,17 @@ impl FarmState {
         }
         // Cleared whether or not anything was asked yet: left behind, a book
         // the caller withdrew was asked for again by the next reconnect.
-        self.depth_resub_info.retain(|(id, ..)| *id != req_id);
+        self.depth_resub_info.retain(|(id, _, _, _, _, _, smart)| {
+            *id != req_id || *smart != is_smart_depth
+        });
         // And the routing, whether or not anything was asked: a tag record
         // left behind after the venue refused the book mid-stream was
         // inherited by the next contract asked for under this number, which
         // then read the old book as its own.
         self.depth_subs.retain(|(id, _)| !asked_under.contains(id));
-        self.depth_fanout_map.retain(|(_, user)| *user != req_id);
+        self.depth_fanout_map.retain(|(_, user, smart)| {
+            *user != req_id || *smart != is_smart_depth
+        });
         self.depth_fanout_exchange.retain(|(sub, _)| !asked_under.contains(sub));
         // The venue's numbers this caller's book was arriving under, taken
         // before its records go — the record holds the caller's own number,
@@ -4539,10 +4569,12 @@ impl FarmState {
         // interchangeable and a book released by comparing them was released
         // for nobody.
         let arriving_under: Vec<u32> = self.depth_tag_to_req.iter()
-            .filter(|(_, rid, ..)| *rid == req_id)
+            .filter(|(_, rid, smart, ..)| *rid == req_id && *smart == is_smart_depth)
             .map(|(tag, ..)| *tag)
             .collect();
-        self.depth_tag_to_req.retain(|(_, rid, ..)| *rid != req_id);
+        self.depth_tag_to_req.retain(|(_, rid, smart, ..)| {
+            *rid != req_id || *smart != is_smart_depth
+        });
         // The book itself goes with the stream that was carrying it, and only
         // where nobody else is still reading that stream: kept, it would
         // answer for the window of whatever stream took the number next.
@@ -4550,7 +4582,7 @@ impl FarmState {
             !arriving_under.contains(tag)
                 || self.depth_tag_to_req.iter().any(|(held, ..)| held == tag)
         });
-        self.depth_rows.retain(|(id, _)| *id != req_id);
+        self.depth_rows.retain(|(id, smart, _)| *id != req_id || *smart != is_smart_depth);
         if asked_under.is_empty() {
             return;
         }
@@ -5033,19 +5065,22 @@ impl FarmState {
     /// handed every one the venue sends was handed a different book from the
     /// one it asked for, and the reference client it was written against would
     /// have shown five.
-    fn within_asked_depth(&self, req_id: u32, position: i32) -> bool {
-        match self.depth_rows.iter().find(|(id, _)| *id == req_id) {
-            Some((_, rows)) => position < *rows,
+    fn within_asked_depth(&self, req_id: u32, is_smart_depth: bool, position: i32) -> bool {
+        match self.depth_rows.iter()
+            .find(|(id, smart, _)| *id == req_id && *smart == is_smart_depth)
+        {
+            Some((_, _, rows)) => position < *rows,
             // Nothing asked for in particular, so nothing is too deep.
             None => true,
         }
     }
 
-    /// How many levels a caller asked for, where it named a number.
-    fn asked_depth(&self, req_id: u32) -> Option<i32> {
+    /// How many levels a caller asked for, where it named a number, for the
+    /// book of the mode the row arrived on.
+    fn asked_depth(&self, req_id: u32, is_smart_depth: bool) -> Option<i32> {
         self.depth_rows.iter()
-            .find(|(id, _)| *id == req_id)
-            .map(|(_, rows)| *rows)
+            .find(|(id, smart, _)| *id == req_id && *smart == is_smart_depth)
+            .map(|(_, _, rows)| *rows)
             .filter(|rows| *rows > 0)
     }
 
@@ -5211,7 +5246,7 @@ impl FarmState {
                         // about it: it is still in the book, one place deeper.
                         // Said nothing here either, the caller's book kept a
                         // row the venue has moved below what was asked for.
-                        if let Some(rows) = self.asked_depth(*req_id)
+                        if let Some(rows) = self.asked_depth(*req_id, *is_smart)
                             && operation == 0
                             && position < rows
                             && was_deep >= rows as usize
@@ -5237,7 +5272,7 @@ impl FarmState {
                                 is_smart_depth: *is_smart,
                             });
                         }
-                        if !self.within_asked_depth(*req_id, position) { continue; }
+                        if !self.within_asked_depth(*req_id, *is_smart, position) { continue; }
                         // The venue's name for the maker, as it states it.
                         // Where it states none and the book is the aggregated
                         // one, the exchange stands in — which is what the
@@ -5316,7 +5351,7 @@ impl FarmState {
                     // first withdrawal near the top and never refills.
                     if operation == 2 || operation == 3 {
                         for (req_id, is_smart, venue) in &subscribers {
-                            let Some(rows_asked) = self.asked_depth(*req_id) else { continue };
+                            let Some(rows_asked) = self.asked_depth(*req_id, *is_smart) else { continue };
                             if position >= rows_asked {
                                 continue;
                             }

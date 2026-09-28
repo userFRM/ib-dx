@@ -4614,7 +4614,7 @@ fn an_unwireable_req_id_is_refused() {
         ("cancel_mkt_depth", |c, id| {
             c.req_mkt_depth(id, &spy(), 5, false);
             c.shared.drain_refused();
-            c.cancel_mkt_depth(id);
+            c.cancel_mkt_depth(id, false);
         }),
         ("req_real_time_bars", |c, id| c.req_real_time_bars(id, &spy(), 5, "TRADES", true)),
         ("cancel_real_time_bars", |c, id| c.cancel_real_time_bars(id)),
@@ -4907,18 +4907,21 @@ fn an_executions_filter_reads_a_side_in_either_vocabulary() {
     assert_eq!(matching("").len(), 2, "and no side named is every fill");
 }
 
-/// One request number holds one book, and a withdrawal says when it holds none.
+/// One request number holds one book per mode, and a withdrawal says when it
+/// holds none.
 ///
-/// Depth is routed by records the engine keeps, so neither surface could see
-/// that a number already held a book: two contracts' rows arrived interleaved
-/// under one number with nothing to tell them apart, the withdrawal named only
-/// the later contract and left the earlier one being served, and a reconnect
-/// brought back one book where there had been two.
+/// A smart book and a regular book under one number are two books, as a
+/// gateway holds them apart, and both run; the withdrawal takes the book of
+/// the mode it names. Depth is routed by records the engine keeps, so neither
+/// surface could see that a number already held a book: two contracts' rows
+/// arrived interleaved under one number with nothing to tell them apart, the
+/// withdrawal named only the later contract and left the earlier one being
+/// served, and a reconnect brought back one book where there had been two.
 #[test]
 fn a_request_number_holds_one_book_and_says_when_it_holds_none() {
     let (client, rx, _shared) = test_client();
 
-    let withdrawn = crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7));
+    let withdrawn = crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7, false));
     assert!(
         withdrawn.as_ref().is_err_and(|why| {
             why.code == 310
@@ -4942,9 +4945,40 @@ fn a_request_number_holds_one_book_and_says_when_it_holds_none() {
     );
     assert!(rx.try_recv().is_err(), "and the second contract was not asked for");
 
-    // Withdrawn, the number is the caller's again.
-    crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7)).expect("the book is withdrawn");
+    // A smart book and a regular book under one number are two books, as a
+    // gateway holds them apart: the second is taken and both run.
+    crate::api::client::tests::reported(&client, || client.req_mkt_depth(7, &elsewhere, 5, true))
+        .expect("the book of the other mode is taken");
+    rx.try_recv().expect("and it reaches the engine");
+
+    // A withdrawal names the mode it carries and reaches only the book it
+    // names: the regular book goes, the smart one runs on, and a second
+    // withdrawal of the regular book is answered under 310.
+    crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7, false)).expect("the regular book is withdrawn");
+    assert!(
+        matches!(rx.try_recv(), Ok(ControlCommand::UnsubscribeDepth { req_id: 7, is_smart_depth: false })),
+        "and the withdrawal that reaches the engine names the mode it withdrew",
+    );
+    // The regular withdrawal left the smart book held: asked again under the
+    // number it is refused as a duplicate rather than taken.
+    let still = crate::api::client::tests::reported(&client, || client.req_mkt_depth(7, &elsewhere, 5, true));
+    assert!(
+        still.as_ref().is_err_and(|why| why.code == 322),
+        "the smart book still runs: {still:?}",
+    );
+    assert!(rx.try_recv().is_err(), "and asking again reached no engine");
+    let unnamed = crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7, false));
+    assert!(
+        unnamed.as_ref().is_err_and(|why| {
+            why.code == 310
+                && why.message == "Can't find the subscribed market depth with tickerId:7"
+        }),
+        "no regular book is held any more: {unnamed:?}",
+    );
+    crate::api::client::tests::reported(&client, || client.cancel_mkt_depth(7, true)).expect("the smart book is withdrawn");
     rx.try_recv().expect("and the withdrawal reaches the engine");
+
+    // Withdrawn, the number is the caller's again.
     crate::api::client::tests::reported(&client, || client.req_mkt_depth(7, &elsewhere, 5, false)).expect("the number is free again");
 }
 
@@ -8802,8 +8836,8 @@ fn a_book_a_gateway_refuses_before_asking_is_refused_here() {
         let wire = format!("Error validating request:-'' : cause - {reason}");
         assert_eq!((refused.code, refused.message.as_str()), (Refusal::VALIDATION, wire.as_str()));
         assert!(rx.try_recv().is_err(), "nothing was sent for it");
-        assert!(client.core.hold_the_book(1, &client.shared).is_ok(), "and no book slot was taken");
-        client.core.release_the_book(1, &client.shared).unwrap();
+        assert!(client.core.hold_the_book(1, false, &client.shared).is_ok(), "and no book slot was taken");
+        client.core.release_the_book(1, false, &client.shared).unwrap();
     }
 }
 
@@ -8838,7 +8872,7 @@ fn no_book_is_taken_on_a_feed_that_is_over_for_the_session() {
     assert!(rx.try_recv().is_err(), "and nothing was sent for it");
     // The slot is free, so a later session's request under the same number is
     // not refused as a book this one is already holding.
-    assert!(client.core.hold_the_book(1, &client.shared).is_ok(), "the book slot was not taken");
+    assert!(client.core.hold_the_book(1, false, &client.shared).is_ok(), "the book slot was not taken");
 }
 
 /// A caller chooses how its bar times are written, and the choice is per

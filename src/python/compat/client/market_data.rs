@@ -281,7 +281,7 @@ impl EClient {
                 )),
             );
         }
-        if let Err(why) = self.core.hold_the_book(req_id, &shared) {
+        if let Err(why) = self.core.hold_the_book(req_id, is_smart_depth, &shared) {
             return self.report_refusal(py, req_id, why);
         }
         if let Err(why) = self.send_control(&tx, ControlCommand::SubscribeDepth {
@@ -295,7 +295,7 @@ impl EClient {
             // against a request the venue never heard, and the caller's
             // retry under it was refused as a duplicate of that one until
             // the session was rebuilt.
-            let _ = self.core.release_the_book(req_id, &shared);
+            let _ = self.core.release_the_book(req_id, is_smart_depth, &shared);
             return self.report_refusal(py, req_id, Refusal::not_connected(why.to_string()));
         }
         Ok(())
@@ -303,21 +303,26 @@ impl EClient {
 
     /// Cancel market depth.
     ///
-    /// `is_smart_depth` has no effect: a book is withdrawn by the request that
-    /// asked for it, and this client remembers which kind that was. Stated as
-    /// the book was asked for, it withdraws the same book a gateway would.
+    /// `is_smart_depth` names which of the two books under the number is
+    /// withdrawn — the smart one or the regular one — as it does for a
+    /// gateway: the two are held apart, both run, and the withdrawal takes the
+    /// book of the mode it names. A mode no book was asked in is refused under
+    /// 310 rather than answered with the other mode's book.
     #[pyo3(signature = (req_id, is_smart_depth=false))]
     fn cancel_mkt_depth(&self, py: Python<'_>, req_id: i64, is_smart_depth: bool) -> PyResult<()> {
-        let _ = is_smart_depth;
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
         // A caller withdrawing a book this client does not hold branches on
         // being told so, under the number the catalogue gives depth rather
         // than the one a quote subscription is withdrawn under.
         let wire = wire_req_id(req_id)?;
-        if let Err(why) = self.core.release_the_book(req_id, &*self.shared_state()?) {
+        if let Err(why) =
+            self.core.release_the_book(req_id, is_smart_depth, &*self.shared_state()?)
+        {
             return self.report_refusal(py, req_id, why);
         }
-        if let Err(why) = self.send_control(&tx, ControlCommand::UnsubscribeDepth { req_id: wire }) {
+        if let Err(why) =
+            self.send_control(&tx, ControlCommand::UnsubscribeDepth { req_id: wire, is_smart_depth })
+        {
             return self.report_refusal(py, req_id, Refusal::not_connected(why.to_string()));
         }
         Ok(())

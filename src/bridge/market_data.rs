@@ -272,8 +272,9 @@ pub struct MarketDataState {
     /// The numbers whose book was let go before it was asked for, because
     /// the venue named no single contract for it: a gateway frees the number
     /// then, so a withdrawal after it is refused and the number can be asked
-    /// under again.
-    books_let_go: Mutex<Vec<u32>>,
+    /// under again. Each with the mode the book was asked in: a smart book
+    /// and a regular book under one number are let go apart.
+    books_let_go: Mutex<Vec<(u32, bool)>>,
     /// The books given up on that the caller has not been told about yet, and
     /// what happened, under the request each was asked for.
     ///
@@ -552,12 +553,13 @@ impl MarketDataState {
     }
 
     /// Note a book let go before it was asked for.
-    pub(crate) fn note_book_let_go(&self, req_id: u32) {
-        self.books_let_go.lock().unwrap().push(req_id);
+    pub(crate) fn note_book_let_go(&self, req_id: u32, is_smart_depth: bool) {
+        self.books_let_go.lock().unwrap().push((req_id, is_smart_depth));
     }
 
-    /// The numbers whose book was let go since this was last asked.
-    pub(crate) fn take_books_let_go(&self) -> Vec<u32> {
+    /// The numbers whose book was let go since this was last asked, each with
+    /// the mode it was asked in.
+    pub(crate) fn take_books_let_go(&self) -> Vec<(u32, bool)> {
         std::mem::take(&mut *self.books_let_go.lock().unwrap())
     }
 

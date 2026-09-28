@@ -1335,15 +1335,16 @@ pub fn req_mkt_depth( &self, req_id: i64, contract: &Contract, num_rows: i32, is
 
 #### `cancel_mkt_depth`
 
-Cancel market depth.
+Cancel market depth. The mode names which of the two books under the number is withdrawn — the smart one or the regular one — as it does for a gateway, and the other one runs on.
 
 ```rust
-pub fn cancel_mkt_depth(&self, req_id: i64)
+pub fn cancel_mkt_depth(&self, req_id: i64, is_smart_depth: bool)
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `req_id` | `i64` | Request identifier. Used to match responses to requests. |
+| `is_smart_depth` | `bool` | If `true`, aggregate depth from multiple exchanges via SMART. |
 
 ---
 

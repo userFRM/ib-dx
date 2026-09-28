@@ -1792,7 +1792,7 @@ fn a_cancel_leaves_other_kinds_under_the_same_number_waiting() {
         ControlCommand::CancelHeadTimestamp { req_id: 17 },
         ControlCommand::CancelHistogramData { req_id: 17 },
         ControlCommand::CancelRealTimeBar { req_id: 17 },
-        ControlCommand::UnsubscribeDepth { req_id: 17 },
+        ControlCommand::UnsubscribeDepth { req_id: 17, is_smart_depth: false },
     ] {
         let (mut hl, shared, tx, _peer) = with_trading();
         shared.admit(&tx, subscription_to_name(false)).unwrap();
@@ -1803,6 +1803,47 @@ fn a_cancel_leaves_other_kinds_under_the_same_number_waiting() {
         assert_eq!(hl.ccp.pending_named.len(), 1);
         assert_eq!(shared.backlog(), 1);
     }
+}
+
+/// A book's withdrawal takes the held book of the mode it names; the book of
+/// the other mode keeps waiting to be named under the same number.
+#[test]
+fn a_book_withdrawal_takes_only_the_held_book_of_the_mode_it_names() {
+    let (mut hl, shared, tx, _peer) = with_trading();
+    for smart in [false, true] {
+        shared
+            .admit(
+                &tx,
+                ControlCommand::SubscribeDepth {
+                    req_id: 17,
+                    num_rows: 5,
+                    is_smart_depth: smart,
+                    filters: Default::default(),
+                    contract: ContractRef {
+                        symbol: "AAPL".into(),
+                        exchange: "SMART".into(),
+                        sec_type: "STK".into(),
+                        currency: "USD".into(),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+    }
+    hl.poll_control_commands();
+    assert_eq!(hl.ccp.pending_named.len(), 2, "both books wait under the one number");
+    shared
+        .admit(&tx, ControlCommand::UnsubscribeDepth { req_id: 17, is_smart_depth: false })
+        .unwrap();
+    hl.poll_control_commands();
+    assert_eq!(hl.ccp.pending_named.len(), 1, "the regular book named is withdrawn");
+    assert!(
+        hl.ccp.pending_named.iter().all(|(_, cmd, _)| matches!(
+            cmd,
+            ControlCommand::SubscribeDepth { is_smart_depth: true, .. }
+        )),
+        "the smart book still waits"
+    );
 }
 
 #[test]

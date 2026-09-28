@@ -924,7 +924,7 @@ fn every_request_keeps_its_outcome_between_the_surrounding_records() {
         }),
         ("cancel_tick_by_tick_data", |c| c.cancel_tick_by_tick_data(9)),
         ("req_mkt_depth", |c| c.req_mkt_depth(9, &super::tests::spy(), 1, false)),
-        ("cancel_mkt_depth", |c| c.cancel_mkt_depth(9)),
+        ("cancel_mkt_depth", |c| c.cancel_mkt_depth(9, false)),
         ("req_real_time_bars", |c| {
             c.req_real_time_bars(9, &super::tests::spy(), 1, "TRADES", false)
         }),

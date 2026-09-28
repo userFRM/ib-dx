@@ -1171,7 +1171,7 @@ def req_mkt_depth(req_id, contract, num_rows=5, is_smart_depth=False, mkt_depth_
 
 #### `cancel_mkt_depth`
 
-Cancel market depth.  `is_smart_depth` has no effect: a book is withdrawn by the request that asked for it, and this client remembers which kind that was. Stated as the book was asked for, it withdraws the same book a gateway would.
+Cancel market depth.  `is_smart_depth` names which of the two books under the number is withdrawn — the smart one or the regular one — as it does for a gateway: the two are held apart, both run, and the withdrawal takes the book of the mode it names. A mode no book was asked in is refused under 310 rather than answered with the other mode's book.
 
 ```python
 def cancel_mkt_depth(req_id, is_smart_depth=False)

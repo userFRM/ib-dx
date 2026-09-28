@@ -8,7 +8,8 @@ contract from the update stream, and print both books at the end.
 - `req_mkt_depth(req_id, &contract, num_rows, is_smart_depth)`, one request id
   per contract.
 - Applying `update_mkt_depth_l2` events to a book keyed by level position.
-- `cancel_mkt_depth(req_id)` for each subscription before disconnecting.
+- `cancel_mkt_depth(req_id, is_smart_depth)` for each subscription before
+  disconnecting, naming the mode the book was asked in.
 
 ## What comes back
 

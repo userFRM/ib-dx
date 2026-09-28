@@ -821,6 +821,10 @@ pub enum ControlCommand {
     UnsubscribeDepth {
         /// The caller's number for the request.
         req_id: u32,
+        /// Which of the two books under the number is withdrawn: the smart
+        /// one or the regular one. A gateway reads the mode on its cancel and
+        /// withdraws the book that was asked in it.
+        is_smart_depth: bool,
     },
     /// End the session with the venue. Sent before [`ControlCommand::Shutdown`]
     /// by a caller that is disconnecting. A caller that only stops the engine
