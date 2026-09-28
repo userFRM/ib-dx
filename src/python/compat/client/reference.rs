@@ -662,15 +662,13 @@ impl EClient {
         // number — nothing was ever sent under it — and this is not a
         // malformed request, so neither the id nor the validation code the
         // refusals above carry is the one a caller branching on the pair
-        // reads there.
+        // reads there. The reason is a gateway's own words for the miss.
         self.report_refusal_as(
             py,
             refused,
-            crate::error_codes::Refusal::stated(322, format!(
-                "market rule {market_rule_id} has not been seen on this session. Rules \
-                 arrive with the details of a contract that uses them, so ask for such a \
-                 contract first"
-            )),
+            crate::error_codes::Refusal::stated(
+                322, format!("Market rule with id = {market_rule_id} is missing"),
+            ),
         )
     }
 
@@ -1158,7 +1156,11 @@ mod tests {
             assert_eq!(args[0].extract::<i64>(py).unwrap(), -1,
                 "the rule's number is not the number this is reported against");
             assert_eq!(args[2].extract::<i32>(py).unwrap(), 322);
-            assert!(args[3].extract::<String>(py).unwrap().contains("market rule 26"));
+            assert_eq!(
+                args[3].extract::<String>(py).unwrap(),
+                "Error processing request:-'' : cause - Market rule with id = 26 is missing",
+                "a rule this client does not hold is missed in a gateway's words",
+            );
         });
     }
 }

@@ -440,6 +440,16 @@ the venue's model for the contract, and asking opens the subscription that
 carries it. A gateway gives up after five seconds. This client waits until the
 model arrives or the call is cancelled.
 
+## Market rules arrive with contracts
+
+A gateway keeps a market-rule table of its own and answers `reqMarketRule`
+from it for any rule it knows, in a fresh session included. This client
+learns a rule only with the details of a contract that uses it: a rule asked
+for before any contract has brought it in is answered the way a gateway
+answers one it does not hold — against -1, under 322, *Market rule with id =
+260 is missing*. Asking for a contract that uses the rule brings it in, and a
+request after that is answered.
+
 ## A frozen quote is the subscription's
 
 A gateway decides for each request whether it is served the frozen quote, by

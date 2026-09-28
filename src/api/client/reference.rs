@@ -341,10 +341,11 @@ impl EClient {
 
     /// The price increments a market rule states. Matches `reqMarketRule` in C++.
     ///
-    /// A rule is not asked for on its own: the venue sends the rules a contract
-    /// uses along with that contract's details. So this answers from what those
-    /// have already brought in, and says so when the rule is not among them
-    /// rather than returning in silence.
+    /// Any rule this client holds is answered; a rule it does not hold is
+    /// refused as a gateway refuses one, under -1, which is not the rule's
+    /// number — a rule's number is no request number. The rule table a gateway
+    /// keeps of its own is not ported here: rules arrive with the details of a
+    /// contract that uses them, and the limits page says so.
     pub fn req_market_rule(&self, market_rule_id: i32) {
         match self.shared.reference.market_rule(market_rule_id) {
             Some(rule) => self.reply(crate::bridge::Reply::MarketRule(
@@ -360,11 +361,7 @@ impl EClient {
                 crate::types::model::Question::MarketRule(market_rule_id),
                 &Refusal::stated(
                     MARKET_RULE_NOT_KNOWN as i32,
-                    format!(
-                        "market rule {market_rule_id} has not been seen on this session. Rules \
-                         arrive with the details of a contract that uses them, so ask for such a \
-                         contract first"
-                    ),
+                    format!("Market rule with id = {market_rule_id} is missing"),
                 ),
             ),
         }
@@ -800,9 +797,10 @@ impl EClient {
 mod tests {
     use crate::api::wrapper::tests::RecordingWrapper;
 
-    /// A rule this session has not been told about is reported the way the
-    /// venue reports one: against -1, under 322. The rule's number is not a
-    /// request number, and a caller keying off the pair branches on both halves.
+    /// A rule this client does not hold is reported the way a gateway reports
+    /// one: against -1, under 322, in its words for the miss. The rule's
+    /// number is not a request number, and a caller keying off the pair
+    /// branches on both halves.
     #[test]
     fn an_unseen_market_rule_is_reported_against_minus_one_under_322() {
         let (client, _rx, _shared) = super::super::tests::test_client();
@@ -813,9 +811,10 @@ mod tests {
         assert_eq!(wrapper.events.len(), 1, "the miss is answered, once");
         assert!(
             wrapper.events[0].starts_with(
-                "error:-1:322:Error processing request:-'' : cause - market rule 26 ",
+                "error:-1:322:Error processing request:-'' : cause - Market rule with id = 26 is missing",
             ),
-            "reported against -1 under 322: {}", wrapper.events[0],
+            "reported against -1 under 322, in a gateway's words for a rule it \
+             does not hold: {}", wrapper.events[0],
         );
     }
 
