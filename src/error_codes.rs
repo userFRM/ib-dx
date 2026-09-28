@@ -264,13 +264,6 @@ pub const ALL_NOT_FOR_DYNAMIC_ACCOUNTS: i32 = 10200;
 /// retrying what it thought had failed ends up holding two.
 pub const DUPLICATE_ORDER_ID: i32 = 103;
 
-/// The code a request number already running a scan is refused under.
-///
-/// Its own number rather than the one a quote subscription is refused under,
-/// for the same reason a historical query has its own: a caller branches on
-/// which request it made.
-pub const DUPLICATE_SCANNER_SUBSCRIPTION: i32 = 385;
-
 /// The code a withdrawal naming a scan this client is not running is answered
 /// under.
 pub const NO_SUCH_SCANNER_SUBSCRIPTION: i32 = 365;
@@ -301,13 +294,6 @@ pub const DEPTH_BOOK_RESET: i32 = 317;
 /// disagree -- that what it believes it is withdrawing is not something this
 /// client holds. Silence is indistinguishable from a withdrawal that worked.
 pub const NO_SUCH_SUBSCRIPTION: i32 = 300;
-
-/// The code a request number already answering a historical query is refused
-/// under.
-///
-/// A separate number from the one a live quote subscription is refused under:
-/// the two are different requests and a caller branches on which it made.
-pub const DUPLICATE_HISTORICAL_QUERY: i32 = 386;
 
 /// The code a bar request kept up to date is ended under when the historical
 /// connection drops, as a gateway ends it.

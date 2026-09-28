@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::error_codes::{DUPLICATE_HISTORICAL_QUERY, DUPLICATE_SCANNER_SUBSCRIPTION, NO_SUCH_SUBSCRIPTION};
+use crate::error_codes::{NO_SUCH_SUBSCRIPTION, REQUEST_NOT_PROCESSED};
 use crate::bridge::{Event, SharedState};
 use crate::protocol::datetime::chrono_free_timestamp;
 use crate::protocol::connection::{Connection, Frame};
@@ -2386,11 +2386,13 @@ fn build_tbt_query(
             // Refused without ending anything: the request that is answering
             // goes on answering. Ended, its caller's side would let go of what
             // it keeps of the live one, whose bars would then go out dated as
-            // nobody asked.
+            // nobody asked. A gateway raises this under a number of its own
+            // while it takes the request, and what reaches the wire is the
+            // refusal of the taking, under the number it marks one with.
             super::push_hmds_refusal(
                 shared,
                 req_id,
-                DUPLICATE_HISTORICAL_QUERY,
+                REQUEST_NOT_PROCESSED,
                 "Duplicate ticker ID for API historical data query".into(),
                 false,
             );
@@ -3231,11 +3233,8 @@ fn build_tbt_query(
             super::push_hmds_refusal(
                 shared,
                 req_id,
-                DUPLICATE_SCANNER_SUBSCRIPTION,
-                format!(
-                    "request {req_id} is already running a scan: withdraw it before \
-                     asking for another under the same number",
-                ),
+                REQUEST_NOT_PROCESSED,
+                "Duplicate ticker ID for API scanner subscription".into(),
                 false,
             );
             return;

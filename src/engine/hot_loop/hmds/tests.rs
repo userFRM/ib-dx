@@ -3520,7 +3520,8 @@ fn a_number_already_answering_a_historical_query_is_not_given_another() {
     assert_eq!(errors.len(), 3, "the caller is told each time: {errors:?}");
     assert!(
         errors.iter().all(|(id, code, text)| {
-            (*id, *code, text.as_str()) == (9, 386, "Duplicate ticker ID for API historical data query")
+            (*id, *code, text.as_str()) == (9, 322, "Error processing request:-'' : cause - \
+                                                    Duplicate ticker ID for API historical data query")
         }),
         "under the number that names it, in a gateway's words: {errors:?}",
     );
@@ -3561,7 +3562,12 @@ fn a_number_already_running_a_scan_is_not_given_another() {
     assert_eq!(hmds.pending_scanner[0].0, first, "and the running scan is the one asked for");
     let errors = shared.reference.drain_historical_errors();
     assert_eq!(errors.len(), 1, "the caller is told: {errors:?}");
-    assert_eq!(errors[0].1, 385, "under the number that names it");
+    assert_eq!(
+        (errors[0].1, errors[0].2.as_str()),
+        (322, "Error processing request:-'' : cause - \
+               Duplicate ticker ID for API scanner subscription"),
+        "under the number that names it, in a gateway's words: {errors:?}",
+    );
 }
 
 /// A page that cannot be read ends a request kept up to date whose history
@@ -3946,7 +3952,7 @@ fn a_days_bar_kept_up_to_date_rolls_over_at_midnight_utc() {
         // Asked for again, in seconds since the epoch, while it answers.
         (true, "US/Central", "20260923-22:00:00", "20260924-21:00:00", &[
             History, Five("20260924-15:00:05", 10_100, 7), Again, Five("20260924-15:00:10", 10_200, 3),
-        ], &["update 20260924 100 1007", "error 386", "update 20260924 100 1010"]),
+        ], &["update 20260924 100 1007", "error 322", "update 20260924 100 1010"]),
         // A stream, and then a backfill under its number.
         (false, "US/Central", "20260923-22:00:00", "20260924-21:00:00", &[
             Five("20260924-15:00:05", 10_100, 7), History, Five("20260924-15:00:10", 10_200, 3),

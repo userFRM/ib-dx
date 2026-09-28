@@ -8413,7 +8413,7 @@ mod tests {
     /// A second news or article request under a number still answering one is
     /// asked too, as a gateway asks it: it refuses neither, and each is
     /// answered under the number. A withdrawal of the news withdraws every
-    /// query under it. Both were refused with 386 in this client's own words.
+    /// query under it. Both were refused in this client's own words.
     #[test]
     fn a_second_news_or_article_request_under_a_live_number_is_asked_too() {
         let shared = Arc::new(SharedState::new());
@@ -8490,7 +8490,8 @@ mod tests {
         hl.poll_control_commands();
         assert_eq!(
             shared.reference.drain_historical_errors(),
-            [(7, 386, "Duplicate ticker ID for API historical data query".to_string())],
+            [(7, 322, "Error processing request:-'' : cause - \
+                       Duplicate ticker ID for API historical data query".to_string())],
         );
         assert!(hmds::tests::over(&shared).is_empty(), "and ends nothing");
         assert_eq!(hl.hmds.asked_again.len(), 1);
@@ -8555,7 +8556,7 @@ mod tests {
         let resub: Vec<i64> = hl.hmds.rtbar_resub.iter().filter(|r| r.req_id == 7).map(|r| r.con_id).collect();
         assert_eq!(resub, [756733], "and the reconnect record names the first contract");
         let told = shared.reference.drain_historical_errors();
-        assert!(told.iter().any(|(rid, code, _)| *rid == 7 && *code == 386), "{told:?}");
+        assert!(told.iter().any(|(rid, code, _)| *rid == 7 && *code == 322), "{told:?}");
     }
 
     /// Callers of one contract's five-second bars read one stream. The venue

@@ -175,9 +175,11 @@ with every one of them, as a gateway does.
   them, however they were spelled: a stock is `STK`, given as `CS` or in lower
   case, and a Nasdaq listing is `NASDAQ`, given as `ISLAND`.
 - A bar request, a head timestamp or a histogram asked under the number of a
-  bar request still answering is refused with 386, *Duplicate ticker ID for
-  API historical data query*, as a gateway refuses it, and the bar request
-  goes on answering.
+  bar request still answering is refused as a duplicate under 322, *Error
+  processing request:-'' : cause - Duplicate ticker ID for API historical
+  data query*, as a gateway refuses it, and the bar request goes on
+  answering. A scan asked under a number already running one is refused
+  alike under 322, *Duplicate ticker ID for API scanner subscription*.
 - A news or article request under the number of one still answering is asked
   as well, as a gateway asks it, and each is answered under the number.
 - When the historical connection drops, a bar request kept up to date ends on
