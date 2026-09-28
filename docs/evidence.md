@@ -129,7 +129,7 @@ nothing.
 
 | Capability | Status | Verification |
 | --- | :---: | --- |
-| 24 order types | ✅ Supported | The check every placement passes accepts 24, each sent as itself: MKT, LMT, STP, STP LMT, TRAIL, TRAIL LIMIT, MOC, LOC, MIT, LIT, MTL, MKT PRT, STP PRT, REL, PASSV REL, PEG MKT, PEG MID, PEG BEST, PEG BENCH, MIDPX, SNAP MKT, SNAP MID, SNAP PRI and BOX TOP. Every one but PEG BEST and BOX TOP is placed against the venue by `tests/ib_paper_compat` or the Python live suites |
+| 24 order types | ✅ Supported | The check every placement passes accepts 24, each sent as itself: MKT, LMT, STP, STP LMT, TRAIL, TRAIL LIMIT, MOC, LOC, MIT, LIT, MTL, MKT PRT, STP PRT, REL, PASSV REL, PEG MKT, PEG MID, PEG BEST, PEG BENCH, MIDPRICE, SNAP MKT, SNAP MID, SNAP PRIM and BOX TOP. Every one but PEG BEST and BOX TOP is placed against the venue by `tests/ib_paper_compat` or the Python live suites |
 | PEG BEST and BOX TOP | 🔬 Implemented | Built and checked by the order builder's offline tests, `src/engine/hot_loop/order_builder/tests.rs`; no suite here places them against the venue |
 | Order fields | ✅ Supported | An order has 159 fields. 128 are sent. 23 are taken and not sent: a gateway reads them and sends nothing for them on the orders this client places, and neither does this client. 1 is not carried by this client, and it says so on itself rather than being quietly ignored. 6 more are what the venue fills on the way back, which an order does not carry out. One is acted on here rather than sent: an order held back is kept until one in its family transmits, which is what a gateway does with it. A check on every commit fails if a field starts being dropped |
 | Non-US markets | ✅ Supported | Previews accepted on DE, NL, GB, CH, AU, CA, US equities and FX; JP and HK rejected for lot size, which is the exchange rule and is surfaced to the caller |
@@ -357,9 +357,11 @@ with a return value.
 
 **Order types.** The 24 the check every placement passes accepts: MKT, LMT,
 STP, STP LMT, TRAIL, TRAIL LIMIT, MOC, LOC, MIT, LIT, MTL, MKT PRT, STP PRT, REL,
-PASSV REL, PEG MKT, PEG MID, PEG BEST, PEG BENCH, MIDPX, SNAP MKT, SNAP MID,
-SNAP PRI and BOX TOP. PEG MIDPT, MIDPRICE, SNAP MIDPT, SNAP PRIM and PEGBENCH
-are accepted as other spellings of five of them. Algos: VWAP, TWAP, Arrival
+PASSV REL, PEG MKT, PEG MID, PEG BEST, PEG BENCH, MIDPRICE, SNAP MKT, SNAP MID,
+SNAP PRIM and BOX TOP. Each is also taken under its other spellings, in any
+case — MARKET, LIMIT, STOP LIMIT, TRAILING STOP, MKT CLS, LMT CLS, MKT TO LMT,
+BOXTOP, RELATIVE, PEG PRIM, PEGBENCH, SNAPMKT, SNAPMID, SNAPPRIM and the rest
+`order_type_named` (`src/types/model.rs`) accepts. Algos: VWAP, TWAP, Arrival
 Price, Close Price, Dark Ice, PctVol. Conditions: price, volume, percent change, margin, execution
 and time. Brackets, one-cancels-all, and combinations with a price per leg.
 
