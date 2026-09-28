@@ -328,18 +328,19 @@ impl EClient {
     #[doc(hidden)]
     #[pyo3(signature = (account_id="TEST123".to_string(), readonly=false, replay_done=true, port=0, accounts=None))]
     fn _test_connect(
-        &self, account_id: String, readonly: bool, replay_done: bool, port: i32,
+        &self, py: Python<'_>, account_id: String, readonly: bool, replay_done: bool, port: i32,
         accounts: Option<Vec<String>>,
     ) -> PyResult<()> {
         self.core.set_readonly(readonly);
         // Claimed rather than read, as on the real connect: two callers
-        // racing here both found it clear and both built a session.
+        // racing here both found it clear and both built a session. Answered
+        // as the real connect answers: on the wrapper, not as a raise.
         if self
             .connected
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return Err(PyRuntimeError::new_err("Already connected"));
+            return self.already_connected(py);
         }
         let shared = Arc::new(SharedState::new());
         shared.orders.set_api_client_id(self.client_id.load(Ordering::Acquire));

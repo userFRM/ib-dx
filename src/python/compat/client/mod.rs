@@ -490,7 +490,7 @@ impl EClient {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return Err(PyRuntimeError::new_err("Already connected"));
+            return self.already_connected(py);
         }
         // Given back on every way out that is not a session, including the
         // ones a later edit adds.
@@ -922,11 +922,11 @@ impl EClient {
         Ok(())
     }
 
-    /// Raises when there is a session, with the message `connect` refuses a
-    /// second call under. Nothing otherwise.
+    /// Raises when there is a session, with the words the reference client
+    /// raises its own check under. Nothing otherwise.
     fn check_connected(&self) -> PyResult<()> {
         if self.is_connected() {
-            return Err(PyRuntimeError::new_err("Already connected"));
+            return Err(PyRuntimeError::new_err("Already connected."));
         }
         Ok(())
     }
@@ -1930,6 +1930,21 @@ impl EClient {
             }
         };
         Ok(("error", args))
+    }
+
+    /// A second connection asked for while a session is up, answered the way
+    /// the reference client answers it: the number it reports one under, on
+    /// the wrapper's error callback, and the call itself returns normally.
+    /// Raised instead, the exception unwinds through the reconnect loop a
+    /// program written against that client runs — its own connect docstring
+    /// describes the loop — and the handler never sees the number.
+    fn already_connected(&self, py: Python<'_>) -> PyResult<()> {
+        self.notify_error(
+            py,
+            crate::types::model::ErrorOrigin::Session,
+            crate::error_codes::ALREADY_CONNECTED.into(),
+            "Already connected.",
+        )
     }
 
     /// Say an error inside the call, where the reference client says it:

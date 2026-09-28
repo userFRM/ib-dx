@@ -94,6 +94,18 @@ def test_check_connected_raises_only_with_a_session():
         c.checkConnected()
 
 
+def test_a_second_connect_is_reported_on_the_wrapper_and_returns():
+    """The reference client's own connect docstring: a subsequent attempt
+    "will return the message 'Already connected.'" — the number reaches the
+    wrapper with those words and the call returns normally, so the reconnect
+    loop a program written against it runs carries on."""
+    probe = NotConnectedProbe()
+    c = EClient(probe)
+    c._test_connect()
+    assert c._test_connect() is None
+    assert probe.errors == [(-1, 501, "Already connected.")]
+
+
 def test_reset_closes_the_session_and_leaves_the_client_reusable():
     c = EClient(EWrapper())
     c.reset()

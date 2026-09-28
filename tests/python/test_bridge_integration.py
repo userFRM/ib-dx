@@ -1092,11 +1092,15 @@ class TestEdgeCases:
         assert len(tick_events) == 0
 
     def test_double_test_connect(self):
-        w = EWrapper()
+        """Answered on the wrapper under 501, and the call returns normally,
+        as the reference client's own connect answers a second one."""
+        w = RecordingWrapper()
         c = EClient(w)
         c._test_connect()
-        with pytest.raises(RuntimeError, match="Already connected"):
-            c._test_connect()
+        c._test_connect()
+        assert [(e[1], e[2], e[3]) for e in w.events if e[0] == "error"] == [
+            (-1, 501, "Already connected.")
+        ]
 
     def test_req_ids_without_connection(self):
         """The venue states the id an account may next use, so before there is

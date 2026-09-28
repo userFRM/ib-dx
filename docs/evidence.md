@@ -74,7 +74,7 @@ reply needs an advisor account to see, and the status row below says so.
 | --- | ---: | :---: |
 | Rust unit and integration | 3,249 | No |
 | Rust, live | 9 | Yes |
-| Python | 1,199 | No |
+| Python | 1,200 | No |
 | Python, live | 123 | Yes |
 | Paper compatibility suite (154 phases) | 51 tests | Yes |
 

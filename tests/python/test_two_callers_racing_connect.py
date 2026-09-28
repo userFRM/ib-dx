@@ -17,17 +17,20 @@ from ibkr_dx import EClient, EWrapper
 
 @pytest.mark.parametrize("attempt", range(20))
 def test_only_one_of_two_racing_connects_takes_the_session(attempt):
-    client = EClient(EWrapper())
+    errors = []
+    lock = threading.Lock()
+
+    class Probe(EWrapper):
+        def error(self, req_id, error_time, code, msg, advanced_order_reject_json=""):
+            with lock:
+                errors.append(code)
+
+    client = EClient(Probe())
     ready = threading.Barrier(2)
-    took = []
 
     def connect():
         ready.wait()
-        try:
-            client._test_connect("DU111111", True)
-            took.append(True)
-        except RuntimeError:
-            pass
+        client._test_connect("DU111111", True)
 
     threads = [threading.Thread(target=connect) for _ in range(2)]
     for t in threads:
@@ -35,7 +38,8 @@ def test_only_one_of_two_racing_connects_takes_the_session(attempt):
     for t in threads:
         t.join()
 
-    assert len(took) == 1, (
-        f"{len(took)} callers built a session; the second leaves the first "
-        f"running with a live socket and a second logon"
-    )
+    # Both calls return normally, as the reference client's connect does; the
+    # one that lost the claim is told so on the wrapper, under 501, and there
+    # is exactly one of those. Zero would mean both built a session, and the
+    # second left the first running with a live socket and a second logon.
+    assert errors == [501], errors

@@ -122,6 +122,14 @@ pub const LIMITED_HISTORY: i32 = 166;
 /// the initial connect, and it never states it.
 pub const BAD_MESSAGE: i32 = 508;
 
+/// The code a second connection asked for while a session is up is answered
+/// under.
+///
+/// The reference client answers it on the wrapper's error callback and its
+/// `connect` returns normally, so a reconnect loop's handler sees the number
+/// rather than an exception unwinding through the loop.
+pub const ALREADY_CONNECTED: i32 = 501;
+
 /// The code a combination naming no legs is refused under.
 pub const COMBINATION_NEEDS_LEGS: i32 = 314;
 
