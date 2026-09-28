@@ -23,8 +23,11 @@ pub(crate) const REPLAY_WAIT: Duration = Duration::from_secs(3);
 /// What the venue has said about the numbers orders were placed under.
 #[derive(Default)]
 struct Numbers {
-    /// Finished: filled, cancelled or refused.
-    finished: std::collections::HashSet<u64>,
+    /// Finished: filled, cancelled or refused — each under the state it
+    /// finished in, as this book's vocabulary states it. What a report
+    /// states outranks what a fill's quantity implies, and a later report
+    /// outranks an earlier one.
+    finished: std::collections::HashMap<u64, String>,
 }
 
 /// Attachment fields stated by execution reports, including explicit zeroes.
@@ -689,7 +692,7 @@ impl OrderState {
     /// meantime left both reading the later one.
     #[doc(hidden)] pub fn push_fill(&self, fill: Fill) {
         if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.insert(fill.order_id);
+            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
             self.numbers_changed.store(true, Ordering::Release);
         }
         let report = self.order_cache.lock().unwrap().get(&fill.order_id).cloned();
@@ -700,7 +703,7 @@ impl OrderState {
     /// its execution.
     #[doc(hidden)] pub fn push_fill_reported(&self, fill: Fill, report: RichOrderInfo) {
         if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.insert(fill.order_id);
+            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
             self.numbers_changed.store(true, Ordering::Release);
         }
         self.fills.push(FillRecord { fill, report: Some(Arc::new(report)), status: None });
@@ -718,7 +721,7 @@ impl OrderState {
         let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
         self.note_what_the_status_says(&status);
         if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.insert(fill.order_id);
+            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
             self.numbers_changed.store(true, Ordering::Release);
         }
         // A working status on an order already finished is the echo
@@ -728,11 +731,15 @@ impl OrderState {
     }
 
     /// Note what a status says about the number it is under: a finish spends
-    /// the number, as a caller's own record of the order spends it.
+    /// the number, as a caller's own record of the order spends it, and the
+    /// state it finished in is kept with the number.
     fn note_what_the_status_says(&self, update: &OrderUpdate) {
         use crate::types::OrderStatus;
         if matches!(update.status, OrderStatus::Filled | OrderStatus::Cancelled | OrderStatus::Rejected) {
-            self.numbers.lock().unwrap().finished.insert(update.order_id);
+            self.numbers.lock().unwrap().finished.insert(
+                update.order_id,
+                crate::types::order_status::order_status_str(update.status).to_string(),
+            );
             self.numbers_changed.store(true, Ordering::Release);
         }
     }
@@ -746,7 +753,13 @@ impl OrderState {
     /// Whether the venue has finished an order under this number this
     /// session.
     pub fn number_finished(&self, order_id: u64) -> bool {
-        self.numbers.lock().unwrap().finished.contains(&order_id)
+        self.numbers.lock().unwrap().finished.contains_key(&order_id)
+    }
+
+    /// The state a number this session finished is held in, as this book's
+    /// vocabulary states it, where it is held in one.
+    pub(crate) fn finished_state(&self, order_id: u64) -> Option<String> {
+        self.numbers.lock().unwrap().finished.get(&order_id).cloned()
     }
 
     /// The venue is working another order under a number an order finished

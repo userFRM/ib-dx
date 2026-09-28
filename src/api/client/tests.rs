@@ -9941,30 +9941,43 @@ fn a_withdrawal_after_the_trading_connection_ended_is_not_connected() {
 }
 
 /// A withdrawal naming an order this client saw finish is refused as not
-/// cancellable — this client has the record — and not as unknown.
+/// cancellable, under the code a gateway's cancel handler refuses it with
+/// and words naming the state the order finished in as the wire names it —
+/// this client has the record — and not as unknown. Each finish reads under
+/// its internal name: a fill as filled, a withdrawal as cancel-confirmed, a
+/// rejection as inactive.
 #[test]
 fn a_withdrawal_of_a_finished_order_is_not_cancellable() {
-    let (client, rx, shared) = test_client();
-    let order = Order {
-        action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(),
-        lmt_price: 100.0, tif: "DAY".into(), ..Default::default()
-    };
-    client.try_place_order(84, &spy(), &order).expect("placed");
-    rx.try_recv().expect("the order goes out");
-    shared.orders.push_order_update(OrderUpdate {
-        order_id: 84, instrument: 0, status: OrderStatus::Filled,
-        filled_qty: 1.0, remaining_qty: 0.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0,
-    });
-    let mut w = RecordingWrapper::default();
-    client.process_msgs(&mut w);
+    for (status, filled_qty, state) in [
+        (OrderStatus::Filled, 1.0, "jfix.FixOrderState$Filled"),
+        (OrderStatus::Cancelled, 0.0, "jfix.FixOrderState$CancelConfirmed"),
+        (OrderStatus::Rejected, 0.0, "jfix.FixOrderState$Inactive"),
+    ] {
+        let (client, rx, shared) = test_client();
+        let order = Order {
+            action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(),
+            lmt_price: 100.0, tif: "DAY".into(), ..Default::default()
+        };
+        client.try_place_order(84, &spy(), &order).expect("placed");
+        rx.try_recv().expect("the order goes out");
+        shared.orders.push_order_update(OrderUpdate {
+            order_id: 84, instrument: 0, status,
+            filled_qty, remaining_qty: 0.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0,
+        });
+        let mut w = RecordingWrapper::default();
+        client.process_msgs(&mut w);
 
-    crate::api::client::tests::reported(&client, || client.cancel_order(84, "")).expect("taken");
-    let refused = engine_refused(&rx, &shared);
-    assert!(
-        matches!(refused.as_slice(), [(84, 161, _)]),
-        "the order finished under this client's eyes: {refused:?}",
-    );
-    assert!(rx.try_recv().is_err(), "and nothing was sent under it");
+        crate::api::client::tests::reported(&client, || client.cancel_order(84, "")).expect("taken");
+        let refused = engine_refused(&rx, &shared);
+        let expected = format!(
+            "OrderId 84 that needs to be cancelled can not be cancelled, state: {state}."
+        );
+        assert!(
+            matches!(refused.as_slice(), [(84, 10148, text)] if text == &expected),
+            "the order finished ({status:?}) under this client's eyes: {refused:?}",
+        );
+        assert!(rx.try_recv().is_err(), "and nothing was sent under it");
+    }
 }
 
 /// A replace names the order, not the contract. One naming another contract

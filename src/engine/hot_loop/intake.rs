@@ -1221,13 +1221,19 @@ impl HotLoop {
         let api_id = self.shared.orders.attached_order_metadata(order_id)
             .and_then(|held| held.api_order_id).unwrap_or(order_id as i64);
         // An order this session saw finish is not one it has never heard of:
-        // the venue's own answer for it is that it is no longer cancellable.
-        if self.shared.orders.number_finished(order_id) {
+        // a gateway finds it in its book, sees a terminal state, and refuses
+        // the withdrawal under 10148, naming the state as the wire names it.
+        // The finish itself states that state, and outlives the order's
+        // record here; a number that did not finish goes on to be read as
+        // working or unknown below.
+        if let Some(state) = self.shared.orders.finished_state(order_id)
+            .as_deref()
+            .and_then(crate::types::order_status::internal_state_name)
+        {
             self.refuse_order(api_id, OrderOp::Cancel, Refusal::stated(
                 NOT_CANCELLABLE,
                 format!(
-                    "Cancel attempted when order is not in a cancellable state. Order permId = {}",
-                    self.shared.orders.get_order_info(order_id).map_or(0, |info| info.order.perm_id),
+                    "OrderId {api_id} that needs to be cancelled can not be cancelled, state: {state}."
                 ),
             ));
             return Step::Done;

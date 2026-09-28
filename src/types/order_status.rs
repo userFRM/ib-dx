@@ -104,3 +104,17 @@ pub fn order_status_str(status: OrderStatus) -> &'static str {
         OrderStatus::Uncertain => "Unknown",
     }
 }
+
+/// The internal name a gateway's book gives each state an order can finish
+/// in, as its refusal of a withdrawal of a finished order states it on the
+/// wire. A status word an order does not finish in is named by nothing:
+/// `None`.
+#[inline]
+pub fn internal_state_name(status: &str) -> Option<&'static str> {
+    match status {
+        "Filled" => Some("jfix.FixOrderState$Filled"),
+        "Cancelled" => Some("jfix.FixOrderState$CancelConfirmed"),
+        "Inactive" => Some("jfix.FixOrderState$Inactive"),
+        _ => None,
+    }
+}

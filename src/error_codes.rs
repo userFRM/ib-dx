@@ -242,8 +242,9 @@ pub const INVALID_ORDER_TYPE: i32 = 10051;
 pub const ORDER_DOES_NOT_MATCH: i32 = 105;
 
 /// The code a withdrawal of an order no longer in a cancellable state is
-/// refused under.
-pub const NOT_CANCELLABLE: i32 = 161;
+/// refused under, as a gateway's cancel handler refuses it: its words name
+/// the state the order finished in.
+pub const NOT_CANCELLABLE: i32 = 10148;
 
 /// The code a withdrawal is refused under, and not made, when a gateway
 /// cannot read the manual time it states.

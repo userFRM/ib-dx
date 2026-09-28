@@ -439,7 +439,7 @@ mod tests {
             r,
             crate::bridge::Record::Refused((
                 ErrorOrigin::Order { id: 0, op: OrderOp::Cancel },
-                161,
+                10148,
                 _
             ))
         )));
