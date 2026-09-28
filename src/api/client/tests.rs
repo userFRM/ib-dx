@@ -8919,8 +8919,10 @@ fn a_depth_request_states_the_contract_it_was_given() {
 fn a_book_a_gateway_refuses_before_asking_is_refused_here() {
     let (client, rx, _shared) = test_client();
     let no_exchange = crate::types::model::Contract { con_id: 756733, ..Default::default() };
+    // Described, so the combination refusal is what fires: a combination
+    // naming no identifier at all is refused for that first.
     let combo = crate::types::model::Contract {
-        exchange: "SMART".into(), sec_type: "BAG".into(), ..Default::default()
+        con_id: 28868674, exchange: "SMART".into(), sec_type: "BAG".into(), ..Default::default()
     };
     for (contract, rows, reason) in [
         (no_exchange, 5, "Please enter exchange."),
@@ -12472,6 +12474,120 @@ fn malformed_contract_expiry_is_refused_before_any_request_is_sent() {
     }
 }
 
+/// The base contract-description refusals a gateway runs before it looks
+/// anything up, on the four market-data request kinds that carry them: the
+/// identifier, the security type and the unicode checks on all four, and the
+/// option and futures field checks on the two surfaces where a gateway
+/// describes the contract it is asked for. A request the gateway refuses is
+/// refused here before anything is sent; one it serves on every surface —
+/// the live bar and tick-by-tick requests among them, which carry no field
+/// checks — is sent.
+#[test]
+fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
+    type Ask = fn(&EClient, &Contract);
+    let surfaces: &[(&str, Ask)] = &[
+        ("market data", |c, ct| c.req_mkt_data(71, ct, "", false, false, &[])),
+        ("depth", |c, ct| c.req_mkt_depth(71, ct, 5, false)),
+        ("tick by tick", |c, ct| c.req_tick_by_tick_data(71, ct, "Last", 0, false)),
+        ("real time bars", |c, ct| c.req_real_time_bars(71, ct, 5, "TRADES", true)),
+    ];
+    let base = || Contract { con_id: 0, ..spy() };
+    // (contract, reason a gateway refuses it with, or None when it serves it,
+    //  surfaces the refusal lands on — the rest must send)
+    let cases: &[(Contract, Option<&str>, &[&str])] = &[
+        // (a) no identifier at all.
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: String::new(), ..base() },
+         Some("The symbol or the local-symbol or the security id must be entered"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // A local symbol alone identifies the contract as well.
+        (Contract { symbol: String::new(), local_symbol: "AAPL261218C00005000".into(), sec_id: String::new(), ..base() },
+         None, &[]),
+        // (b) a type that resolves to nothing, with no id to fall back on.
+        (Contract { sec_type: "XYZ".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        (Contract { sec_type: String::new(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        (Contract { sec_type: "UNK".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        (Contract { sec_type: "*".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        (Contract { sec_type: "ALL".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // The type a contract id stands in for needs no secType of its own.
+        (Contract { con_id: 756733, sec_type: String::new(), ..base() },
+         None, &[]),
+        // The canonical name matches case-blind; the display name only as
+        // spelled.
+        (Contract { sec_type: "stk".into(), ..base() }, None, &[]),
+        (Contract { sec_type: "Stock".into(), ..base() }, None, &[]),
+        (Contract { sec_type: "stock".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // The news type is exempt from the identifier check: headlines name
+        // providers and no venue.
+        (Contract { symbol: String::new(), sec_type: "NEWS".into(), ..base() },
+         None, &[]),
+        // (c) a character at or above U+0080 in either name.
+        (Contract { symbol: "ÄAPL".into(), ..base() },
+         Some("Symbol should contain valid non-unicode characters only"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        (Contract { local_symbol: "ÄAPL".into(), ..base() },
+         Some("Symbol should contain valid non-unicode characters only"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // (d) an option described by symbol alone, missing each field in turn.
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), strike: 5.0, right: "C".into(), ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), right: "C".into(), ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
+        // The right is read as the wire reads it: the first character, exactly.
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, right: "c".into(), ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
+        // A futures-like type missing its expiry asks for a local symbol.
+        (Contract { symbol: "ES".into(), sec_type: "FUT".into(), ..base() },
+         Some("Please enter a local symbol or an expiry"),
+         &["market data", "depth"]),
+        (Contract { symbol: "EUR".into(), sec_type: "FWD".into(), ..base() },
+         Some("Please enter a local symbol or an expiry"),
+         &["market data", "depth"]),
+        // Described in full, or by local symbol, every surface serves it.
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, right: "C".into(), ..base() },
+         None, &[]),
+        (Contract { symbol: "ES".into(), sec_type: "FUT".into(), local_symbol: "ESZ6".into(), ..base() },
+         None, &[]),
+    ];
+    for (contract, reason, refused_on) in cases {
+        for (surface, request) in surfaces {
+            let (client, rx, _shared) = test_client();
+            if let (Some(reason), true) = (reason, refused_on.contains(surface)) {
+                let why = reported(&client, || request(&client, contract))
+                    .expect_err(&format!("{surface} took {contract:?}"));
+                assert_eq!(why.code, 321, "{surface}: {why:?}");
+                assert_eq!(
+                    why.message,
+                    format!("Error validating request:-'' : cause - {reason}"),
+                    "{surface} on {contract:?}",
+                );
+                assert!(next_command(&rx).is_none(), "{surface} sent {contract:?}");
+            } else {
+                reported(&client, || request(&client, contract))
+                    .unwrap_or_else(|why| panic!("{surface} refused {contract:?}: {why:?}"));
+                assert!(next_command(&rx).is_some(), "{surface} sent nothing for {contract:?}");
+            }
+        }
+    }
+}
+
 #[test]
 fn malformed_contract_expiry_answers_option_calculations_under_the_request_id() {
     let (client, rx, _shared) = test_client();
@@ -12849,8 +12965,11 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
 fn a_bag_quote_naming_no_legs_is_refused() {
     let (client, rx, _shared) = test_client();
     for con_id in [0, 28868674] {
+        // Named, so the legs refusal is what fires: a combination naming no
+        // identifier at all is refused for that first.
         let combo = Contract {
-            con_id, sec_type: "BAG".into(), exchange: "SMART".into(), ..Default::default()
+            con_id, symbol: "SPY".into(), sec_type: "BAG".into(), exchange: "SMART".into(),
+            ..Default::default()
         };
         let why = reported(&client, || client.req_mkt_data(71, &combo, "", false, false, &[]))
             .expect_err("a combination stating no legs");

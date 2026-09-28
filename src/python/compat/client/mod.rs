@@ -3219,6 +3219,76 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// The base contract-description refusals a gateway runs before looking
+    /// anything up land on this surface as on the Rust one — and the option
+    /// field checks land on the book request but not on the live bar request,
+    /// which a gateway does not describe the contract of.
+    #[test]
+    fn an_undescribed_contract_is_refused_here_too() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, w) = wired_client(py);
+            let refusal_cases = [
+                ("req_mkt_data", Contract {
+                    con_id: 0, sec_type: "STK".into(), exchange: "SMART".into(),
+                    ..Default::default()
+                }, "The symbol or the local-symbol or the security id must be entered"),
+                ("req_mkt_data", Contract {
+                    con_id: 0, symbol: "AAPL".into(), sec_type: "XYZ".into(),
+                    exchange: "SMART".into(), ..Default::default()
+                }, "Please enter a valid security type"),
+                ("req_mkt_data", Contract {
+                    con_id: 0, symbol: "ÄAPL".into(), sec_type: "STK".into(),
+                    exchange: "SMART".into(), ..Default::default()
+                }, "Symbol should contain valid non-unicode characters only"),
+                ("req_mkt_depth", Contract {
+                    con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(),
+                    exchange: "SMART".into(), strike: 5.0, right: "C".into(),
+                    ..Default::default()
+                }, "When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+                ("req_real_time_bars", Contract {
+                    con_id: 0, sec_type: "STK".into(), exchange: "SMART".into(),
+                    ..Default::default()
+                }, "The symbol or the local-symbol or the security id must be entered"),
+            ];
+            for (method, base, reason) in refusal_cases {
+                let contract = Py::new(py, base).unwrap();
+                match method {
+                    "req_mkt_data" => {
+                        client.call_method1(py, "req_mkt_data", (1i64, &contract, "", false, false)).unwrap();
+                    }
+                    "req_mkt_depth" => {
+                        client.call_method1(py, "req_mkt_depth", (1i64, &contract, 5, false)).unwrap();
+                    }
+                    _ => {
+                        client.call_method1(py, "req_real_time_bars", (1i64, &contract, 5, "TRADES", 1, Option::<Vec<Py<PyAny>>>::None)).unwrap();
+                    }
+                }
+                assert!(rx.try_recv().is_err(), "nothing was sent for {reason}");
+                client.call_method0(py, "poll").unwrap();
+                let g = pyo3::types::PyDict::new(py);
+                g.set_item("w", &w).unwrap();
+                let said: Vec<(i64, i64, String)> = py
+                    .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
+                    .unwrap().extract().unwrap();
+                let wire = format!("Error validating request:-'' : cause - {reason}");
+                assert!(said.contains(&(1, 321, wire)), "{reason}: {said:?}");
+            }
+            // The same option contract on the live bar request is served: a
+            // gateway runs no field checks on that surface.
+            let option = Py::new(py, Contract {
+                con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(),
+                exchange: "SMART".into(), strike: 5.0, right: "C".into(),
+                ..Default::default()
+            }).unwrap();
+            client.call_method1(py, "req_real_time_bars", (2i64, &option, 5, "TRADES", 1, Option::<Vec<Py<PyAny>>>::None)).unwrap();
+            assert!(
+                matches!(rx.try_recv(), Ok(ControlCommand::SubscribeRealTimeBar { .. })),
+                "a live bar request carries no option field checks",
+            );
+        });
+    }
+
     /// A combination stating no legs is refused on this surface as on the
     /// Rust one, with the gateway's reason and nothing sent; one stating
     /// legs is taken, the legs read off the caller's contract at the intake.

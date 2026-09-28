@@ -1319,7 +1319,7 @@ pub fn cancel_tick_by_tick_data(&self, req_id: i64)
 
 #### `req_mkt_depth`
 
-Subscribe to market depth (L2 order book). Refused as a gateway refuses it, before anything is sent: a contract naming no exchange, a combination, and a book of no rows. A contract that names no security type is sent as it stands, and the engine checks a named one against the venue's routing table. Substituting a stock here asks for a future's book as a stock's, which the venue refuses as a book it does not serve.
+Subscribe to market depth (L2 order book). Refused as a gateway refuses it, before anything is sent: a contract naming no exchange, a contract description a gateway refuses — no identifier, a type that resolves to nothing, a name the wire cannot carry, an option or futures type missing the fields its description needs — a combination, and a book of no rows. Substituting a stock here asks for a future's book as a stock's, which the venue refuses as a book it does not serve.
 
 ```rust
 pub fn req_mkt_depth( &self, req_id: i64, contract: &Contract, num_rows: i32, is_smart_depth: bool, )

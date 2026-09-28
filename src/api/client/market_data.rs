@@ -374,9 +374,10 @@ impl EClient {
     /// Subscribe to market depth (L2 order book). Matches `reqMktDepth` in C++.
     ///
     /// Refused as a gateway refuses it, before anything is sent: a contract
-    /// naming no exchange, a combination, and a book of no rows. A contract
-    /// that names no security type is sent as it stands, and the engine checks
-    /// a named one against the venue's routing table. Substituting a stock here
+    /// naming no exchange, a contract description a gateway refuses — no
+    /// identifier, a type that resolves to nothing, a name the wire cannot
+    /// carry, an option or futures type missing the fields its description
+    /// needs — a combination, and a book of no rows. Substituting a stock here
     /// asks for a future's book as a stock's, which the venue refuses as a book
     /// it does not serve.
     pub fn req_mkt_depth(
@@ -393,7 +394,7 @@ impl EClient {
             if self.session_over() {
                 return Err(Refusal::not_connected("Not connected"));
             }
-            crate::client_core::ClientCore::validate_depth_request(&contract.exchange, &contract.sec_type, num_rows, &contract.last_trade_date_or_contract_month)?;
+            crate::client_core::ClientCore::validate_depth_request(contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type, num_rows, &contract.last_trade_date_or_contract_month, &contract.lookup_filters())?;
             // A book rides the quote feed, so a feed the engine has given up on
             // serves none. Accepted, the request took a book slot and reached a
             // sender with no connection to write it to, which is silent — and a
@@ -463,6 +464,14 @@ impl EClient {
         _bar_size: i32, what_to_show: &str, use_rth: bool,
     ) {
         if let Err(why) = (|| -> Result<(), Refusal> {
+            // The base description refusals, which a gateway runs on this
+            // request kind too — without the field checks: a live bar request
+            // goes by the contract as described or by id, and no option field
+            // is read.
+            crate::client_core::ClientCore::validate_contract_description(
+                contract.con_id, &contract.symbol, &contract.sec_type,
+                &contract.lookup_filters(), false,
+            )?;
             crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
             // The live series are a gateway's own table, matched exactly:
             // refused here rather than turned into trades on the way out,

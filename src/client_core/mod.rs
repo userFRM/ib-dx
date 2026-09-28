@@ -2410,6 +2410,17 @@ impl ClientCore {
         if exchange.is_empty() && !sec_type.eq_ignore_ascii_case("NEWS") {
             return Err(Refusal::validation("Please enter exchange"));
         }
+        // The base description refusals, before the contract is looked up or
+        // anything is registered. A contract given by id skips them — the id
+        // stands in for the description — a combination excepted, whose legs
+        // no id stands in for and which a gateway reads even by id. A scan
+        // and an option calculation ride their own gateway request, not this
+        // one, and are not read against it.
+        if spread_scan.is_none() && calculation.is_none()
+            && (con_id == 0 || Self::resolve_sec_type(sec_type) == Some("BAG"))
+        {
+            Self::validate_contract_description(con_id, symbol, sec_type, filters, true)?;
+        }
         Self::validate_contract_expiry(&filters.last_trade_date_or_contract_month)?;
         // A combination stating no legs describes nothing, and a gateway
         // refuses the request before it looks anything up — whether or not
@@ -2658,6 +2669,129 @@ impl ClientCore {
         Err(Refusal::validation("Please enter a valid security type"))
     }
 
+    /// Which type a gateway reads a stated security type as, or nothing when
+    /// the name resolves to no type of its table.
+    ///
+    /// Read as a gateway reads it: the empty name and `NONE` resolve to
+    /// nothing; `CS` reads as the stock type and `COMB` as the combination,
+    /// both case-blind; `*` and `ANY` resolve to nothing; the canonical names
+    /// match case-blind — the news type excepted, whose canonical spelling
+    /// matches exactly and nothing else; and the display names, "Stock",
+    /// "Option" and the rest, match only spelled exactly, case included.
+    fn resolve_sec_type(sec_type: &str) -> Option<&'static str> {
+        const CANONICAL: [&str; 24] = [
+            "STK", "CFD", "OPT", "FOP", "WAR", "IOPT", "FUT", "FWD", "BAG", "CASH", "IND",
+            "BOND", "BILL", "FUND", "FIXED", "SLB", "CMDTY", "BSK", "ICU", "ICS", "PHYSS",
+            "CRYPTO", "PDC", "EC",
+        ];
+        // The display names, matched as spelled, plus the two spellings that
+        // stand in for a canonical name: the news type's own, which its
+        // canonical form does not reach case-blind, and the stock-loan type
+        // spelled the way its product is named rather than the way its table
+        // entry is. The event type has no stable display name to match — its
+        // label is the user interface's own and moves with it — so only its
+        // canonical name resolves.
+        const DISPLAY: [(&str, &str); 22] = [
+            ("Stock", "STK"), ("Option", "OPT"), ("Futures Options", "FOP"),
+            ("Warrant", "WAR"), ("Structured", "IOPT"), ("Futures", "FUT"),
+            ("Forward", "FWD"), ("Comb", "BAG"), ("Forex", "CASH"), ("Index", "IND"),
+            ("Bond", "BOND"), ("Bill", "BILL"), ("Fund", "FUND"), ("Fixed", "FIXED"),
+            ("SBL", "SLB"), ("NEWS", "NEWS"), ("Commodity", "CMDTY"), ("Basket", "BSK"),
+            ("Inter-commodity Spread Underlying", "ICU"),
+            ("Inter-commodity Spreads", "ICS"), ("Crypto", "CRYPTO"),
+            ("Predefined Combinations", "PDC"),
+        ];
+        if sec_type.is_empty() || sec_type.eq_ignore_ascii_case("NONE") {
+            return None;
+        }
+        if sec_type.eq_ignore_ascii_case("CS") {
+            return Some("STK");
+        }
+        if sec_type.eq_ignore_ascii_case("COMB") {
+            return Some("BAG");
+        }
+        if sec_type == "*" || sec_type.eq_ignore_ascii_case("ANY") {
+            return None;
+        }
+        let upper = sec_type.to_uppercase();
+        if let Some(name) = CANONICAL.iter().find(|n| **n == upper) {
+            return Some(name);
+        }
+        DISPLAY.iter().find(|(d, _)| *d == sec_type).map(|(_, c)| *c)
+    }
+
+    /// What a gateway refuses in a contract description before it looks
+    /// anything up: a contract naming no identifier at all, a name carrying a
+    /// character the wire cannot take, a security type that resolves to
+    /// nothing, and — on the surfaces where a gateway describes the contract
+    /// it is asked for — an option or futures type missing the fields the
+    /// description needs.
+    ///
+    /// A contract given by id skips the identifier and type checks: the id
+    /// stands in for the description. The field checks run only where
+    /// `describe` is set, and only on a contract described rather than given
+    /// by id with no local symbol stated — a local symbol is itself the
+    /// description the fields would spell out.
+    pub fn validate_contract_description(
+        con_id: i64,
+        symbol: &str,
+        sec_type: &str,
+        filters: &crate::types::SecDefFilters,
+        describe: bool,
+    ) -> Result<(), Refusal> {
+        let resolved = Self::resolve_sec_type(sec_type);
+        // The news type is exempt from the identifier check, as headlines
+        // name providers and no venue.
+        if con_id == 0
+            && symbol.is_empty()
+            && filters.local_symbol.is_empty()
+            && filters.sec_id.is_empty()
+            && resolved != Some("NEWS")
+        {
+            return Err(Refusal::validation(
+                "The symbol or the local-symbol or the security id must be entered",
+            ));
+        }
+        // The wire carries basic Latin: a character at or above U+0080 in
+        // either name is refused rather than sent mangled.
+        let basic_latin = |s: &str| s.chars().all(|c| (c as u32) < 0x80);
+        if !basic_latin(symbol) || !basic_latin(&filters.local_symbol) {
+            return Err(Refusal::validation(
+                "Symbol should contain valid non-unicode characters only",
+            ));
+        }
+        if con_id == 0 && resolved.is_none() && filters.sec_id.is_empty() {
+            return Err(Refusal::validation("Please enter a valid security type"));
+        }
+        if describe && con_id == 0 && filters.local_symbol.is_empty() {
+            let expiry_missing = filters.last_trade_date_or_contract_month.trim().is_empty();
+            let option_like = matches!(resolved, Some("OPT") | Some("FOP") | Some("IOPT"));
+            if option_like {
+                // The right is read as the wire reads it: the first character,
+                // exactly — anything but C or P is an unset right. The strike
+                // is read as the wire writes it: empty only for the unset
+                // marker, a zero strike is stated.
+                let right_set = matches!(filters.right.chars().next(), Some('C') | Some('P'));
+                if expiry_missing || filters.strike == f64::MAX || !right_set {
+                    return Err(Refusal::validation(
+                        "When the local symbol field is empty, please fill the following fields (right, strike, expiry)",
+                    ));
+                }
+            }
+            if expiry_missing
+                && matches!(
+                    resolved,
+                    Some("OPT") | Some("FOP") | Some("IOPT") | Some("FUT") | Some("FWD")
+                )
+            {
+                return Err(Refusal::validation(
+                    "Please enter a local symbol or an expiry",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Check the contract month or date before requesting the contract.
     pub fn validate_contract_expiry(expiry: &str) -> Result<(), Refusal> {
         if expiry.is_empty() || expiry.eq_ignore_ascii_case("NOEXP") {
@@ -2681,17 +2815,22 @@ impl ClientCore {
     }
 
     /// What a gateway refuses in a request for a book before it looks the
-    /// contract up: no exchange named, a combination, or no rows.
+    /// contract up: no exchange named, a contract description it refuses, a
+    /// combination, or no rows.
     ///
     /// Each is refused as a gateway refuses it, with its reason. An empty
     /// exchange is not read as the smart destination: a gateway asks the
-    /// caller to name one.
+    /// caller to name one. The description is read as a gateway reads it on
+    /// this surface: a book request describes its contract, so the option and
+    /// futures field checks run on it too.
     pub fn validate_depth_request(
-        exchange: &str, sec_type: &str, num_rows: i32, expiry: &str,
+        con_id: i64, symbol: &str, exchange: &str, sec_type: &str, num_rows: i32,
+        expiry: &str, filters: &crate::types::SecDefFilters,
     ) -> Result<(), Refusal> {
         if exchange.trim().is_empty() {
             return Err(Refusal::validation("Please enter exchange."));
         }
+        Self::validate_contract_description(con_id, symbol, sec_type, filters, true)?;
         Self::validate_contract_expiry(expiry)?;
         if sec_type.trim().eq_ignore_ascii_case("BAG") {
             return Err(Refusal::validation("Market depth does not support combos."));
@@ -3005,6 +3144,12 @@ impl ClientCore {
         number_of_ticks: u32,
         ignore_size: bool,
     ) -> Result<(), Refusal> {
+        // The base description refusals, which a gateway runs on this request
+        // kind too — without the field checks: a tick-by-tick request goes by
+        // the contract as described or by id, and no option field is read.
+        Self::validate_contract_description(
+            contract.con_id, &contract.symbol, &contract.sec_type, &filters, false,
+        )?;
         shared.admit(control_tx, ControlCommand::SubscribeTbt {
             contract,
             req_id,

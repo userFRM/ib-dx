@@ -1404,6 +1404,21 @@ impl HotLoop {
                 self.take_subscription(cmd);
                 continue;
             }
+            // What the surfaces refuse before the command is sent, a gateway
+            // refuses before it looks the contract up — so a book refused on
+            // its description is refused here too, and ahead of the lookup a
+            // caller is owed below: a caller reaching this loop by the control
+            // channel goes past the surfaces and is refused in the same words.
+            if let ControlCommand::SubscribeDepth { contract, req_id, num_rows, filters, .. } = &cmd {
+                let ContractRef { con_id, symbol, exchange, sec_type, .. } = contract;
+                if let Err(why) = crate::client_core::ClientCore::validate_depth_request(
+                    *con_id, symbol, exchange, sec_type, *num_rows,
+                    &filters.last_trade_date_or_contract_month, filters,
+                ) {
+                    self.shared.reference.push_historical_error(*req_id, why.code, why.message);
+                    continue;
+                }
+            }
             // A caller who passed the contract it wrote down rather than the
             // venue's id for it gets the lookup made on its behalf, and the
             // request arrives here again once the venue has named it.
@@ -2022,17 +2037,9 @@ impl HotLoop {
                     }
                 }
                 ControlCommand::SubscribeDepth { contract, req_id, num_rows, is_smart_depth, filters, .. } => {
+                    // The description was refused or passed before the lookup
+                    // hold, where every command on this loop passes.
                     let ContractRef { con_id, exchange, sec_type, .. } = contract;
-                    // What the surfaces refuse before the command is sent, a
-                    // gateway refuses before it looks the contract up. A caller
-                    // reaching this loop by the control channel goes past the
-                    // surfaces, so it is refused here in the same words.
-                    if let Err(why) = crate::client_core::ClientCore::validate_depth_request(
-                        &exchange, &sec_type, num_rows, &filters.last_trade_date_or_contract_month,
-                    ) {
-                        self.shared.reference.push_historical_error(req_id, why.code, why.message);
-                        continue;
-                    }
                     self.farm.send_depth_subscribe(
                         req_id, con_id, &exchange, &filters.primary_exchange, &sec_type,
                         num_rows, is_smart_depth,
@@ -9297,20 +9304,31 @@ mod tests {
         hl.farm_conn = Some(conn);
         let (tx, rx) = std::sync::mpsc::sync_channel(4);
         hl.set_control_rx(rx);
-        tx.send(ControlCommand::SubscribeDepth {
-            req_id: 9, num_rows: 5, is_smart_depth: false, filters: Default::default(),
-            contract: crate::types::ContractRef { con_id: 756733, ..Default::default() },
-        })
-        .unwrap();
-        hl.poll_control_commands();
-        assert_eq!(
-            shared.reference.drain_historical_errors(),
-            [(
-                9,
-                crate::error_codes::Refusal::VALIDATION,
-                "Error validating request:-'' : cause - Please enter exchange.".to_string(),
-            )],
-        );
+        for (req_id, contract, reason) in [
+            (9, crate::types::ContractRef { con_id: 756733, ..Default::default() },
+             "Please enter exchange."),
+            // A described contract is refused on its description: no
+            // identifier at all, with the type stated and an exchange named.
+            (10, crate::types::ContractRef {
+                con_id: 0, sec_type: "STK".into(), exchange: "SMART".into(),
+                ..Default::default()
+             }, "The symbol or the local-symbol or the security id must be entered"),
+        ] {
+            tx.send(ControlCommand::SubscribeDepth {
+                req_id, num_rows: 5, is_smart_depth: false, filters: Default::default(),
+                contract,
+            })
+            .unwrap();
+            hl.poll_control_commands();
+            assert_eq!(
+                shared.reference.drain_historical_errors(),
+                [(
+                    req_id,
+                    crate::error_codes::Refusal::VALIDATION,
+                    format!("Error validating request:-'' : cause - {reason}"),
+                )],
+            );
+        }
         assert!(hl.farm.depth_subs.is_empty());
         assert!(farm::tests::drain_inner(&mut peer).is_empty(), "nothing asked of the venue");
     }
