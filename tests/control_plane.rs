@@ -239,7 +239,7 @@ fn historical_response_parse_multi_bar() {
     assert_eq!(resp.bars[0].close, 151.5);
     assert_eq!(resp.bars[0].high, 152.0);
     assert_eq!(resp.bars[0].low, 149.5);
-    assert_eq!(resp.bars[0].volume, 500000);
+    assert_eq!(ibkr_dx::types::qty_to_f64(resp.bars[0].volume), 500000.0);
     assert_eq!(resp.bars[0].count, 1500);
 
     // Bars are in chronological order

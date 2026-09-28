@@ -430,8 +430,10 @@ pub struct HistoricalBar {
     pub low: f64,
     /// Its last.
     pub close: f64,
-    /// How much traded in it.
-    pub volume: i64,
+    /// How much traded in it, in the fixed-point form every size here is
+    /// carried in: a crypto bar's volume is a fraction of a coin, which the
+    /// venue states as a decimal and a whole count cannot hold.
+    pub volume: crate::types::Qty,
     /// The volume-weighted average price.
     pub wap: f64,
     /// How many trades made it.
@@ -708,7 +710,9 @@ pub(crate) fn merge_pair(
                     high: at_ask.high,
                     low: at_bid.low,
                     close: at_ask.wap,
-                    volume: -1,
+                    // Minus one, as the venue's own answers state a series
+                    // that has no volume.
+                    volume: crate::types::qty_from_wire(-1),
                     wap: -1.0,
                     count: 0,
                 });
@@ -959,11 +963,13 @@ pub(crate) fn join_periods(
         let period = period_of(bar_size, &bar.time).filter(|p| joined.contains(p));
         match (out.last_mut(), &period) {
             (Some(held), Some(period)) if last_period.as_ref() == Some(period) => {
-                let volume = held.volume + bar.volume;
+                let volume = held.volume.saturating_add(bar.volume);
                 // A week or a month with no volume keeps the first part's
                 // average.
                 if volume != 0 {
-                    held.wap = (held.wap * held.volume as f64 + bar.wap * bar.volume as f64) / volume as f64;
+                    held.wap = (held.wap * crate::types::qty_to_f64(held.volume)
+                        + bar.wap * crate::types::qty_to_f64(bar.volume))
+                        / crate::types::qty_to_f64(volume);
                 }
                 held.volume = volume;
                 held.count = held.count.saturating_add(bar.count);
@@ -1096,9 +1102,13 @@ pub fn parse_bar_response(xml: &str) -> Option<HistoricalResponse> {
             high,
             low,
             close,
+            // Through the decimal the venue stated, not a whole count: a
+            // fractional volume failed the integer parse and a nought was
+            // substituted, so every fractional bar reported no trade at all.
+            // A name that is no number reads as a bar stating no volume.
             volume: tag(bar_xml, "volume")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0),
+                .and_then(|s| s.trim().parse::<f64>().ok())
+                .map_or(0, crate::types::qty_from_f64),
             wap: tag(bar_xml, "weightedAvg")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.0),

@@ -306,13 +306,38 @@ fn parse_bar_response_basic() {
     assert_eq!(bar.high, 272.81);
     assert_eq!(bar.low, 269.2);
     assert_eq!(bar.close, 269.47);
-    assert_eq!(bar.volume, 1411775);
+    assert_eq!(crate::types::qty_to_f64(bar.volume), 1411775.0);
     assert_eq!(bar.wap, 270.998);
     assert_eq!(bar.count, 5165);
 
     let bar2 = &resp.bars[1];
     assert_eq!(bar2.time, "20260227-14:35:00");
     assert_eq!(bar2.close, 270.10);
+}
+
+/// A crypto bar's volume is a fraction of a coin, and the venue states it
+/// as a decimal. Read into a whole count, `0.5342` failed to parse and a
+/// nought was substituted: every fractional bar reported no trade at all,
+/// and a volume-weighted read of the series was silently wrong. The volume
+/// is carried in the fixed-point form every size here is carried in, so the
+/// decimal the venue stated survives to the digit; a whole volume survives
+/// as it stood, and a bar stating none reads as one stating none.
+#[test]
+fn a_bars_fractional_volume_survives_the_parse() {
+    for (stated, read) in [("0.5342", 0.5342), ("1411775", 1411775.0), ("", 0.0)] {
+        let xml = format!(
+            "<ResultSetBar><id>q1</id><eoq>true</eoq><tz>UTC</tz><Events>\
+             <Bar><time>20260928-12:00:00</time>\
+             <open>1.0</open><high>1.0</high><low>1.0</low><close>1.0</close>\
+             <weightedAvg>1.0</weightedAvg><volume>{stated}</volume><count>1</count></Bar>\
+             </Events></ResultSetBar>",
+        );
+        let resp = parse_bar_response(&xml).unwrap();
+        assert_eq!(
+            crate::types::qty_to_f64(resp.bars[0].volume), read,
+            "<volume>{stated}</volume>",
+        );
+    }
 }
 
 /// A trade count past what the callback carries is read as a bar that states

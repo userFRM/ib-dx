@@ -1738,8 +1738,10 @@ pub struct BarData {
     pub low: f64,
     /// The last.
     pub close: f64,
-    /// How much traded, in the units the venue counts that contract in.
-    pub volume: i64,
+    /// How much traded, in the units the venue counts that contract in. A
+    /// crypto's volume is a fraction of a coin and reaches the caller as the
+    /// decimal the venue stated.
+    pub volume: f64,
     /// The volume-weighted average price over the bar.
     pub wap: f64,
     /// How many trades made it.
@@ -1767,7 +1769,7 @@ impl Default for BarData {
             high: 0.0,
             low: 0.0,
             close: 0.0,
-            volume: 0,
+            volume: 0.0,
             wap: 0.0,
             bar_count: 0,
             timezone: String::new(),
@@ -2307,7 +2309,7 @@ mod tests {
         let b = BarData::default();
         assert_eq!(b.date, "");
         assert_eq!(b.open, 0.0);
-        assert_eq!(b.volume, 0);
+        assert_eq!(b.volume, 0.0);
     }
 
     // ── ContractDetails ──

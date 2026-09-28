@@ -1188,7 +1188,7 @@ impl HmdsState {
                                     } else {
                                         opening(forming.seconds, start)
                                     };
-                                    let volume = bar.volume as f64;
+                                    let volume = crate::types::qty_to_f64(bar.volume);
                                     forming.bar = crate::types::RealTimeBar {
                                         timestamp: start, open: bar.open, high: bar.high, low: bar.low,
                                         close: bar.close, volume, wap: bar.wap, count: bar.count,

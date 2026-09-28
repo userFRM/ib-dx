@@ -691,7 +691,7 @@ impl EClient {
                     let bar_obj = BarData::new(
                         self.core.historical_bar_time_for(req_id as i64, bar, &response.timezone),
                         bar.open, bar.high, bar.low, bar.close,
-                        DecimalField::from_whole(bar.volume), DecimalField::from_float(bar.wap), bar.count,
+                        DecimalField::from_qty(bar.volume), DecimalField::from_float(bar.wap), bar.count,
                         response.timezone.clone(),
                         bar.end.clone(),
                     );

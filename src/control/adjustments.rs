@@ -878,20 +878,20 @@ fn scale_bars_by(
                 // factor that then brings it back under the limit hides that:
                 // the answer passes the test on the way out having already been
                 // rounded on the way in.
-                if b.volume.unsigned_abs() > EXACT_IN_A_FLOAT {
+                if b.volume.abs() > EXACT_IN_A_FLOAT as f64 {
                     return Err(format!(
                         "the bar dated {} states a volume of {}, which is more than a \
                          scale can be applied to without changing it", b.date, b.volume,
                     ));
                 }
-                let scaled = b.volume as f64 * volume;
+                let scaled = b.volume * volume;
                 if !scaled.is_finite() || scaled.abs() > EXACT_IN_A_FLOAT as f64 {
                     return Err(format!(
                         "the volume of the bar dated {} does not survive being put on one \
                          scale, and a count nobody can state is not one to hand back", b.date,
                     ));
                 }
-                b.volume = scaled.round() as i64;
+                b.volume = scaled.round();
             }
             Ok(b)
         })
@@ -916,7 +916,7 @@ pub fn scale_historical_bars(
         .into_iter()
         .map(|b| crate::types::model::BarData {
             date: b.time, open: b.open, high: b.high, low: b.low, close: b.close,
-            volume: b.volume, wap: b.wap, bar_count: b.count,
+            volume: crate::types::qty_to_f64(b.volume), wap: b.wap, bar_count: b.count,
             timezone: zone.to_string(), end: b.end,
         })
         .collect();
@@ -924,7 +924,7 @@ pub fn scale_historical_bars(
         .into_iter()
         .map(|b| crate::control::historical::HistoricalBar {
             time: b.date, open: b.open, high: b.high, low: b.low, close: b.close,
-            volume: b.volume, wap: b.wap, count: b.bar_count, end: b.end,
+            volume: crate::types::qty_from_f64(b.volume), wap: b.wap, count: b.bar_count, end: b.end,
         })
         .collect())
 }
@@ -1094,14 +1094,14 @@ mod tests {
         // restated and nothing moves it. UTC was still on the ninth.
         let sydney_morning = crate::types::model::BarData {
             date: "20240609-23:00:00".to_string(), open: 100.0, high: 100.0,
-            low: 100.0, close: 100.0, volume: 10, wap: 100.0, bar_count: 1,
+            low: 100.0, close: 100.0, volume: 10.0, wap: 100.0, bar_count: 1,
             timezone: "Australia/Sydney".to_string(), end: String::new(),
         };
         // New York, 20:30 on the ninth — the evening before, so this price is
         // the old one and is divided by the ratio. UTC had turned the tenth.
         let new_york_evening = crate::types::model::BarData {
             date: "20240610-00:30:00".to_string(), open: 1000.0, high: 1000.0,
-            low: 1000.0, close: 1000.0, volume: 10, wap: 1000.0, bar_count: 1,
+            low: 1000.0, close: 1000.0, volume: 10.0, wap: 1000.0, bar_count: 1,
             timezone: "US/Eastern".to_string(), end: String::new(),
         };
 
@@ -1415,7 +1415,7 @@ mod tests {
     #[test]
     fn a_series_across_a_split_comes_back_on_one_scale() {
         use crate::types::model::BarData;
-        let bar = |date: &str, close: f64, volume: i64| BarData {
+        let bar = |date: &str, close: f64, volume: f64| BarData {
             date: date.into(),
             open: close, high: close, low: close, close, wap: close,
             volume,
@@ -1427,13 +1427,13 @@ mod tests {
             value: "10".into(),
             ..Default::default()
         }];
-        let out = scale_bars(vec![bar("20240607", 1208.88, 100), bar("20240610", 121.79, 100)], &split)
+        let out = scale_bars(vec![bar("20240607", 1208.88, 100.0), bar("20240610", 121.79, 100.0)], &split)
             .expect("both bars state a day");
         assert!((out[0].close - 120.888).abs() < 1e-9, "before: {}", out[0].close);
-        assert_eq!(out[0].volume, 1000);
+        assert_eq!(out[0].volume, 1000.0);
         // The day of the split is already on the new scale and stays as it is.
         assert!((out[1].close - 121.79).abs() < 1e-9, "after: {}", out[1].close);
-        assert_eq!(out[1].volume, 100);
+        assert_eq!(out[1].volume, 100.0);
     }
 
     /// The bars the historical connection carries fold the same way the ones
@@ -1453,18 +1453,18 @@ mod tests {
         let bar = |time: &str, close: f64, volume: i64| HistoricalBar {
             time: time.into(),
             open: close, high: close, low: close, close, wap: close,
-            volume, count: 7, end: String::new(),
+            volume: crate::types::qty_from_wire(volume), count: 7, end: String::new(),
         };
         let out = scale_historical_bars(
             vec![bar("20240607", 1208.88, 100), bar("20240610", 121.79, 100)], &split, "", None,
         )
         .expect("both bars state a day");
         assert!((out[0].close - 120.888).abs() < 1e-9, "before: {}", out[0].close);
-        assert_eq!(out[0].volume, 1000, "the shares before the split count for ten times as many");
+        assert_eq!(crate::types::qty_to_f64(out[0].volume), 1000.0, "the shares before the split count for ten times as many");
         assert_eq!(out[0].time, "20240607", "the day it is dated is untouched");
         assert_eq!(out[0].count, 7, "and the count that made it");
         assert!((out[1].close - 121.79).abs() < 1e-9, "after: {}", out[1].close);
-        assert_eq!(out[1].volume, 100);
+        assert_eq!(crate::types::qty_to_f64(out[1].volume), 100.0);
     }
 
     /// A bar with no day in it is refused rather than scaled by a guess.
@@ -1497,7 +1497,7 @@ mod tests {
     #[test]
     fn a_factor_nobody_can_read_is_stated_rather_than_skipped() {
         use crate::types::model::BarData;
-        let bar = BarData { date: "20240607".into(), close: 1208.88, volume: 100, ..Default::default() };
+        let bar = BarData { date: "20240607".into(), close: 1208.88, volume: 100.0, ..Default::default() };
         for unreadable in ["", "nan", "0", "-10", "inf", "banana"] {
             let split = vec![Adjustment {
                 kind: Some(AdjustmentKind::Split),
@@ -1525,7 +1525,7 @@ mod tests {
     #[test]
     fn a_dividend_that_states_no_factor_is_not_an_error() {
         use crate::types::model::BarData;
-        let bar = BarData { date: "20240607".into(), close: 100.0, volume: 5, ..Default::default() };
+        let bar = BarData { date: "20240607".into(), close: 100.0, volume: 5.0, ..Default::default() };
         let dividend = vec![Adjustment {
             kind: Some(AdjustmentKind::CashDividend),
             date: "20240610".into(),
@@ -1535,7 +1535,7 @@ mod tests {
         }];
         let out = scale_bars(vec![bar], &dividend).expect("a dividend moves nothing");
         assert_eq!(out[0].close, 100.0);
-        assert_eq!(out[0].volume, 5, "and the count is what the venue served, exactly");
+        assert_eq!(out[0].volume, 5.0, "and the count is what the venue served, exactly");
     }
 
 
@@ -1549,7 +1549,7 @@ mod tests {
     #[test]
     fn a_day_nobody_can_read_stops_the_series_as_a_factor_does() {
         use crate::types::model::BarData;
-        let bar = BarData { date: "20240607".into(), close: 1208.88, volume: 100, ..Default::default() };
+        let bar = BarData { date: "20240607".into(), close: 1208.88, volume: 100.0, ..Default::default() };
         // The last two are shapes without days in them: a thirteenth month and
         // a thirty-first of February pass eight digits and name nothing.
         for undated in ["", "2024-06-10", "1717718400", "june", "20241340", "20240231"] {
@@ -1587,7 +1587,7 @@ mod tests {
     fn a_sloppy_answer_is_refused_rather_than_scaled() {
         use crate::types::model::BarData;
         let bars = || vec![BarData {
-            date: "20240607".into(), close: 1208.88, volume: 100, ..Default::default()
+            date: "20240607".into(), close: 1208.88, volume: 100.0, ..Default::default()
         }];
 
         // What the venue states twice is kept twice. Collapsing them needs an

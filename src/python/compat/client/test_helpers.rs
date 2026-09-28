@@ -876,7 +876,7 @@ impl EClient {
     #[doc(hidden)]
     #[pyo3(signature = (req_id, bars, is_complete, timezone = "", ends = None))]
     fn _test_push_historical_data(
-        &self, req_id: u32, bars: Vec<(String, f64, f64, f64, f64, i64)>, is_complete: bool,
+        &self, req_id: u32, bars: Vec<(String, f64, f64, f64, f64, f64)>, is_complete: bool,
         timezone: &str, ends: Option<Vec<String>>,
     ) -> PyResult<()> {
         let shared = self.shared_state()?;
@@ -885,7 +885,8 @@ impl EClient {
         self._test_pump();
         let bar_list: Vec<HistoricalBar> = bars.into_iter().enumerate().map(|(index, (time, o, h, l, c, v))| {
             HistoricalBar {
-                time, open: o, high: h, low: l, close: c, volume: v, wap: 0.0, count: 0,
+                time, open: o, high: h, low: l, close: c,
+                volume: crate::types::qty_from_f64(v), wap: 0.0, count: 0,
                 end: ends.as_ref().and_then(|values| values.get(index)).cloned().unwrap_or_default(),
             }
         }).collect();

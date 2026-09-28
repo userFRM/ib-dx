@@ -93,7 +93,15 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
     client._test_push_histogram(7, 101.5, 42)
     client._test_push_historical_ticks(7, ["20260812 10:00:00"])
     client._test_push_historical_data(
-        1, [("20260812-13:30:00", 1.0, 2.0, 0.5, 1.5, 100)], True, "US/Eastern"
+        1,
+        [
+            ("20260812-13:30:00", 1.0, 2.0, 0.5, 1.5, 100),
+            # A crypto bar's volume is a fraction of a coin: the digits the
+            # venue stated must survive to the Decimal, not round to a count.
+            ("20260812-13:35:00", 1.0, 2.0, 0.5, 1.5, 0.5342),
+        ],
+        True,
+        "US/Eastern",
     )
     client._test_push_venue_order(86, "SPY", "BUY", 1, 100.0)
     client._test_push_fill(0, 86, "BUY", 100.0, 3, 2)
@@ -149,7 +157,7 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
     assert heard.depth == [Decimal("5")]
     assert heard.ticks == [Decimal("1")]
     assert heard.buckets == [Decimal("42")]
-    assert heard.bars == [(Decimal("100"), Decimal("0"))]
+    assert heard.bars == [(Decimal("100"), Decimal("0")), (Decimal("0.5342"), Decimal("0"))]
 
 
 def test_a_fresh_record_leaves_its_size_unset():

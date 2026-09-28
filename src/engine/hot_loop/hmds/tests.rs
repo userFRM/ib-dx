@@ -257,7 +257,11 @@ fn a_pair_request_is_delivered_once_both_series_have_answered() {
     assert_eq!(bars[0].time, "20260713");
     assert_eq!(bars[1].time, "20260714");
     assert_eq!((bars[1].open, bars[1].high, bars[1].low, bars[1].close), (4.05, 4.6, 3.9, 4.35));
-    assert_eq!((bars[1].volume, bars[1].wap, bars[1].count), (-1, -1.0, 0), "the pair itself traded nothing");
+    assert_eq!(
+        (bars[1].volume, bars[1].wap, bars[1].count),
+        (crate::types::qty_from_wire(-1), -1.0, 0),
+        "the pair itself traded nothing",
+    );
     assert_eq!(bars[1].end, "20260715", "the bound either side stated");
     assert!(hmds.pending_historical.is_empty(), "both names are released");
     assert_eq!(over(&shared), [31], "and the request is over");
@@ -1273,10 +1277,10 @@ fn a_series_is_asked_along_the_ids_the_contract_traded_under() {
             Ok(wanted) => {
                 assert_eq!(series.len(), 1, "{what}: the stretches are filed as one series");
                 assert!(series[0].1.is_complete, "{what}: and it says it is the whole answer");
-                let bars: Vec<(String, f64, i64)> =
-                    series[0].1.bars.iter().map(|b| (b.time.clone(), b.close, b.volume)).collect();
-                let wanted: Vec<(String, f64, i64)> =
-                    wanted.iter().map(|(at, close, volume)| (at.to_string(), *close, *volume)).collect();
+                let bars: Vec<(String, f64, f64)> = series[0].1.bars.iter()
+                    .map(|b| (b.time.clone(), b.close, crate::types::qty_to_f64(b.volume))).collect();
+                let wanted: Vec<(String, f64, f64)> =
+                    wanted.iter().map(|(at, close, volume)| (at.to_string(), *close, *volume as f64)).collect();
                 assert_eq!(bars, wanted, "{what}: oldest first across the stretches");
                 assert!(errors.is_empty(), "{what}: {errors:?}");
                 if what == "weeks along two ids and a split" {
@@ -1564,7 +1568,10 @@ fn a_trades_request_is_folded_with_the_actions_that_move_the_scale() {
         (bar.close - 120.888).abs() < 1e-6,
         "the pre-split close was not put on the split's scale: {}", bar.close,
     );
-    assert_eq!(bar.volume, 1000, "the shares before the split count for ten times as many");
+    assert_eq!(
+        crate::types::qty_to_f64(bar.volume), 1000.0,
+        "the shares before the split count for ten times as many",
+    );
     assert!(hmds.held.is_empty(), "the hold is released once folded");
 }
 
@@ -1727,7 +1734,7 @@ fn an_adjusted_series_has_its_dividends_taken_off_and_a_trades_one_does_not() {
         let bar = bars.iter().find(|b| b.time.starts_with(day)).unwrap();
         assert!(
             near(bar.open, prices[0]) && near(bar.high, prices[1]) && near(bar.low, prices[2])
-                && near(bar.wap, prices[3]) && bar.volume == volume,
+                && near(bar.wap, prices[3]) && crate::types::qty_to_f64(bar.volume) == volume as f64,
             "{symbol} {what_to_show}: the bar of {day} reads {bar:?}",
         );
     }
