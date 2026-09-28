@@ -50,7 +50,7 @@ impl EClient {
                 &contract.sec_type, format_date,
             )
         {
-            return self.report_refusal(py, req_id, why.into());
+            return self.report_refusal(py, req_id, why);
         }
         // A contract given by id alone is named by the engine before the
         // request goes: a request states the contract's type and its
