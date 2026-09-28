@@ -1896,7 +1896,7 @@ impl CcpState {
         // reads it: on an account working nothing it follows the day's
         // executions directly.
         if parsed.get(&55).map(String::as_str) == Some("*") {
-            self.end_what_the_venue_names(context, shared);
+            self.end_what_the_venue_names(context, shared, parsed.get(&1).map(String::as_str));
             return;
         }
         // CCP recovery push format A (, captured against live):

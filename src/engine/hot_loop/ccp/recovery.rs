@@ -61,6 +61,9 @@ pub(crate) struct Recovery {
     /// The latest time a report stated about an order, which the question
     /// asks back to.
     latest_report: i64,
+    /// The account the report ending the naming carried, which the question
+    /// is about; where it carried none, the session's own account is stated.
+    account: Option<String>,
 }
 
 #[derive(Default, PartialEq)]
@@ -149,12 +152,14 @@ impl CcpState {
     /// The venue ended what it names, or an answer to what it has finished:
     /// ask what it has finished where this connection is recovering orders,
     /// judge them where that answer is the one ending, and otherwise let go of
-    /// what the drop left waiting.
+    /// what the drop left waiting. The report ending the naming may carry the
+    /// account it is about, which the question then states.
     pub(crate) fn recover_at_the_end(
         &mut self,
         context: &mut Context,
         shared: &SharedState,
         ours: bool,
+        account: Option<&str>,
     ) {
         if ours {
             self.recovery.question = Question::None;
@@ -164,6 +169,7 @@ impl CcpState {
         }
         let recovery = &mut self.recovery;
         if recovery.here && recovery.holds() && recovery.question == Question::None {
+            recovery.account = account.map(str::to_string);
             recovery.question = Question::Due;
             return;
         }
@@ -218,12 +224,19 @@ impl CcpState {
         let Some(conn) = ccp_conn.as_mut() else { return };
         self.recovery.question = Question::Out;
         let ts = crate::protocol::datetime::chrono_free_timestamp();
+        // The account the question is about: the one the report ending the
+        // naming carried where it carried one, as a gateway takes it from the
+        // end marker, else the session's own. Unscoped, the answer may name
+        // another account's finished order under a number this session also
+        // used, and the judge reads it as this order's fate.
+        let account = self.recovery.account.clone().unwrap_or_else(|| shared.account_name(""));
         let mut fields: Vec<(u32, String)> = vec![
             (fix::TAG_MSG_TYPE, "H".into()),
             (fix::TAG_SENDING_TIME, ts.to_string()),
             (11, "*".into()),
             (55, "*".into()),
             (54, "*".into()),
+            (1, account),
             (6533, "1".into()),
         ];
         // From the orders' own time, where the logon offers a question bounded

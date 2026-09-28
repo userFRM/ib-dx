@@ -4280,8 +4280,15 @@ impl CcpState {
 
     /// What the venue names on this connection is over, or an answer to what
     /// it has finished is: the report stating its contract `*` ends both, as a
-    /// gateway reads it, on an account working nothing as on any other.
-    pub(crate) fn end_what_the_venue_names(&mut self, context: &mut Context, shared: &SharedState) {
+    /// gateway reads it, on an account working nothing as on any other. The
+    /// report may carry the account it ends the naming of, which the
+    /// recovery's question then states.
+    pub(crate) fn end_what_the_venue_names(
+        &mut self,
+        context: &mut Context,
+        shared: &SharedState,
+        account: Option<&str>,
+    ) {
         // A caller waiting on the answer waits on this: the answer is a run of
         // ordinary reports and nothing else says it is over. The recovery's
         // own answer has no caller.
@@ -4295,7 +4302,7 @@ impl CcpState {
             }
         }
         shared.orders.set_replay_done();
-        self.recover_at_the_end(context, shared, the_recoverys);
+        self.recover_at_the_end(context, shared, the_recoverys, account);
     }
 
     /// Log the orders the recovery push did not account for.

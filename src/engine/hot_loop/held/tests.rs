@@ -2102,6 +2102,16 @@ fn the_end() -> Vec<u8> {
     ], 1)
 }
 
+/// The same report carrying the account whose naming it ends, as on a session
+/// working several accounts.
+fn the_end_on(account: &str) -> Vec<u8> {
+    fix::fix_build(&[
+        (35, "8"), (11, "*"), (17, "82302.1790356536.2"), (150, "0"), (20, "3"), (39, "0"), (55, "*"),
+        (38, "0"), (32, "0"), (31, "0.00"), (14, "0"), (151, "0"), (6, "0"), (54, "1"), (37, "*"),
+        (1, account), (40, "2"), (59, "0"),
+    ], 1)
+}
+
 /// A report of order 7 on SPY, stating `status` on tag 39 and 150, marked as
 /// restating the past where `restated`, as an answer to what the venue has
 /// finished marks its reports.
@@ -2132,7 +2142,10 @@ fn order_7_timed(status: &str, exec_type: &str, sent_at: &str) -> Vec<u8> {
 /// recovers it: once the connection that replaced it has named what is
 /// working, the venue is asked what it has finished today, back to a second
 /// before the order went, and no further than a day and a second back where
-/// a report stated an older time; an order it names in either answer takes the state
+/// a report stated an older time; the question states the account it is
+/// about, the one the report ending the naming carried where it carried one
+/// and the session's own otherwise, so no answer can name another account's
+/// finished order under a number this session also used; an order it names in either answer takes the state
 /// it states; one it names in neither is held as inactive and not sent again,
 /// and where a recovery had already sent it out, its program is told under
 /// 106 that it could not be sent. A question of what is working is answered
@@ -2152,25 +2165,39 @@ fn a_placement_the_drop_left_unanswered_is_recovered_as_a_gateway_recovers_it() 
         /// back to, so the question asks back to a day and a second before
         /// now, as a gateway bounds it.
         floor_asked: bool,
+        /// The account the report ending the naming carries, where it carries
+        /// one.
+        carried: Option<&'static str>,
+        /// The account the question states.
+        asked_on: &'static str,
         stands: Option<OrderStatus>,
         said: Option<OrderStatus>,
         told: Vec<(u64, i32, String)>,
     }
     let rows = [
         Row { what: "named working", named: vec![order_7("0", "0", false)], answered: vec![], sent_out_by_a_recovery: false,
-            floor_asked: false, stands: Some(OrderStatus::Submitted), said: Some(OrderStatus::Submitted), told: vec![] },
+            floor_asked: false, carried: None, asked_on: "DU1",
+            stands: Some(OrderStatus::Submitted), said: Some(OrderStatus::Submitted), told: vec![] },
         Row { what: "named working on a report older than a day",
             named: vec![order_7_timed("0", "0", "20200101-00:00:00")], answered: vec![], sent_out_by_a_recovery: false,
-            floor_asked: true, stands: Some(OrderStatus::Submitted), said: Some(OrderStatus::Submitted), told: vec![] },
+            floor_asked: true, carried: None, asked_on: "DU1",
+            stands: Some(OrderStatus::Submitted), said: Some(OrderStatus::Submitted), told: vec![] },
         Row { what: "stated finished", named: vec![], answered: vec![order_7("4", "4", true)], sent_out_by_a_recovery: false,
-            floor_asked: false, stands: None, said: Some(OrderStatus::Cancelled), told: vec![] },
+            floor_asked: false, carried: None, asked_on: "DU1",
+            stands: None, said: Some(OrderStatus::Cancelled), told: vec![] },
         Row { what: "named in neither", named: vec![], answered: vec![], sent_out_by_a_recovery: false,
-            floor_asked: false, stands: Some(OrderStatus::Inactive), said: None, told: vec![] },
+            floor_asked: false, carried: None, asked_on: "DU1",
+            stands: Some(OrderStatus::Inactive), said: None, told: vec![] },
         Row { what: "named in neither, sent out by a recovery", named: vec![], answered: vec![],
-            sent_out_by_a_recovery: true, floor_asked: false, stands: Some(OrderStatus::Inactive), said: None,
+            sent_out_by_a_recovery: true, floor_asked: false, carried: None, asked_on: "DU1",
+            stands: Some(OrderStatus::Inactive), said: None,
             told: vec![(7, 106, "Can't transmit order id:7, BUY 1 SPY ARCA".into())] },
+        Row { what: "named in neither, the report ending the naming carried another account",
+            named: vec![], answered: vec![], sent_out_by_a_recovery: false,
+            floor_asked: false, carried: Some("DU2"), asked_on: "DU2",
+            stands: Some(OrderStatus::Inactive), said: None, told: vec![] },
     ];
-    for Row { what, named, answered: answered_reports, sent_out_by_a_recovery, floor_asked, stands, said, told } in rows {
+    for Row { what, named, answered: answered_reports, sent_out_by_a_recovery, floor_asked, carried, asked_on, stands, said, told } in rows {
         let (mut hl, shared, tx, mut peer) = over_a_drop(&["APINTLRCV", "1DAYSORDER"]);
         if sent_out_by_a_recovery {
             // Built and not yet sent when the connection goes, and sent out
@@ -2202,7 +2229,8 @@ fn a_placement_the_drop_left_unanswered_is_recovered_as_a_gateway_recovers_it() 
         for report in named {
             hl.inject_ccp_message(&report);
         }
-        hl.inject_ccp_message(&the_end());
+        let end = carried.map(the_end_on).unwrap_or_else(the_end);
+        hl.inject_ccp_message(&end);
         pass(&mut hl);
         let asked = on_the_wire(&mut back);
         let went_out = hl.context.placed_at.get(&7).map(|(at, _)| *at).expect("the order went out");
@@ -2217,13 +2245,14 @@ fn a_placement_the_drop_left_unanswered_is_recovered_as_a_gateway_recovers_it() 
             let value = asked.split("|6536=").nth(1)
                 .and_then(|rest| rest.split('|').next()).unwrap_or_default();
             assert!(
-                asked.contains("|11=*|55=*|54=*|6533=1|") && value >= early.as_str() && value <= late.as_str(),
+                asked.contains(&format!("|11=*|55=*|54=*|1={asked_on}|6533=1|"))
+                    && value >= early.as_str() && value <= late.as_str(),
                 "{what}: the venue is asked what it has finished since a day and a second back: {asked}",
             );
         } else {
             let since = crate::protocol::datetime::unix_to_ib_utc_dash((went_out - 1_000).div_euclid(1_000));
             assert!(
-                asked.contains(&format!("|11=*|55=*|54=*|6533=1|6536={since}|")),
+                asked.contains(&format!("|11=*|55=*|54=*|1={asked_on}|6533=1|6536={since}|")),
                 "{what}: the venue is asked what it has finished since a second before the order went: {asked}",
             );
         }
@@ -2357,7 +2386,7 @@ fn a_cancel_the_drop_left_unanswered_is_sent_again_as_a_gateway_sends_it() {
         let went_out = hl.context.placed_at.get(&7).map(|(at, _)| *at).expect("the order went out");
         let since = crate::protocol::datetime::unix_to_ib_utc_dash((went_out - 1_000).div_euclid(1_000));
         assert!(
-            asked.contains(&format!("|11=*|55=*|54=*|6533=1|6536={since}|")),
+            asked.contains(&format!("|11=*|55=*|54=*|1=DU1|6533=1|6536={since}|")),
             "{what}: asked back to a second before the order went: {asked}"
         );
         let mut heard = records(&shared);
