@@ -555,6 +555,14 @@ fn a_brackets_legs_are_recorded_as_the_wire_states_them() {
 #[test]
 fn a_locally_placed_child_reports_the_parent_it_was_given() {
     let (client, rx, shared) = test_client();
+    // A parent the venue named: a child of a parent no book holds is refused
+    // where it is placed.
+    shared.orders.push_order_info(4242, crate::bridge::RichOrderInfo {
+        contract: spy(),
+        order: Order { order_id: 4242, ..Default::default() },
+        order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+        last_exec: Default::default(),
+    });
     let child = Order {
         action: "SELL".into(), total_quantity: 1.0, order_type: "LMT".into(),
         lmt_price: 110.0, tif: "DAY".into(), parent_id: 4242, ..Default::default()
@@ -611,6 +619,14 @@ fn a_status_states_what_the_order_paid() {
 #[test]
 fn a_fill_reports_the_parent_the_child_was_given() {
     let (client, rx, shared) = test_client();
+    // A parent the venue named: a child of a parent no book holds is refused
+    // where it is placed.
+    shared.orders.push_order_info(4242, crate::bridge::RichOrderInfo {
+        contract: spy(),
+        order: Order { order_id: 4242, ..Default::default() },
+        order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+        last_exec: Default::default(),
+    });
     let child = Order {
         action: "SELL".into(), total_quantity: 1.0, order_type: "LMT".into(),
         lmt_price: 110.0, tif: "DAY".into(), parent_id: 4242, ..Default::default()
@@ -637,6 +653,14 @@ fn a_fill_reports_the_parent_the_child_was_given() {
 #[test]
 fn a_what_if_preview_reports_the_parent_the_child_was_given() {
     let (client, rx, shared) = test_client();
+    // A parent the venue named: a child of a parent no book holds is refused
+    // where it is placed.
+    shared.orders.push_order_info(4242, crate::bridge::RichOrderInfo {
+        contract: spy(),
+        order: Order { order_id: 4242, ..Default::default() },
+        order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+        last_exec: Default::default(),
+    });
     let child = Order {
         action: "SELL".into(), total_quantity: 1.0, order_type: "LMT".into(),
         lmt_price: 110.0, tif: "DAY".into(), parent_id: 4242, what_if: true,
@@ -718,9 +742,11 @@ fn a_preview_is_no_longer_tracked_while_its_own_callback_runs() {
 ///
 /// It was never sent, so the venue knows no such order — and left queued, the
 /// next thing that transmitted sent the order the caller had just cancelled.
+/// Forgotten entirely, a later child naming it is refused as a child of a
+/// parent no book holds.
 #[test]
 fn a_held_order_that_is_withdrawn_does_not_go_out_later() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
     let leg = |id: i64, parent: i64, transmit: bool| Order {
         order_id: id,
         parent_id: parent,
@@ -737,9 +763,13 @@ fn a_held_order_that_is_withdrawn_does_not_go_out_later() {
     crate::api::client::tests::reported(&client, || client.cancel_order(80, "")).expect("withdrawn");
     assert!(rx.try_recv().is_err(), "nothing was sent, so nothing is withdrawn at the venue");
 
-    client.try_place_order(81, &spy(), &leg(81, 80, true)).expect("this one transmits");
-    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    assert_eq!(sent.len(), 1, "only the order that transmitted: {sent:?}");
+    client.try_place_order(81, &spy(), &leg(81, 80, true)).expect("taken");
+    let refused = engine_refused(&rx, &shared);
+    assert!(
+        matches!(refused.as_slice(), [(81, 135, _)]),
+        "the withdrawn parent is no book's: {refused:?}",
+    );
+    assert!(rx.try_recv().is_err(), "and nothing was sent, neither the child nor what was withdrawn");
 }
 
 /// A placement is recorded ahead of anything the venue says about it.
@@ -3523,6 +3553,14 @@ fn replacing_an_order_does_not_send_the_family_it_is_still_building() {
 #[test]
 fn a_change_to_an_order_that_finished_is_not_released_with_the_next_family() {
     let (client, rx, shared) = test_client();
+    // The family's parent, as the venue names it: a child of a parent no
+    // book holds is refused where it is placed.
+    shared.orders.push_order_info(60, crate::bridge::RichOrderInfo {
+        contract: spy(),
+        order: Order { order_id: 60, ..Default::default() },
+        order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+        last_exec: Default::default(),
+    });
     let exit = |transmit: bool, price: f64| Order {
         action: "SELL".into(), total_quantity: 100.0, order_type: "LMT".into(),
         lmt_price: price, tif: "DAY".into(), transmit, parent_id: 60,

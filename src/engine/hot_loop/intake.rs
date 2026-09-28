@@ -909,6 +909,13 @@ impl HotLoop {
 
         // Attached exits share the parent's group, including children placed
         // individually. A scale child retains the group its scale order gave it.
+        // A child naming a parent no book holds — neither what this session
+        // placed, nor the venue's records, nor a number the venue has finished
+        // an order under this session — is refused under its own number, as a
+        // gateway refuses it when it links the child: the child is never
+        // created and nothing goes on the wire. The parent may be stated by a
+        // number this session was given moments ago, so the translation the
+        // group reads is what names it here too.
         if !replacing && p.order.parent_id != 0 {
             let parent_id = self.intake.attached.wire_order_id(p.order.parent_id)
                 .unwrap_or(p.order.parent_id as u64);
@@ -916,6 +923,13 @@ impl HotLoop {
                 .map(|parent| crate::client_core::attached_children::is_scale_order(&parent.order))
                 .or_else(|| self.shared.orders.get_order_info(parent_id)
                     .map(|parent| crate::client_core::attached_children::is_scale_order(&parent.order)));
+            if scale_parent.is_none() && !self.shared.orders.number_finished(parent_id) {
+                self.refuse_order(api_id, op, Refusal::stated(
+                    NO_SUCH_ORDER,
+                    format!("Can't find order with id ={}", p.order.parent_id),
+                ));
+                return Step::Done;
+            }
             if let Some(scale_parent) = scale_parent
                 && !(scale_parent && p.order.scale_profit_offset != f64::MAX
                     && p.order.scale_profit_offset > 0.0)
@@ -2978,6 +2992,92 @@ mod tests {
             let told: Vec<_> = shared.drain_refused().into_iter().map(|(_, code, _)| code).collect();
             assert_eq!(told, refused, "{what}");
             assert_eq!(wire.contains("35=G|"), refused.is_empty(), "{what}: {wire}");
+        }
+    }
+
+    /// A child naming a parent no book holds — neither what this session
+    /// placed nor the venue's records — is refused under its own number, as a
+    /// gateway refuses it when it links the child, and nothing goes on the
+    /// wire. A parent this session holds for a later transmit, a parent the
+    /// venue named, and a number the venue has finished an order under this
+    /// session all hold their children: a child of the held one takes the
+    /// whole family with it when it transmits.
+    #[test]
+    fn a_child_naming_a_parent_no_book_holds_is_refused_locally() {
+        for (what, parent, refused) in [
+            ("a parent nothing holds", None, Some(135)),
+            ("a parent this session holds", Some("held"), None),
+            ("a parent the venue named", Some("venue"), None),
+            ("a number the venue finished an order under", Some("finished"), None),
+        ] {
+            let shared = Arc::new(SharedState::new());
+            shared.orders.set_replay_done();
+            let mut engine = HotLoop::new(shared.clone(), None, None);
+            let (connection, mut peer) = Connection::for_test();
+            peer.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
+            engine.ccp_conn = Some(connection);
+            engine.set_account_id("DU1".into());
+            let (send, receive) = mpsc::channel();
+            engine.set_control_rx(receive);
+            let mut sent = || {
+                let mut wire = String::new();
+                let mut bytes = [0; 16384];
+                while let Ok(n) = peer.read(&mut bytes) {
+                    if n == 0 { break; }
+                    wire.push_str(&String::from_utf8_lossy(&bytes[..n]));
+                }
+                wire.replace('\x01', "|")
+            };
+            let place = |order_id: u64, parent_id: i64, transmit: bool| {
+                shared.admit(&send, ControlCommand::Place(Box::new(Placement {
+                    order_id,
+                    allocator: Arc::new(AtomicU64::new(order_id + 1)),
+                    contract: Contract {
+                        con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+                        exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
+                    },
+                    order: Order { parent_id, transmit, ..Order::limit("BUY", 100.0, 100.0) },
+                    warnings: Vec::new(),
+                }))).unwrap();
+            };
+            match parent {
+                Some("venue") => shared.orders.push_order_info(42, crate::bridge::RichOrderInfo {
+                    contract: Contract {
+                        con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+                        exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
+                    },
+                    order: Order { order_id: 42, ..Default::default() },
+                    order_state: crate::types::model::OrderState {
+                        status: "Submitted".into(), ..Default::default()
+                    },
+                    last_exec: Default::default(),
+                }),
+                Some("finished") => shared.orders.push_order_update(crate::types::OrderUpdate {
+                    order_id: 42, instrument: 0, status: crate::types::OrderStatus::Filled,
+                    filled_qty: 100.0, remaining_qty: 0.0, avg_price: 0, perm_id: 0,
+                    parent_id: 0, timestamp_ns: 0,
+                }),
+                Some(_) => {
+                    place(42, 0, false);
+                    engine.poll_once();
+                    assert!(sent().is_empty(), "{what}: the parent is kept, not sent");
+                }
+                None => {}
+            }
+            place(43, 42, true);
+            (0..3).for_each(|_| engine.poll_once());
+
+            let wire = sent();
+            let told = shared.drain_refused();
+            let codes: Vec<_> = told.iter().map(|(_, code, _)| *code).collect();
+            assert_eq!(codes, refused.into_iter().map(i64::from).collect::<Vec<_>>(), "{what}: {told:?}");
+            if let Some((_, _, text)) = told.first() {
+                assert_eq!(text, "Can't find order with id =42", "{what}");
+            }
+            assert_eq!(wire.contains("35=D|"), refused.is_none(), "{what}: {wire}");
+            if parent == Some("held") {
+                assert_eq!(wire.matches("35=D|").count(), 2, "{what}: the held parent goes with its child: {wire}");
+            }
         }
     }
 }

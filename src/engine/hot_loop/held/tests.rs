@@ -879,8 +879,9 @@ fn a_placement_kept_for_transmit_counts_until_its_withdrawal() {
     assert_eq!(shared.backlog(), 0, "the session's end withdraws what was kept");
 }
 
-/// A parent whose naming fails is refused under its own number, and the
-/// session still finishes.
+/// A parent whose naming fails is refused under its own number, the child
+/// naming it is refused under its own as a child of a parent no book holds,
+/// and the session still finishes.
 #[test]
 fn a_parent_whose_naming_fails_at_the_stop_is_refused_under_its_number() {
     let (mut hl, shared, tx, _peer) = with_trading();
@@ -895,13 +896,16 @@ fn a_parent_whose_naming_fails_at_the_stop_is_refused_under_its_number() {
     let (asked, _) = hl.ccp.order_naming.remove(0);
     hl.ccp.orders_named.push((asked, ccp::OrderNamed::Unnamed(0)));
     hl.poll_once();
-    assert!(hl.is_running(), "newly built orders wait for the next lap's allowance");
     hl.poll_once();
     assert!(!hl.is_running());
     let refused = shared.drain_refused();
     assert!(
         refused.iter().any(|(id, ..)| *id == 20),
         "the parent is refused under its number: {refused:?}"
+    );
+    assert!(
+        refused.iter().any(|(id, code, _)| *id == 21 && *code == 135),
+        "and the child naming it is refused under its own: {refused:?}"
     );
 }
 
