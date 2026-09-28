@@ -469,7 +469,7 @@ pub fn check(
                     zoneless();
                 }
                 if !moment(value) {
-                    return Err((10314, format!("{tag}{MOMENT_FORMATS}")));
+                    return Err(moment_refusal(tag));
                 }
             }
             let failed = || (441, format!("Algo attributes validation failed:{tag}={value}"));
@@ -736,6 +736,12 @@ const MOMENT_FORMATS: &str = ": The date, time, or time-zone entered is invalid.
      there is a space between the date and time,\nand between the time and time-zone.\n\nIf no date is specified, \
      current date is assumed.\nIf no time-zone is specified, local time-zone is assumed(deprecated).\n\nYou can also \
      provide yyyymmddd-hh:mm:ss time is in UTC.\nNote that there is a dash between the date and time in UTC notation.";
+
+/// The refusal of a moment a gateway cannot read: the invalid-datetime code,
+/// the parameter's name and the standing text.
+pub fn moment_refusal(tag: &str) -> (i32, String) {
+    (10314, format!("{tag}{MOMENT_FORMATS}"))
+}
 
 /// Whether a gateway reads a moment: `yyyyMMdd-HH:mm:ss` in UTC, exactly; or
 /// a time `H:m:s` on a 24-hour clock, with an eight-digit date before it and

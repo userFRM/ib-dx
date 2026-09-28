@@ -717,6 +717,11 @@ impl EClient {
             // exchange, and both are the venue's to say.
             // Refused here rather than turned into trades on the way out.
             crate::control::historical::tick_data_type(what_to_show)?;
+            // A moment a gateway cannot read is refused at intake under the
+            // invalid-datetime code, as it refuses one, rather than riding
+            // raw to the venue and coming back as a data service failure.
+            crate::client_core::ClientCore::validate_moment("Start Date/Time", start_date_time)?;
+            crate::client_core::ClientCore::validate_moment("End Date/Time", end_date_time)?;
             // A count below zero is not a count. Cast unchecked it became a
             // request for four billion ticks, which the venue answers by refusing
             // a request the caller never made.

@@ -4531,6 +4531,42 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
     }
 }
 
+/// A date string a gateway cannot read is refused at intake under the
+/// invalid-datetime code, naming the parameter and carrying the standing
+/// text — not forwarded raw and relayed as a data-service failure after a
+/// round trip, under another code and words. Empty is what the gateway
+/// substitutes now for, and stays askable.
+#[test]
+fn an_unparseable_historical_moment_is_refused_at_intake_under_10314() {
+    let (client, rx, _shared) = test_client();
+    const TEXT: &str = ": The date, time, or time-zone entered is invalid.\n\
+         The correct format is yyyymmdd hh:mm:ss xx/xxxx\n\
+         where yyyymmdd and xx/xxxx are optional.";
+    let err = client
+        .try_req_historical_data(5, &spy(), "2026-09-25 15:00:00", "1 D", "1 hour", "TRADES", true, 1, false)
+        .expect_err("an end date in no form a gateway reads");
+    assert_eq!(err.code, 10314);
+    assert!(err.message.starts_with(&format!("End Date/Time{TEXT}")), "{}", err.message);
+    assert!(rx.try_recv().is_err(), "nothing was sent");
+
+    // The same at intake of a tick request, under each end's own name.
+    for (start, end, header) in [
+        ("2026-09-25 13:00:00", "", "Start Date/Time"),
+        ("", "25/09/2026 15:00:00", "End Date/Time"),
+    ] {
+        let err = crate::api::client::tests::reported(&client, || {
+            client.req_historical_ticks(8, &spy(), start, end, 100, "TRADES", true, false)
+        })
+        .expect_err(header);
+        assert_eq!(err.code, 10314, "{header}");
+        assert!(err.message.starts_with(&format!("{header}{TEXT}")), "{header}: {}", err.message);
+    }
+    assert!(rx.try_recv().is_err(), "and nothing was sent for either");
+    // A moment in a form a gateway reads still goes, under either spelling.
+    client.req_historical_ticks(8, &spy(), "20260925-13:00:00", "", 100, "TRADES", true, false);
+    assert!(rx.try_recv().is_ok(), "the UTC spelling is a moment");
+}
+
 /// An engine that has gone is not a request that was malformed. A caller that
 /// branches on the code has to be able to tell a session it can reopen from a
 /// request it has to fix.

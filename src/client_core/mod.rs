@@ -6302,13 +6302,27 @@ impl ClientCore {
         crate::protocol::datetime::bar_epoch_as_asked(secs, end, format_date, zone, by_day)
     }
 
+    /// A moment a gateway cannot read, refused at intake under the
+    /// invalid-datetime code with the parameter's name and the standing text —
+    /// forwarded raw, it rides to the venue and comes back relayed as a data
+    /// service failure, under another code and words. Empty is what a gateway
+    /// substitutes now for, and stays askable.
+    pub fn validate_moment(tag: &str, value: &str) -> Result<(), Refusal> {
+        if value.trim().is_empty() || crate::control::algorithms::moment(value.trim()) {
+            return Ok(());
+        }
+        let (code, message) = crate::control::algorithms::moment_refusal(tag);
+        Err(Refusal::stated(code, message))
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized
     /// what_to_show falls back to TRADES. The caller is answered with a
     /// synchronous Err at the call instead of plausible, wrong candles.
     ///
-    /// And what a gateway refuses before it asks the venue, in its words: a
+    /// And what a gateway refuses before it asks the venue, in its words: an
+    /// end date in no form it reads, under the invalid-datetime code, a
     /// duration that is not an integer, a space and one of the five units,
     /// bare or out of its unit's range, the adjusted series with an end date
     /// or with bars longer than a day, a date format outside the three it
@@ -6322,9 +6336,11 @@ impl ClientCore {
         end_date_time: &str,
         sec_type: &str,
         format_date: i32,
-    ) -> Result<(), String> {
-        // Read first, as a gateway reads it: the duration is taken before
-        // anything else about the request is looked at.
+    ) -> Result<(), Refusal> {
+        // Read first, as a gateway reads it: the end date is parsed where the
+        // request is read, before anything else about it is looked at. Left
+        // empty it stands for now, as at a gateway, and is askable.
+        Self::validate_moment("End Date/Time", end_date_time)?;
         crate::control::historical::validate_duration(duration)?;
         let bs = crate::control::historical::BarSize::from_api_str(bar_size)?;
         // The adjusted series is folded here from the raw trades and the
@@ -6332,10 +6348,10 @@ impl ClientCore {
         // a bar longer than a day.
         let adjusted = crate::control::historical::what_to_show_is_adjusted(what_to_show);
         if adjusted && !end_date_time.trim().is_empty() {
-            return Err("End date not supported with adjusted last".to_string());
+            return Err(Refusal::validation("End date not supported with adjusted last"));
         }
         if adjusted && bs.seconds() > crate::control::historical::BarSize::Day1.seconds() {
-            return Err("Multi day bar size not supported with adjusted last".to_string());
+            return Err(Refusal::validation("Multi day bar size not supported with adjusted last"));
         }
         // Its name is not in the table `from_api_str` checks: it is not a
         // name the venue answers to.
@@ -6345,16 +6361,16 @@ impl ClientCore {
         // The date format is read after the series, as a gateway reads it,
         // and one outside the three it writes dates in is refused here.
         if !matches!(format_date, 1..=3) {
-            return Err(format!("Date formatting selection of {format_date} rejected."));
+            return Err(Refusal::validation(format!("Date formatting selection of {format_date} rejected.")));
         }
         if !keep_up_to_date {
             return Ok(());
         }
         if !end_date_time.trim().is_empty() {
-            return Err("End date not supported with live updates".to_string());
+            return Err(Refusal::validation("End date not supported with live updates"));
         }
         if sec_type.trim().eq_ignore_ascii_case("BAG") {
-            return Err("Live updates for combos are not supported".to_string());
+            return Err(Refusal::validation("Live updates for combos are not supported"));
         }
         // The series a gateway keeps a bar current for, by the name the caller
         // gave, compared as given. The adjusted series is not one of them: it
@@ -6366,7 +6382,7 @@ impl ClientCore {
             "PUT_OPTION_OPEN_INTEREST",
         ];
         if !KEPT_CURRENT.iter().any(|kept| what_to_show.eq_ignore_ascii_case(kept)) {
-            return Err("Source price not supported with live updates".to_string());
+            return Err(Refusal::validation("Source price not supported with live updates"));
         }
         Ok(())
     }

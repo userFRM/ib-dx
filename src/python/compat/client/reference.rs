@@ -593,6 +593,14 @@ impl EClient {
         if let Err(why) = crate::control::historical::tick_data_type(what_to_show) {
             return self.report_refusal(py, req_id, why.into());
         }
+        // A moment a gateway cannot read is refused at intake under the
+        // invalid-datetime code, as it refuses one, rather than riding raw
+        // to the venue and coming back as a data service failure.
+        for (tag, value) in [("Start Date/Time", start_date_time), ("End Date/Time", end_date_time)] {
+            if let Err(why) = ClientCore::validate_moment(tag, value) {
+                return self.report_refusal(py, req_id, why);
+            }
+        }
         // A contract given by id alone is named by the engine before the
         // request goes: a request states the contract's type and its
         // exchange, and both are the venue's to say.

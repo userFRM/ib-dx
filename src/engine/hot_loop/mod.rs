@@ -1182,11 +1182,9 @@ impl HotLoop {
             // on answering, and its caller's side keeps what it
             // holds of it. The surfaces refuse this before it is
             // sent, so only a caller on the control channel
-            // reaches it.
-            push_hmds_refusal(
-                &self.shared, *req_id, crate::error_codes::Refusal::VALIDATION,
-                told, false,
-            );
+            // reaches it. Under the code the refusal carries, as
+            // a surface states it.
+            push_hmds_refusal(&self.shared, *req_id, told.code, told.message, false);
         } else if self.hmds.refused_as_a_second_query(*req_id, &self.shared) {
             // Refused whether or not the connection is up: a
             // request waiting to be asked again once it is back
