@@ -8,13 +8,14 @@ callbacks fire with correctly converted types across the PyO3 boundary.
 import pytest
 import threading
 import time
+from decimal import Decimal
 from ibkr_dx import (
     Contract, Order, TagValue, BarData, ContractDetails, OrderState,
     EWrapper, EClient,
     TickAttrib, TickAttribLast, TickAttribBidAsk, TickTypeEnum,
     PriceCondition, TimeCondition, MarginCondition,
     ExecutionCondition, VolumeCondition, PercentChangeCondition,
-    ContractDescription, UNSET_DOUBLE,
+    ContractDescription, UNSET_DECIMAL, UNSET_DOUBLE,
 )
 from conftest import NotConnectedProbe
 
@@ -708,7 +709,7 @@ class TestOrderAllocation:
         a.allowed_alloc_qty = "50"
         a.is_monetary = True
         assert a.account == "DU123"
-        assert a.position == "100"
+        assert a.position == Decimal("100")
         assert a.is_monetary is True
 
     def test_order_state_allocations_roundtrip(self):
@@ -760,7 +761,7 @@ class TestWhatIfDispatch:
         # extension fields are empty, or unset, where the wire states none
         assert state["margin_currency"] == ""
         assert state["init_margin_after_outside_rth"] == UNSET_DOUBLE
-        assert state["suggested_size"] == ""
+        assert state["suggested_size"] == UNSET_DECIMAL
         assert state["reject_reason"] == ""
         assert state["order_allocations"] == []
 

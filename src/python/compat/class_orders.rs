@@ -2,7 +2,7 @@
 
 // The other families, and the two helpers every class here uses.
 use super::{class_contracts::*, class_conditions::*};
-use super::contract::{by_reference_name, reference_dir, set_by_reference_name, set_from_keywords};
+use super::contract::{by_reference_name, reference_dir, set_by_reference_name, set_from_keywords, DecimalField};
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::sync::OnceLock;
@@ -1334,16 +1334,17 @@ pub(crate) fn tag_values<'py>(
 }
 
 /// ibapi-compatible OrderAllocation class.
-/// Decimal fields are carried as strings to preserve precision.
+/// The five quantities are `Decimal` in the reference's record
+/// (`ibapi/order_state.py`), each `UNSET_DECIMAL` until the venue states it.
 #[pyclass(from_py_object)]
 #[derive(Clone, Default)]
 pub struct OrderAllocation {
     #[pyo3(get, set)] pub account: String,
-    #[pyo3(get, set)] pub position: String,
-    #[pyo3(get, set)] pub position_desired: String,
-    #[pyo3(get, set)] pub position_after: String,
-    #[pyo3(get, set)] pub desired_alloc_qty: String,
-    #[pyo3(get, set)] pub allowed_alloc_qty: String,
+    #[pyo3(get, set)] pub position: DecimalField,
+    #[pyo3(get, set)] pub position_desired: DecimalField,
+    #[pyo3(get, set)] pub position_after: DecimalField,
+    #[pyo3(get, set)] pub desired_alloc_qty: DecimalField,
+    #[pyo3(get, set)] pub allowed_alloc_qty: DecimalField,
     #[pyo3(get, set)] pub is_monetary: bool,
 }
 
@@ -1388,11 +1389,11 @@ impl OrderAllocation {
     pub(crate) fn from_api(a: &crate::types::model::OrderAllocation) -> Self {
         Self {
             account: a.account.clone(),
-            position: a.position.clone(),
-            position_desired: a.position_desired.clone(),
-            position_after: a.position_after.clone(),
-            desired_alloc_qty: a.desired_alloc_qty.clone(),
-            allowed_alloc_qty: a.allowed_alloc_qty.clone(),
+            position: DecimalField::from_wire(&a.position),
+            position_desired: DecimalField::from_wire(&a.position_desired),
+            position_after: DecimalField::from_wire(&a.position_after),
+            desired_alloc_qty: DecimalField::from_wire(&a.desired_alloc_qty),
+            allowed_alloc_qty: DecimalField::from_wire(&a.allowed_alloc_qty),
             is_monetary: a.is_monetary,
         }
     }
@@ -1436,7 +1437,7 @@ impl Default for OrderState {
             init_margin_after_outside_rth: f64::MAX,
             maint_margin_after_outside_rth: f64::MAX,
             equity_with_loan_after_outside_rth: f64::MAX,
-            suggested_size: String::new(),
+            suggested_size: DecimalField::unset(),
             reject_reason: String::new(),
             order_allocations: Vec::new(),
         }
@@ -1492,7 +1493,7 @@ pub struct OrderState {
     #[pyo3(get, set)] pub init_margin_after_outside_rth: f64,
     #[pyo3(get, set)] pub maint_margin_after_outside_rth: f64,
     #[pyo3(get, set)] pub equity_with_loan_after_outside_rth: f64,
-    #[pyo3(get, set)] pub suggested_size: String,
+    #[pyo3(get, set)] pub suggested_size: DecimalField,
     #[pyo3(get, set)] pub reject_reason: String,
     #[pyo3(get, set)] pub order_allocations: Vec<OrderAllocation>,
 }
@@ -1528,7 +1529,7 @@ impl OrderState {
             init_margin_after_outside_rth: s.init_margin_after_outside_rth,
             maint_margin_after_outside_rth: s.maint_margin_after_outside_rth,
             equity_with_loan_after_outside_rth: s.equity_with_loan_after_outside_rth,
-            suggested_size: s.suggested_size.clone(),
+            suggested_size: DecimalField::from_wire(&s.suggested_size),
             reject_reason: s.reject_reason.clone(),
             order_allocations: s.order_allocations.iter().map(OrderAllocation::from_api).collect(),
         }

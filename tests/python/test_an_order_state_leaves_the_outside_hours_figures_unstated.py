@@ -9,7 +9,18 @@ case; these do now too.
 Run: pytest tests/python/test_an_order_state_leaves_the_outside_hours_figures_unstated.py -v
 """
 
-from ibkr_dx import UNSET_DOUBLE, Contract, EClient, EWrapper, Order, OrderState
+from decimal import Decimal
+
+from ibkr_dx import (
+    UNSET_DECIMAL,
+    UNSET_DOUBLE,
+    Contract,
+    EClient,
+    EWrapper,
+    Order,
+    OrderAllocation,
+    OrderState,
+)
 
 FIGURES = [
     "initMarginBeforeOutsideRTH", "maintMarginBeforeOutsideRTH", "equityWithLoanBeforeOutsideRTH",
@@ -34,6 +45,25 @@ class Recorder(EWrapper):
 def test_a_fresh_state_leaves_them_unset():
     state = OrderState()
     assert [getattr(state, name) for name in FIGURES] == [UNSET_DOUBLE] * 9
+
+
+def test_the_suggested_size_and_the_allocations_are_the_decimals_the_reference_states():
+    """The reference decodes the suggested size and all five allocation
+    quantities with `decode(Decimal, fields)` and builds both records with
+    UNSET_DECIMAL. Here they were strings: an unset one compared unequal to
+    UNSET_DECIMAL, and a program setting one from its own Decimal arithmetic
+    was told the field takes something else."""
+    state = OrderState()
+    assert isinstance(state.suggestedSize, Decimal), type(state.suggestedSize).__name__
+    assert state.suggestedSize == UNSET_DECIMAL
+    allocation = OrderAllocation()
+    for name in ("position", "positionDesired", "positionAfter",
+                 "desiredAllocQty", "allowedAllocQty"):
+        got = getattr(allocation, name)
+        assert isinstance(got, Decimal), f"{name}: {type(got).__name__}"
+        assert got == UNSET_DECIMAL
+    state.suggestedSize = Decimal("2.5")
+    assert state.suggestedSize == Decimal("2.5")
 
 
 def test_a_preview_that_states_none_leaves_them_unset():

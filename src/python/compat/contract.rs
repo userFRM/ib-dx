@@ -325,6 +325,18 @@ impl DecimalField {
         Self(format!("{value}"))
     }
 
+    /// A quantity the internals carry as the venue's own string, decoded the
+    /// way the reference decodes one (`ibapi/utils.py:103`, the `Decimal`
+    /// branch): an empty string or one of its unset sentinels reads as
+    /// `UNSET_DECIMAL`, anything else as the digits it states.
+    pub fn from_wire(wire: &str) -> Self {
+        match wire {
+            "" | "2147483647" | "9223372036854775807" | "-9223372036854775808"
+            | "1.7976931348623157E308" => Self::unset(),
+            digits => Self(digits.to_string()),
+        }
+    }
+
     fn digits(&self) -> &str {
         if self.0.is_empty() { UNSET_DECIMAL_DIGITS } else { &self.0 }
     }
@@ -556,13 +568,14 @@ mod tests {
                     ..Default::default()
                 },
             )).unwrap();
+            // The quantities cross as Decimal; the spelling resolves the same.
             assert_eq!(
-                allocation.getattr(py, "positionDesired").unwrap().extract::<String>(py).unwrap(),
-                "150",
+                allocation.getattr(py, "positionDesired").unwrap().extract::<DecimalField>(py).unwrap(),
+                DecimalField("150".into()),
             );
             assert_eq!(
-                allocation.getattr(py, "allowedAllocQty").unwrap().extract::<String>(py).unwrap(),
-                "50",
+                allocation.getattr(py, "allowedAllocQty").unwrap().extract::<DecimalField>(py).unwrap(),
+                DecimalField("50".into()),
             );
         });
     }
