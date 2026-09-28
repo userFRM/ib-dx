@@ -58,7 +58,7 @@ def test_a_cancel_numbered_below_zero_is_refused():
     w, c = _client()
     c.cancel_order(-5, "")
     c.poll()
-    assert w.errors[-1] == (-5, 135, "no order is working under -5")
+    assert w.errors[-1] == (-5, 10147, "OrderId -5 that needs to be cancelled is not found.")
 
 
 def test_a_contract_id_below_zero_does_not_wrap():

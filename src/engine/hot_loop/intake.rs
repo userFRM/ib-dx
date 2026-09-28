@@ -15,7 +15,8 @@ use crate::bridge::{OrderBook, Record, TakenOrder};
 use crate::client_core::{ClientCore, cash_quantity};
 use crate::control::contracts::ContractDefinition;
 use crate::error_codes::{
-    DUPLICATE_ORDER_ID, NO_SUCH_ORDER, NOT_CANCELLABLE, ORDER_DOES_NOT_MATCH, Refusal,
+    CANCEL_ORDER_NOT_FOUND, DUPLICATE_ORDER_ID, NO_SUCH_ORDER, NOT_CANCELLABLE,
+    ORDER_DOES_NOT_MATCH, Refusal,
 };
 use crate::types::model::{self as api, ErrorOrigin, OrderOp};
 use crate::types::{Bracket, ControlCommand, Exercise, InstrumentId, OrderRequest, Placement};
@@ -1248,7 +1249,10 @@ impl HotLoop {
             self.refuse_order(
                 api_id,
                 OrderOp::Cancel,
-                Refusal::stated(NO_SUCH_ORDER, format!("no order is working under {api_id}")),
+                Refusal::stated(
+                    CANCEL_ORDER_NOT_FOUND,
+                    format!("OrderId {api_id} that needs to be cancelled is not found."),
+                ),
             );
             return Step::Done;
         }

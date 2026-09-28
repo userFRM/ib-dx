@@ -97,7 +97,7 @@ class BulkWrapper(EWrapper):
 
     def error(self, req_id, error_time, error_code, error_string, advanced_order_reject_json=""):
         self.errors.append((req_id, error_code, error_string))
-        if error_code not in (2104, 2106, 2158, 202, 161):
+        if error_code not in (2104, 2106, 2158, 202, 10148):
             print(f"  [error] reqId={req_id} code={error_code}: {error_string}")
 
 
@@ -234,10 +234,10 @@ class TestBulkOrdersGlobalCancel:
         remaining = len(self.wrapper.open_orders)
         print(f"  After global cancel: {remaining} open orders remaining")
 
-        # Error 161 expected for already-filled MKT order
-        err_161 = [e for e in self.wrapper.errors if e[1] == 161]
-        if err_161:
-            print(f"  Error 161 (not cancellable): {len(err_161)} orders")
+        # Error 10148 expected for already-filled MKT order
+        err_not_cancellable = [e for e in self.wrapper.errors if e[1] == 10148]
+        if err_not_cancellable:
+            print(f"  Error 10148 (not cancellable): {len(err_not_cancellable)} orders")
 
         # Both of these were worked out and then dropped, so a global cancel
         # that did nothing at all passed the test named after it and left every

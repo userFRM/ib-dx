@@ -1892,8 +1892,8 @@ fn a_withdrawal_names_an_order_this_client_is_working() {
     crate::api::client::tests::reported(&client, || client.cancel_order(42, "")).expect("taken");
     let refused = engine_refused(&rx, &shared);
     assert!(
-        matches!(refused.as_slice(), [(42, 135, _)]),
-        "no order is working under that number: {refused:?}",
+        matches!(refused.as_slice(), [(42, 10147, _)]),
+        "a number nothing is working is refused as not found: {refused:?}",
     );
     assert!(rx.try_recv().is_err(), "and nothing was sent under it");
 
@@ -3752,7 +3752,7 @@ fn a_cancel_time_note_names_the_order_it_belongs_to() {
     client.cancel_order(0, "20260904 12:00:00");
     rx.pump();
     let refused = shared.drain_refused();
-    assert!(matches!(refused.as_slice(), [(0, 135, _)]), "{refused:?}");
+    assert!(matches!(refused.as_slice(), [(0, 10147, _)]), "{refused:?}");
     assert!(
         shared.orders.drain_order_inactive().is_empty(),
         "nothing may be recorded against an order that does not exist",
@@ -11116,8 +11116,9 @@ fn a_refused_withdrawal_carries_no_note_about_its_time() {
     crate::api::client::tests::reported(&client, || client.cancel_order(77, "20260906-10:00:00")).expect("taken");
     let refused = engine_refused(&rx, &shared);
     assert!(
-        matches!(refused.as_slice(), [(77, 135, message)] if message.contains("no order is working")),
-        "no order is working under 77: {refused:?}",
+        matches!(refused.as_slice(), [(77, 10147, message)]
+            if message == "OrderId 77 that needs to be cancelled is not found."),
+        "a number nothing is working is refused as not found: {refused:?}",
     );
     assert!(shared.orders.drain_order_inactive().is_empty(), "and nothing is said about a time that did not travel");
 }

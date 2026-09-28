@@ -1435,7 +1435,7 @@ mod readonly_tests {
             client.cancel_order(id, "");
             assert!(shared.drain_refused().is_empty());
             rx.pump();
-            assert!(matches!(shared.drain_refused().as_slice(), [(asked, 135, _)] if *asked == id));
+            assert!(matches!(shared.drain_refused().as_slice(), [(asked, 10147, _)] if *asked == id));
         }
         assert!(rx.try_recv().is_err());
     }

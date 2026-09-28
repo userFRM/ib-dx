@@ -75,6 +75,6 @@ def test_a_withdrawal_of_a_finished_number_is_not_cancellable():
     w.seen.clear()
     c.cancelOrder(84, "")
     c.poll()
-    assert w.seen == [(84, 161)], f"the order finished under this client's eyes: {w.seen}"
+    assert w.seen == [(84, 10148)], f"the order finished under this client's eyes: {w.seen}"
     assert not c._test_take_commands(), "and nothing was sent under it"
 

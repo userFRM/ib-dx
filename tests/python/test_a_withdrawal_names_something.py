@@ -53,7 +53,7 @@ def test_a_withdrawal_naming_nothing_says_so():
     c.cancelOrder(42, "")
 
     c.poll()
-    assert w.seen == [(42, 135)], f"no order is working under that number: {w.seen}"
+    assert w.seen == [(42, 10147)], f"a number nothing is working is refused as not found: {w.seen}"
     assert not c._test_take_commands(), "and nothing was sent under it"
 
 

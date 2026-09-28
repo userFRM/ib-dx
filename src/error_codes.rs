@@ -241,6 +241,12 @@ pub const INVALID_ORDER_TYPE: i32 = 10051;
 /// under.
 pub const ORDER_DOES_NOT_MATCH: i32 = 105;
 
+/// The code a withdrawal naming a number no order is working under is
+/// refused under, as a gateway's cancel handler refuses it: its words name
+/// the number and say the order to cancel is not found. A different message
+/// from the one a change or a missing parent is refused under.
+pub const CANCEL_ORDER_NOT_FOUND: i32 = 10147;
+
 /// The code a withdrawal of an order no longer in a cancellable state is
 /// refused under, as a gateway's cancel handler refuses it: its words name
 /// the state the order finished in.

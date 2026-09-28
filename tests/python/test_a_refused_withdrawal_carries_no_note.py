@@ -32,4 +32,4 @@ def test_a_refused_withdrawal_carries_no_note():
     c.poll()
     said = [m for req_id, _, m in w.errors if req_id == 77]
     assert len(said) == 1, said
-    assert "no order is working" in said[0], said
+    assert "that needs to be cancelled is not found" in said[0], said

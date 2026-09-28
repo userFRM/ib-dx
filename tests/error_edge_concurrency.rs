@@ -182,8 +182,8 @@ fn cancel_order_naming_nothing_is_answered_rather_than_sent() {
     assert!(rx.try_recv().is_err(), "nothing was sent under it");
     let refused = outcome(&shared);
     assert!(
-        refused.as_ref().is_err_and(|why| why.code == 135),
-        "no order is working under that number: {refused:?}",
+        refused.as_ref().is_err_and(|why| why.code == 10147),
+        "a number nothing is working is refused as not found: {refused:?}",
     );
     assert!(rx.try_recv().is_err(), "and nothing was sent under it");
 }

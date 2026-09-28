@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(
 CANCEL_REJECTED = (201,)
 #: This client's own answer to a cancel of an order it has already seen end,
 #: where the first cancel's end arrived before the second was sent.
-NOT_CANCELLABLE = 161
+NOT_CANCELLABLE = 10148
 
 
 class CollectorWrapper(EWrapper):
