@@ -1952,7 +1952,7 @@ impl HotLoop {
                     } else if self.hmds_conn.is_none() {
                         self.emit_hmds_unavailable(req_id, false);
                     } else {
-                        self.hmds.send_historical_ticks_request(req_id, con_id, &sec_type, &exchange, &start_date_time, &end_date_time, number_of_ticks, &what_to_show, use_rth, include_expired, ignore_size, &mut self.hmds_conn, &mut self.hb);
+                        self.hmds.send_historical_ticks_request(req_id, con_id, &sec_type, &exchange, &start_date_time, &end_date_time, number_of_ticks, &what_to_show, use_rth, include_expired, ignore_size, &mut self.hmds_conn, &mut self.hb, &self.shared);
                     }
                 }
                 ControlCommand::SubscribeRealTimeBar { contract, req_id, what_to_show, use_rth, .. } => {

@@ -493,6 +493,26 @@ fn a_second_head_timestamp_under_a_live_req_id_is_refused() {
     }
 }
 
+/// A second historical ticks request under a number already in flight is
+/// refused as a bar request's twin is, with 102 "Duplicate ticker id" and
+/// nothing sent: sent instead, the caller receives two tick series and two
+/// ends under one number, and a program accumulating ticks double-counts.
+#[test]
+fn a_second_historical_ticks_request_under_a_live_req_id_is_refused() {
+    let mut hmds = HmdsState::new();
+    let shared = SharedState::new();
+    let mut hb = HeartbeatState::new();
+    let (conn, _peer) = Connection::for_test();
+    let mut conn = Some(conn);
+
+    hmds.send_historical_ticks_request(7, 265598, "STK", "SMART", "20260925-13:00:00", "", 100, "TRADES", true, false, false, &mut conn, &mut hb, &shared);
+    assert_eq!(hmds.pending_ticks.len(), 1, "the first is held");
+    hmds.send_historical_ticks_request(7, 265598, "STK", "SMART", "20260925-13:00:00", "", 100, "TRADES", true, false, false, &mut conn, &mut hb, &shared);
+
+    assert_eq!(hmds.pending_ticks.len(), 1, "the second is not held");
+    let errors = shared.reference.drain_historical_errors();
+    assert_eq!(errors, vec![(7, 102, "Duplicate ticker id".to_string())]);
+}
 
 /// The request carries no number of its own, but it is still told when it
 /// cannot be made: returned as though the question had gone out, the caller

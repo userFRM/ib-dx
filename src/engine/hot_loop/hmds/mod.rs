@@ -3813,7 +3813,20 @@ fn build_tbt_query(
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn send_historical_ticks_request(&mut self, req_id: u32, con_id: i64, sec_type: &str, exchange: &str, start_date_time: &str, end_date_time: &str, number_of_ticks: u32, what_to_show: &str, use_rth: bool, include_expired: bool, ignore_size: bool, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState) {
+    pub(crate) fn send_historical_ticks_request(&mut self, req_id: u32, con_id: i64, sec_type: &str, exchange: &str, start_date_time: &str, end_date_time: &str, number_of_ticks: u32, what_to_show: &str, use_rth: bool, include_expired: bool, ignore_size: bool, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
+        // The sibling of the head-timestamp and histogram duplicate refusals:
+        // a second series under a number already in flight is refused, not
+        // sent — two tick series and two ends under one number double-count.
+        if self.pending_ticks.iter().any(|(_, id, _)| *id == req_id) {
+            super::push_hmds_refusal(
+                shared,
+                req_id,
+                crate::error_codes::DUPLICATE_TICKER_ID,
+                "Duplicate ticker id".into(),
+                false,
+            );
+            return;
+        }
         let qid = self.next_hmds_query_id;
         self.next_hmds_query_id += 1;
         let query_id = format!("tk_{qid}");
