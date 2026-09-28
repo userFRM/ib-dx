@@ -6257,9 +6257,9 @@ impl ClientCore {
     /// And what a gateway refuses before it asks the venue, in its words: a
     /// duration that is not an integer, a space and one of the five units,
     /// bare or out of its unit's range, the adjusted series with an end date
-    /// or with bars longer than a day, and a request kept up to date with an
-    /// end date, on a combination, or on a series a gateway keeps no bar
-    /// current for.
+    /// or with bars longer than a day, a date format outside the three it
+    /// writes dates in, and a request kept up to date with an end date, on a
+    /// combination, or on a series a gateway keeps no bar current for.
     pub fn validate_historical_args(
         bar_size: &str,
         what_to_show: &str,
@@ -6267,6 +6267,7 @@ impl ClientCore {
         keep_up_to_date: bool,
         end_date_time: &str,
         sec_type: &str,
+        format_date: i32,
     ) -> Result<(), String> {
         // Read first, as a gateway reads it: the duration is taken before
         // anything else about the request is looked at.
@@ -6286,6 +6287,11 @@ impl ClientCore {
         // name the venue answers to.
         if !adjusted {
             crate::control::historical::BarDataType::from_api_str(what_to_show)?;
+        }
+        // The date format is read after the series, as a gateway reads it,
+        // and one outside the three it writes dates in is refused here.
+        if !matches!(format_date, 1..=3) {
+            return Err(format!("Date formatting selection of {format_date} rejected."));
         }
         if !keep_up_to_date {
             return Ok(());

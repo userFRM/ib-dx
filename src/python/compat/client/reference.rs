@@ -47,7 +47,7 @@ impl EClient {
         if !what_to_show.eq_ignore_ascii_case("SCHEDULE")
             && let Err(why) = ClientCore::validate_historical_args(
                 bar_size_setting, what_to_show, duration_str, keep_up_to_date, end_date_time,
-                &contract.sec_type,
+                &contract.sec_type, format_date,
             )
         {
             return self.report_refusal(py, req_id, why.into());

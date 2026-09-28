@@ -4412,21 +4412,24 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
         symbol: "SPY".into(), exchange: "SMART".into(), sec_type: "BAG".into(),
         ..Default::default()
     };
-    for (contract, end, size, series, keep, reason) in [
-        (spy(), "20250101 00:00:00", "1 day", "ADJUSTED_LAST", false,
+    for (contract, end, size, series, keep, format, reason) in [
+        (spy(), "20250101 00:00:00", "1 day", "ADJUSTED_LAST", false, 1,
          "End date not supported with adjusted last"),
-        (spy(), "", "1W", "ADJUSTED_LAST", false,
+        (spy(), "", "1W", "ADJUSTED_LAST", false, 1,
          "Multi day bar size not supported with adjusted last"),
-        (spy(), "20250101 00:00:00", "5 mins", "TRADES", true,
+        (spy(), "20250101 00:00:00", "5 mins", "TRADES", true, 1,
          "End date not supported with live updates"),
-        (combo, "", "5 mins", "TRADES", true, "Live updates for combos are not supported"),
-        (spy(), "", "5 mins", "BID_ASK", true, "Source price not supported with live updates"),
-        (spy(), "", "5 mins", "YIELD_BID", true, "Source price not supported with live updates"),
+        (combo, "", "5 mins", "TRADES", true, 1, "Live updates for combos are not supported"),
+        (spy(), "", "5 mins", "BID_ASK", true, 1, "Source price not supported with live updates"),
+        (spy(), "", "5 mins", "YIELD_BID", true, 1, "Source price not supported with live updates"),
         // A name left empty is compared as it stands, and matches none.
-        (spy(), "", "5 mins", "", true, "Source price not supported with live updates"),
+        (spy(), "", "5 mins", "", true, 1, "Source price not supported with live updates"),
+        // A date format outside the three a gateway renders is refused where
+        // the request is taken.
+        (spy(), "", "5 mins", "TRADES", false, 4, "Date formatting selection of 4 rejected."),
     ] {
         let err = client
-            .try_req_historical_data(5, &contract, end, "1 M", size, series, true, 1, keep)
+            .try_req_historical_data(5, &contract, end, "1 M", size, series, true, format, keep)
             .expect_err(reason);
         assert_eq!((err.code, err.message.as_str()), (Refusal::VALIDATION, reason));
         assert!(rx.try_recv().is_err(), "nothing was sent for {reason}");

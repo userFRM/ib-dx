@@ -100,6 +100,7 @@ impl EClient {
         }
         ClientCore::validate_historical_args(
             bar_size, what_to_show, duration, keep_up_to_date, end_date_time, &contract.sec_type,
+            format_date,
         )?;
         // How it wants its bar times written, and what its range is counted
         // from, which the reply states neither of, are written down where the

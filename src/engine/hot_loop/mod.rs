@@ -1504,7 +1504,7 @@ impl HotLoop {
                     {
                         crate::client_core::ClientCore::validate_historical_args(
                             &bar_size, &what_to_show, &duration, keep_up_to_date, &end_date_time,
-                            &sec_type,
+                            &sec_type, format_date,
                         )
                         .err()
                     } else {

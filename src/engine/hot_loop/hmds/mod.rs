@@ -3097,6 +3097,15 @@ fn build_tbt_query(
                 return;
             }
         };
+        // The date format is read after the series, as a gateway reads it on
+        // this path too, and one outside the three it writes dates in is
+        // refused here.
+        if !matches!(format_date, 1..=3) {
+            let told = format!("Date formatting selection of {format_date} rejected.");
+            log::error!("head timestamp req_id={req_id}: {told}");
+            super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::VALIDATION, told, false);
+            return;
+        }
         // The contract's type and exchange as the request states them, as a
         // bar request states them: given by the caller, or named by the venue
         // where the caller gave the id alone. The cached definition stands in

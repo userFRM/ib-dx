@@ -438,6 +438,13 @@ pub fn clock_named(named: &str) -> Option<jiff::tz::TimeZone> {
 /// there is no clock to write the instant on, and inventing one would state an
 /// offset the venue never gave. A page that omits the zone a series stated on
 /// an earlier page is not that case; the engine files it on the series' zone.
+/// A head timestamp states no zone and is written from its own stamp: its
+/// third spelling is the month and day, a space and the time, without the
+/// year, as a gateway writes that spelling from its own date routine.
+///
+/// The third spelling of a bar is the first without its year: a gateway
+/// writes it by cutting the year off the front of the one it writes for
+/// format 1.
 pub fn bar_date_as_asked(stated: &str, format_date: i32, zone: &str) -> String {
     let Some(secs) = ib_datetime_to_unix(stated) else {
         return stated.to_string();
@@ -449,9 +456,15 @@ pub fn bar_date_as_asked(stated: &str, format_date: i32, zone: &str) -> String {
         clock_named(zone),
         jiff::Timestamp::from_second(secs),
     ) else {
+        if format_date == 3 && zone.is_empty()
+            && let Ok(at) = jiff::Timestamp::from_second(secs)
+        {
+            return at.to_zoned(jiff::tz::TimeZone::UTC).strftime("%m%d %H:%M:%S").to_string();
+        }
         return stated.to_string();
     };
-    format!("{} {zone}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
+    let pattern = if format_date == 3 { "%m%d %H:%M:%S" } else { "%Y%m%d %H:%M:%S" };
+    format!("{} {zone}", at.to_zoned(clock).strftime(pattern))
 }
 
 /// A bar stamped in seconds since the epoch, dated as the caller asked bars
@@ -480,7 +493,9 @@ pub fn bar_epoch_as_asked(secs: i64, end: Option<i64>, format_date: i32, zone: &
     let (Some(clock), Ok(at)) = (clock_named(zone), jiff::Timestamp::from_second(secs)) else {
         return secs.to_string();
     };
-    format!("{} {zone}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
+    // The third spelling is the first without its year.
+    let pattern = if format_date == 3 { "%m%d %H:%M:%S" } else { "%Y%m%d %H:%M:%S" };
+    format!("{} {zone}", at.to_zoned(clock).strftime(pattern))
 }
 
 /// The moment a bar request ends at, as its caller stated it, or now where it
@@ -567,6 +582,14 @@ mod bar_date_tests {
         );
         // The same instant, asked for as a number.
         assert_eq!(bar_date_as_asked("20260227-14:30:00", 2, "US/Eastern"), "1772202600");
+        // The third spelling is the first without its year.
+        assert_eq!(
+            bar_date_as_asked("20260227-14:30:00", 3, "US/Eastern"),
+            "0227 09:30:00 US/Eastern",
+        );
+        // A head timestamp carries no zone of its own: its third spelling is
+        // written from the stamp as it stands.
+        assert_eq!(bar_date_as_asked("20200101-00:00:00", 3, ""), "0101 00:00:00");
         // A day is a day on either.
         assert_eq!(bar_date_as_asked("20260227", 1, "US/Eastern"), "20260227");
         // Nothing to read, and no zone to read it on: what the venue said.

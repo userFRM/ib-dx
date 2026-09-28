@@ -3857,6 +3857,8 @@ fn a_head_timestamp_is_written_the_way_it_was_asked_for() {
     taken(&rx, &into);
     client.req_head_time_stamp(11, &spy, "NOSUCH", true, 1);
     taken(&rx, &into);
+    client.req_head_time_stamp(11, &spy, "TRADES", true, 4);
+    taken(&rx, &into);
     let asked = rx.engine().hmds.pending_head_ts.iter().find(|(_, rid, ..)| *rid == 11)
         .map(|(query, ..)| query.clone()).expect("the first is awaited");
     let answer = format!(
@@ -3868,6 +3870,12 @@ fn a_head_timestamp_is_written_the_way_it_was_asked_for() {
     let mut w = crate::api::wrapper::tests::RecordingWrapper::default();
     client.process_msgs(&mut w);
     assert!(w.events.iter().any(|e| e.starts_with("error:11:321:")), "the second is refused: {:?}", w.events);
+    assert!(
+        w.events.iter().any(|e| e == "error:11:321:Error validating request:-'' : cause - \
+                                      Date formatting selection of 4 rejected."),
+        "and the one naming a date format nothing is written in: {:?}",
+        w.events,
+    );
     assert!(
         w.events.iter().any(|e| e == "head_timestamp:11:1577836800"),
         "the first is answered in seconds since the epoch: {:?}",
