@@ -1047,9 +1047,10 @@ impl EClient {
         if own {
             // `filled` and `avgFillPrice` describe the order so far;
             // `lastFillPrice` describes this print.
+            let why_held = self.core.why_held(shared, fill.order_id, status);
             call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(fill.order_id), status, DecimalField::from_qty(fill.cum_qty), DecimalField::from_qty(fill.remaining),
                  fill.avg_price as f64 / PRICE_SCALE_F, perm_id, parent_id, price,
-                 i64::from(client), "", 0.0f64));
+                 i64::from(client), why_held.as_str(), 0.0f64));
             call_wrapper!(self, py, shared, "exec_details", (req_id, &c_py, &exec_py));
         }
         self.core.update_order_fill(fill.order_id, status, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining));
@@ -1101,9 +1102,10 @@ impl EClient {
                 (self.core.api_order_id(update.order_id), &contract_py, &order_py, &state_py));
         }
         if own {
+            let why_held = self.core.why_held(shared, update.order_id, status);
             call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, DecimalField::from_float(update.filled_qty),
                  DecimalField::from_float(update.remaining_qty), avg, update.perm_id, parent_id, last_fill,
-                 i64::from(client), "", 0.0f64));
+                 i64::from(client), why_held.as_str(), 0.0f64));
         }
         self.core.update_order_status(shared, update.order_id, update.status, update.filled_qty, update.remaining_qty, update.instrument);
         Ok(())
@@ -1253,13 +1255,14 @@ impl EClient {
                     };
                     let state_py = Py::new(py, state)?.into_any();
                     owed!(out, py, "open_order", (self.core.api_order_id(*order_id), &c_py, &o_py, &state_py));
+                    let why_held = self.core.why_held(shared, *order_id, &tracked.status);
                     owed!(out, py, "order_status",
                         (self.core.api_order_id(*order_id), tracked.status.as_str(), DecimalField::from_float(tracked.filled), DecimalField::from_float(tracked.remaining),
                          // What the venue said the fills went at.
                          tracked.avg_fill_price, tracked.order.perm_id, tracked.order.parent_id,
                          tracked.last_fill_price,
                          // The client the order was placed under.
-                         tracked.order.client_id as i64, "", 0.0f64));
+                         tracked.order.client_id as i64, why_held.as_str(), 0.0f64));
                 }
                 owed!(out, py, "open_order_end", ());
             }

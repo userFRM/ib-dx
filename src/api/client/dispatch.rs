@@ -768,9 +768,10 @@ impl EClient {
         // than that it was nothing.
         self.core.push_execution(c.clone(), exec.clone(), CommissionAndFeesReport::default());
         if own {
+            let why_held = self.core.why_held(&self.shared, fill.order_id, status_str);
             wrapper.order_status(
                 self.core.api_order_id(fill.order_id), status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
-                avg_price_f, perm_id, parent_id, price_f, i64::from(client), "", 0.0,
+                avg_price_f, perm_id, parent_id, price_f, i64::from(client), &why_held, 0.0,
             );
             // Unsolicited executions carry request id -1. A market-data
             // subscription id does not identify a `reqExecutions` request.
@@ -835,10 +836,11 @@ impl EClient {
             );
         }
         if own {
+            let why_held = self.core.why_held(&self.shared, update.order_id, status);
             wrapper.order_status(
                 self.core.api_order_id(update.order_id), status, update.filled_qty,
                 update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
-                i64::from(client), "", 0.0,
+                i64::from(client), &why_held, 0.0,
             );
         }
         self.core.update_order_status(
@@ -963,10 +965,11 @@ impl EClient {
                     let api_id = self.core.api_order_id(order_id);
                     let state = OrderState { status: tracked.status.clone(), ..Default::default() };
                     wrapper.open_order(api_id, &tracked.contract, &tracked.order, &state);
+                    let why_held = self.core.why_held(&self.shared, order_id, &tracked.status);
                     wrapper.order_status(
                         api_id, &tracked.status, tracked.filled, tracked.remaining,
                         tracked.avg_fill_price, tracked.order.perm_id, tracked.order.parent_id,
-                        tracked.last_fill_price, i64::from(tracked.order.client_id), "", 0.0,
+                        tracked.last_fill_price, i64::from(tracked.order.client_id), &why_held, 0.0,
                     );
                 }
                 wrapper.open_order_end();
@@ -1994,6 +1997,100 @@ mod delivered_size_tests {
                 ("PendingSubmit".to_string(), 0.0, 0.0),
             ],
         );
+    }
+
+    /// A held order states why it is held on the status callback, as a
+    /// gateway states it: on the statuses that correspond to Acked or
+    /// Pending, "child" where the order states a parent that has not
+    /// finished, "locate" where the venue stated a held quantity on a
+    /// short sale, "trigger" where the order type carries a trigger price —
+    /// joined in that order, and nothing on an order that states no reason
+    /// or a status that is not a hold.
+    #[test]
+    fn a_held_order_states_why_it_is_held() {
+        use crate::engine::{context::Context, hot_loop::ccp::CcpState};
+
+        #[derive(Default)]
+        struct Holds(Vec<(String, String)>);
+        impl Wrapper for Holds {
+            fn order_status(
+                &mut self, _order_id: i64, status: &str, _filled: f64, _remaining: f64,
+                _avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
+                _last_fill_price: f64, _client_id: i64, why_held: &str, _mkt_cap_price: f64,
+            ) {
+                self.0.push((status.to_string(), why_held.to_string()));
+            }
+        }
+
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        let mut ccp = CcpState::new();
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        context.set_symbol(instrument, "SPY".into());
+        let contract = || crate::types::model::Contract {
+            con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+            exchange: "SMART".into(), ..Default::default()
+        };
+        let track = |id: i64, action: &str, order_type: &str, parent: i64| {
+            client.core.track_order(id as u64, contract(), crate::types::model::Order {
+                order_id: id, action: action.into(), total_quantity: 100.0,
+                order_type: order_type.into(), parent_id: parent, ..Default::default()
+            }, instrument);
+        };
+        for (id, side, price, kind, tif, stop) in [
+            (7, crate::types::Side::Sell, 0, b'3', b'0', 400),
+            (8, crate::types::Side::Sell, 410, b'2', b'0', 0),
+            (9, crate::types::Side::ShortSell, 410, b'2', b'0', 0),
+            (10, crate::types::Side::Buy, 410, b'2', b'0', 0),
+            (11, crate::types::Side::Sell, 0, b'3', b'0', 400),
+            (12, crate::types::Side::ShortSell, 0, b'3', b'0', 400),
+        ] {
+            context.insert_order(crate::types::Order::new(
+                id, instrument, side, 100 * QTY_SCALE, price * PRICE_SCALE, kind, tif,
+                stop * PRICE_SCALE,
+            ));
+        }
+        track(7, "SELL", "STP", 0);
+        track(8, "SELL", "LMT", 7);
+        track(9, "SSHORT", "LMT", 0);
+        track(10, "BUY", "LMT", 0);
+        track(11, "SELL", "STP", 0);
+        track(12, "SSHORT", "STP", 10);
+        let frame = |id: &str, status: &str, kind: &str, exec: &str, extra: &[(&str, &str)]| {
+            let mut pairs: Vec<(&str, &str)> = vec![
+                ("11", id), ("39", status), ("150", kind), ("17", exec),
+                ("6008", "756733"), ("38", "100"), ("14", "0"),
+                ("151", "100"), ("6", "0"), ("31", "0"),
+            ];
+            pairs.extend_from_slice(extra);
+            let parsed = pairs.iter()
+                .map(|(tag, value)| (tag.parse::<u32>().unwrap(), value.to_string()))
+                .collect();
+            let raw = pairs.iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect::<String>();
+            (parsed, raw.into_bytes())
+        };
+        for (parsed, raw) in [
+            frame("7", "A", "0", "ack-7", &[("54", "2")]),
+            frame("8", "A", "0", "ack-8", &[("54", "2")]),
+            // The venue states the quantity it is holding the short for.
+            frame("9", "A", "0", "ack-9", &[("54", "5"), ("6365", "100")]),
+            frame("10", "A", "0", "ack-10", &[("54", "1")]),
+            frame("11", "2", "F", "fill-11", &[("54", "2"), ("14", "100"), ("151", "0"), ("32", "100"), ("31", "400")]),
+            frame("12", "A", "0", "ack-12", &[("54", "5"), ("6365", "50")]),
+        ] {
+            ccp.handle_exec_report(&parsed, &raw, &mut context, &shared, &None, "");
+        }
+        let mut holds = Holds::default();
+        client.process_msgs(&mut holds);
+        assert_eq!(holds.0, [
+            ("PreSubmitted", "trigger"),
+            ("PreSubmitted", "child"),
+            ("PreSubmitted", "locate"),
+            ("PreSubmitted", ""),
+            // A fill is no hold, whatever the type.
+            ("Filled", ""),
+            ("PreSubmitted", "child,locate,trigger"),
+        ].map(|(status, why)| (status.to_string(), why.to_string())));
     }
 
     /// What each order callback was told, in the order it was told.

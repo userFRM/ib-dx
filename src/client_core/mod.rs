@@ -3670,6 +3670,78 @@ impl ClientCore {
         self.open_orders.lock().unwrap().contains_key(&order_id)
     }
 
+    /// Why an order is held, as a gateway states it on the status it sends:
+    /// on the statuses that correspond to Acked or Pending — `PreSubmitted`
+    /// and `PendingSubmit` — the reasons it holds it, comma-joined in the
+    /// order a gateway names them, and empty on every other status.
+    ///
+    /// * `child` — the order states a parent that has not finished. A parent
+    ///   is finished where the venue's own record states it settled with
+    ///   something filled; a parent cancelled with nothing filled still holds
+    ///   its child, as a gateway reads it.
+    /// * `locate` — the venue stated a held quantity (tag 6365) on a
+    ///   short-sale order.
+    /// * `trigger` — the order type carries a trigger price: a stop, a stop
+    ///   limit, a stop protect, a trail or a trail limit.
+    ///
+    /// Both surfaces state this on every status they send, from the one
+    /// composition here rather than each site working it out its own way.
+    pub(crate) fn why_held(&self, shared: &SharedState, order_id: u64, status: &str) -> String {
+        if !matches!(status, "PreSubmitted" | "PendingSubmit") {
+            return String::new();
+        }
+        let held = shared.orders.get_order_info(order_id);
+        // The order as this client sent it ahead of the venue's record of
+        // it: the caller's own action and type, which the record read off a
+        // report may state in the wire's words.
+        let tracked = self.open_orders.lock().unwrap().get(&order_id).cloned();
+        let order = tracked.as_ref().map(|t| &t.order)
+            .or_else(|| held.as_ref().map(|info| &info.order));
+        let Some(order) = order else { return String::new() };
+        let mut reasons: Vec<&'static str> = Vec::new();
+        // The parent this client recorded, or the venue's own record of it,
+        // in the wire's numbering, which is what the parent is keyed by.
+        let parent = tracked.as_ref().map(|t| t.order.parent_id)
+            .filter(|p| *p > 0)
+            .or_else(|| held.as_ref().map(|info| info.order.parent_id).filter(|p| *p > 0))
+            .unwrap_or(0);
+        if parent > 0 && !self.parent_finished(shared, parent as u64) {
+            reasons.push("child");
+        }
+        if order.side() == Ok(crate::types::Side::ShortSell) {
+            let stated = held.as_ref().and_then(|info| {
+                info.last_exec.unnamed_fields.iter()
+                    .find(|(tag, _)| *tag == 6365)
+                    .and_then(|(_, value)| value.parse::<f64>().ok())
+            });
+            // The venue states the quantity it is holding the short for; the
+            // most a double states is the venue stating none.
+            if stated.is_some_and(|allowed| allowed != f64::MAX) {
+                reasons.push("locate");
+            }
+        }
+        if matches!(
+            order.order_type_named(),
+            Some("STP" | "STP LMT" | "STP PRT" | "TRAIL" | "TRAIL LIMIT")
+        ) {
+            reasons.push("trigger");
+        }
+        reasons.join(",")
+    }
+
+    /// Whether a parent has finished, as a gateway reads a parent: settled,
+    /// with something filled.
+    fn parent_finished(&self, shared: &SharedState, parent: u64) -> bool {
+        let finished = |status: &str, filled: f64| {
+            matches!(status, "Filled" | "Cancelled" | "ApiCancelled") && filled > 0.0
+        };
+        if let Some(info) = shared.orders.get_order_info(parent) {
+            return finished(&info.order_state.status, info.last_exec.cum_qty);
+        }
+        self.open_orders.lock().unwrap().get(&parent)
+            .is_some_and(|t| finished(&t.status, t.filled))
+    }
+
     /// Whether this client placed the order. An order it learnt of from the
     /// venue is tracked here too, once a status has arrived or a replace has
     /// restated it, and is not this.
