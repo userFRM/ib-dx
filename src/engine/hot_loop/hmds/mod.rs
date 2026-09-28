@@ -164,7 +164,19 @@ pub(crate) struct HmdsState {
     /// The bar requests a dropped connection left to be asked again once it
     /// is back.
     pub(crate) asked_again: Vec<BarAsk>,
+    /// Bar requests taken while the venue was already answering as many as a
+    /// gateway runs at once, in the order they arrived. A gateway starts a
+    /// request only while fewer than fifty are in flight and holds the rest
+    /// here, starting each as one in flight ends; what is held survives a
+    /// dropped connection and starts once it is back, as a request left to be
+    /// asked again does.
+    pub(crate) hist_queue: std::collections::VecDeque<crate::types::ControlCommand>,
 }
+
+/// How many bar requests a gateway answers at once: it starts one only while
+/// fewer than this many are in flight, and holds the rest in the order they
+/// arrived.
+pub(crate) const HISTORICAL_IN_FLIGHT_CAP: usize = 50;
 
 /// A bar or schedule request as it was asked, to be asked again.
 #[derive(Clone, Debug)]
@@ -548,6 +560,7 @@ impl HmdsState {
             actions_held_on: None,
             bar_asks: Vec::new(),
             asked_again: Vec::new(),
+            hist_queue: std::collections::VecDeque::new(),
         }
     }
 
@@ -666,13 +679,21 @@ impl HmdsState {
         }
     }
 
-    /// Fail the bar requests waiting to be asked again, the scans waiting to
-    /// be subscribed again, and the queries a drop left waiting for a
-    /// reconnect, once the connection is not to be brought back: nothing is
-    /// left to ask any of them on. Whether any scan was.
+    /// Fail the bar requests waiting to be asked again or for a slot, the
+    /// scans waiting to be subscribed again, and the queries a drop left
+    /// waiting for a reconnect, once the connection is not to be brought
+    /// back: nothing is left to ask any of them on. Whether any scan was.
     pub(crate) fn give_up_those_asked_again(&mut self, shared: &SharedState) -> bool {
         for ask in std::mem::take(&mut self.asked_again) {
             super::push_hmds_unavailable(shared, ask.req_id, true);
+        }
+        // A bar request still waiting for a slot is failed as the ones left to
+        // be asked again are: nothing is left to start it on. Left queued, its
+        // caller waited on a series that would never be asked for.
+        for cmd in std::mem::take(&mut self.hist_queue) {
+            if let Some(req_id) = super::ccp::request_id(&cmd) {
+                super::push_hmds_unavailable(shared, req_id, true);
+            }
         }
         let scans = std::mem::take(&mut self.pending_scanner);
         for (_, req_id, _) in &scans {
@@ -2375,13 +2396,15 @@ fn build_tbt_query(
     }
 
     /// Whether a bar request answers under `req_id`, its series held, its
-    /// query open or it waiting to be asked again, and if so the second query refused under it, as a gateway
-    /// refuses a bar request, a head timestamp or a histogram under the number
-    /// of a live bar request, before anything of the second exists.
+    /// query open, it waiting to be asked again or it waiting for a slot, and
+    /// if so the second query refused under it, as a gateway refuses a bar
+    /// request, a head timestamp or a histogram under the number of a live bar
+    /// request, before anything of the second exists.
     pub(crate) fn refused_as_a_second_query(&self, req_id: u32, shared: &SharedState) -> bool {
         let answering = self.held.iter().any(|held| held.req_id == req_id)
             || self.pending_historical.iter().any(|(_, id)| *id == req_id)
-            || self.asked_again.iter().any(|ask| ask.req_id == req_id);
+            || self.asked_again.iter().any(|ask| ask.req_id == req_id)
+            || self.hist_queue.iter().any(|cmd| super::ccp::request_id(cmd) == Some(req_id));
         if answering {
             // Refused without ending anything: the request that is answering
             // goes on answering. Ended, its caller's side would let go of what

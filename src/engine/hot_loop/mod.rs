@@ -1149,6 +1149,142 @@ impl HotLoop {
         push_hmds_unavailable(&self.shared, req_id, from_historical);
     }
 
+    /// Take a bar request in: refuse what is refuseable on the spot, and
+    /// stand the rest in the order they arrived. A gateway answers at most
+    /// fifty bar requests at once and holds the rest, starting each held one
+    /// as a request in flight ends; a held request is refused nothing, and
+    /// its caller hears nothing until its turn comes. What the refusals in
+    /// front of the queue are is what they are whether the request would be
+    /// held or started: a request refused is refused where it is taken.
+    fn take_historical_request(&mut self, cmd: ControlCommand) {
+        let ControlCommand::FetchHistorical { contract, req_id, end_date_time, duration, bar_size, what_to_show, keep_up_to_date, format_date, .. } = &cmd else { return };
+        let ContractRef { sec_type, .. } = contract;
+        // What the surfaces refuse of a request kept up to date,
+        // or of the adjusted series, before the command is sent:
+        // what a gateway refuses before asking the venue. A caller
+        // reaching this loop by the control channel goes past the
+        // surfaces, so it is refused here in the same words.
+        let refused = if *keep_up_to_date
+            || crate::control::historical::what_to_show_is_adjusted(what_to_show)
+        {
+            crate::client_core::ClientCore::validate_historical_args(
+                bar_size, what_to_show, duration, *keep_up_to_date, end_date_time,
+                sec_type, *format_date,
+            )
+            .err()
+        } else {
+            None
+        };
+        if let Some(told) = refused {
+            log::error!("historical req_id={req_id}: {told}");
+            // Refused without ending anything, as the duplicate
+            // number below it is: a number already answering goes
+            // on answering, and its caller's side keeps what it
+            // holds of it. The surfaces refuse this before it is
+            // sent, so only a caller on the control channel
+            // reaches it.
+            push_hmds_refusal(
+                &self.shared, *req_id, crate::error_codes::Refusal::VALIDATION,
+                told, false,
+            );
+        } else if self.hmds.refused_as_a_second_query(*req_id, &self.shared) {
+            // Refused whether or not the connection is up: a
+            // request waiting to be asked again once it is back
+            // is still answering under the number, and so is one
+            // waiting for a slot.
+        } else if self.hmds_conn.is_none() {
+            // keepUpToDate sends via CCP but bars/end arrive on
+            // HMDS — both paths need an authed HMDS socket to
+            // deliver a completion.
+            self.emit_hmds_unavailable(*req_id, true);
+        } else if *keep_up_to_date
+            && !self.hmds.keep_up_to_date_reqs.contains(req_id)
+            && self.hmds.rtbar_subs.iter().any(|(_, rid, ..)| rid == req_id)
+        {
+            // The stream half would run under a number a bar
+            // stream of its own already runs under, and the two
+            // would interleave into one queue. A stream that is
+            // itself the half of a request kept up to date is the
+            // historical query's, and that query refuses a second
+            // under its number itself, below.
+            push_hmds_refusal(
+                &self.shared, *req_id, crate::error_codes::DUPLICATE_TICKER_ID,
+                format!("a live bar stream is already running under request {req_id}: withdraw it before asking for bars kept up to date under it"),
+                true,
+            );
+        } else {
+            self.hmds.hist_queue.push_back(cmd);
+            self.send_next_historical();
+        }
+    }
+
+    /// Start the held bar requests whose turn has come, in the order they
+    /// arrived, while fewer than fifty are in flight and the connection to
+    /// ask them on is up. A held request survives a dropped connection here
+    /// and starts once it is back, as a request left to be asked again does.
+    fn send_next_historical(&mut self) {
+        while self.hmds_conn.is_some()
+            && self.hmds.held.len() < hmds::HISTORICAL_IN_FLIGHT_CAP
+        {
+            let Some(cmd) = self.hmds.hist_queue.pop_front() else { break };
+            self.start_historical_request(cmd);
+        }
+    }
+
+    /// Start one bar request: its batch query, and for one kept up to date
+    /// the stream that keeps its bars current.
+    fn start_historical_request(&mut self, cmd: ControlCommand) {
+        let ControlCommand::FetchHistorical { contract, req_id, end_date_time, duration, bar_size, what_to_show, use_rth, keep_up_to_date, format_date, include_expired, .. } = cmd else { return };
+        let ContractRef { con_id, symbol, sec_type, exchange, .. } = contract;
+        // What the caller's side writes the request's dates and
+        // range from, stated where the request is taken and
+        // nowhere else: a refused one leaves the number's live
+        // request as it was.
+        let taken = crate::bridge::HistoricalTaken {
+            req_id, format_date, end_date_time: end_date_time.clone(),
+            duration: duration.clone(), bar_size: bar_size.clone(), keep_up_to_date,
+        };
+        if keep_up_to_date {
+            // The bars so far, then the stream that keeps them
+            // current. The venue answers a request to keep bars up
+            // to date with the bars and closes the query, on either
+            // connection it can be sent over; what it keeps sending
+            // is five-second bars, and the bar still forming is
+            // folded from those. Refused, nothing else goes out on
+            // its account: refused for its batch alone, the stream
+            // half still went out and fed the live request's
+            // forming bar a second five-second stream.
+            let sent = self.hmds.send_historical_request_ex(
+                req_id, con_id, &end_date_time, &duration, &bar_size, &what_to_show,
+                use_rth, false, include_expired, &symbol, &sec_type, &exchange,
+                &mut self.hmds_conn, &mut self.hb, &self.shared,
+            );
+            if sent {
+                self.shared.reference.push_historical_taken(taken);
+            }
+            if sent && let Ok(size) = crate::control::historical::BarSize::from_api_str(&bar_size) {
+                self.hmds.keep_up_to_date_reqs.insert(req_id);
+                self.hmds.forming_bars.retain(|f| f.req_id != req_id);
+                self.hmds.forming_bars.push(crate::engine::hot_loop::hmds::FormingBar {
+                    req_id,
+                    seconds: size.seconds(),
+                    opened_at: 0,
+                    daily_session: None,
+                    closed_at: None,
+                    bar: Default::default(),
+                    weighted: 0.0,
+                    queued: Vec::new(),
+                });
+                self.hmds.send_realtime_bar_subscribe(
+                    req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show,
+                    use_rth, &mut self.hmds_conn, &mut self.hb,
+                );
+            }
+        } else if self.hmds.send_historical_request_ex(req_id, con_id, &end_date_time, &duration, &bar_size, &what_to_show, use_rth, false, include_expired, &symbol, &sec_type, &exchange, &mut self.hmds_conn, &mut self.hb, &self.shared) {
+            self.shared.reference.push_historical_taken(taken);
+        }
+    }
+
     /// Poll the historical connection, and end the head timestamps the venue
     /// has not answered in the time a gateway waits for one, whether or not
     /// the connection is up.
@@ -1186,6 +1322,7 @@ impl HotLoop {
         self.ccp.sweep_completed_orders_request(&mut self.ccp_conn, &mut self.hb, &self.shared, &mut left);
         self.secdef.send_next(&mut self.secdef_conn, &mut self.hb, &self.shared, &mut left);
         self.hmds.send_next_scanner_params(&mut self.hmds_conn, &mut self.hb, &self.shared, &mut left);
+        self.send_next_historical();
         let rx = match self.control_rx.as_ref() {
             Some(rx) => rx,
             None => return,
@@ -1480,108 +1617,7 @@ impl HotLoop {
                     let ContractRef { con_id, symbol, sec_type, exchange, .. } = contract;
                     self.register_contract(con_id, symbol, &sec_type, &exchange, &identity, "");
                 }
-                ControlCommand::FetchHistorical { contract, req_id, end_date_time, duration, bar_size, what_to_show, use_rth, keep_up_to_date, format_date, include_expired, .. } => {
-                    let ContractRef { con_id, symbol, sec_type, exchange, .. } = contract;
-                    // What the caller's side writes the request's dates and
-                    // range from, stated where the request is taken and
-                    // nowhere else: a refused one leaves the number's live
-                    // request as it was.
-                    let taken = crate::bridge::HistoricalTaken {
-                        req_id, format_date, end_date_time: end_date_time.clone(),
-                        duration: duration.clone(), bar_size: bar_size.clone(), keep_up_to_date,
-                    };
-                    // What the surfaces refuse of a request kept up to date,
-                    // or of the adjusted series, before the command is sent:
-                    // what a gateway refuses before asking the venue. A caller
-                    // reaching this loop by the control channel goes past the
-                    // surfaces, so it is refused here in the same words.
-                    let refused = if keep_up_to_date
-                        || crate::control::historical::what_to_show_is_adjusted(&what_to_show)
-                    {
-                        crate::client_core::ClientCore::validate_historical_args(
-                            &bar_size, &what_to_show, &duration, keep_up_to_date, &end_date_time,
-                            &sec_type, format_date,
-                        )
-                        .err()
-                    } else {
-                        None
-                    };
-                    if let Some(told) = refused {
-                        log::error!("historical req_id={req_id}: {told}");
-                        // Refused without ending anything, as the duplicate
-                        // number below it is: a number already answering goes
-                        // on answering, and its caller's side keeps what it
-                        // holds of it. The surfaces refuse this before it is
-                        // sent, so only a caller on the control channel
-                        // reaches it.
-                        push_hmds_refusal(
-                            &self.shared, req_id, crate::error_codes::Refusal::VALIDATION,
-                            told, false,
-                        );
-                    } else if self.hmds.refused_as_a_second_query(req_id, &self.shared) {
-                        // Refused whether or not the connection is up: a
-                        // request waiting to be asked again once it is back
-                        // is still answering under the number.
-                    } else if self.hmds_conn.is_none() {
-                        // keepUpToDate sends via CCP but bars/end arrive on
-                        // HMDS — both paths need an authed HMDS socket to
-                        // deliver a completion.
-                        self.emit_hmds_unavailable(req_id, true);
-                    } else if keep_up_to_date
-                        && !self.hmds.keep_up_to_date_reqs.contains(&req_id)
-                        && self.hmds.rtbar_subs.iter().any(|(_, rid, ..)| *rid == req_id)
-                    {
-                        // The stream half would run under a number a bar
-                        // stream of its own already runs under, and the two
-                        // would interleave into one queue. A stream that is
-                        // itself the half of a request kept up to date is the
-                        // historical query's, and that query refuses a second
-                        // under its number itself, below.
-                        push_hmds_refusal(
-                            &self.shared, req_id, crate::error_codes::DUPLICATE_TICKER_ID,
-                            format!("a live bar stream is already running under request {req_id}: withdraw it before asking for bars kept up to date under it"),
-                            true,
-                        );
-                    } else if keep_up_to_date {
-                        // The bars so far, then the stream that keeps them
-                        // current. The venue answers a request to keep bars up
-                        // to date with the bars and closes the query, on either
-                        // connection it can be sent over; what it keeps sending
-                        // is five-second bars, and the bar still forming is
-                        // folded from those. Refused, nothing else goes out on
-                        // its account: refused for its batch alone, the stream
-                        // half still went out and fed the live request's
-                        // forming bar a second five-second stream.
-                        let sent = self.hmds.send_historical_request_ex(
-                            req_id, con_id, &end_date_time, &duration, &bar_size, &what_to_show,
-                            use_rth, false, include_expired, &symbol, &sec_type, &exchange,
-                            &mut self.hmds_conn, &mut self.hb, &self.shared,
-                        );
-                        if sent {
-                            self.shared.reference.push_historical_taken(taken);
-                        }
-                        if sent && let Ok(size) = crate::control::historical::BarSize::from_api_str(&bar_size) {
-                            self.hmds.keep_up_to_date_reqs.insert(req_id);
-                            self.hmds.forming_bars.retain(|f| f.req_id != req_id);
-                            self.hmds.forming_bars.push(crate::engine::hot_loop::hmds::FormingBar {
-                                req_id,
-                                seconds: size.seconds(),
-                                opened_at: 0,
-                                daily_session: None,
-                                closed_at: None,
-                                bar: Default::default(),
-                                weighted: 0.0,
-                                queued: Vec::new(),
-                            });
-                            self.hmds.send_realtime_bar_subscribe(
-                                req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show,
-                                use_rth, &mut self.hmds_conn, &mut self.hb,
-                            );
-                        }
-                    } else if self.hmds.send_historical_request_ex(req_id, con_id, &end_date_time, &duration, &bar_size, &what_to_show, use_rth, false, include_expired, &symbol, &sec_type, &exchange, &mut self.hmds_conn, &mut self.hb, &self.shared) {
-                        self.shared.reference.push_historical_taken(taken);
-                    }
-                }
+                cmd @ ControlCommand::FetchHistorical { .. } => self.take_historical_request(cmd),
                 ControlCommand::CancelHistorical { req_id } => {
                     // Everything the arm below withdraws, so a request kept up
                     // to date -- whose batch is filed but whose stream is
@@ -1598,6 +1634,7 @@ impl HotLoop {
                     let held = self.hmds.pending_historical.iter().any(|(_, rid)| *rid == req_id)
                         || self.hmds.held.iter().any(|a| a.req_id == req_id)
                         || self.hmds.asked_again.iter().any(|a| a.req_id == req_id)
+                        || self.hmds.hist_queue.iter().any(|cmd| ccp::request_id(cmd) == Some(req_id))
                         || self.hmds.keep_up_to_date_reqs.contains(&req_id)
                         || self.hmds.pending_schedule.iter().any(|(_, rid, _)| *rid == req_id)
                         || self.ccp.pending_named.iter()
@@ -1618,8 +1655,12 @@ impl HotLoop {
                     }
                     self.ccp.withdraw_named(req_id, |cmd| matches!(cmd, ControlCommand::FetchHistorical { .. } | ControlCommand::FetchHistoricalSchedule { .. }));
                     // One waiting to be asked again once the connection is
-                    // back is not asked.
+                    // back is not asked, and one waiting for a slot is not
+                    // started: a withdrawal reaches the queue as it reaches
+                    // every store the request could be waiting in, or the
+                    // request it withdrew starts anyway once a slot frees.
                     self.hmds.asked_again.retain(|a| a.req_id != req_id);
+                    self.hmds.hist_queue.retain(|cmd| ccp::request_id(cmd) != Some(req_id));
                     // What the venue already sent and nobody has read yet
                     // goes with the request. Left queued, the next request
                     // under this number is answered with this one's.
@@ -2308,8 +2349,9 @@ impl HotLoop {
 
     /// How many of the commands this loop has taken it still holds: each
     /// waiting for its contract to be named, or in the order buffer, or asked
-    /// behind the session's own replay. A command taken and held nowhere is
-    /// finished: sent, refused or withdrawn.
+    /// behind the session's own replay, or waiting its turn among the bar
+    /// requests. A command taken and held nowhere is finished: sent, refused
+    /// or withdrawn.
     fn commands_held(&self) -> u64 {
         // A stopped loop has withdrawn its holds. Their storage lives until
         // the loop is dropped, but no command in it is still waiting.
@@ -2322,6 +2364,7 @@ impl HotLoop {
             + self.ccp.queued_matching_symbols.len()
             + self.ccp.queued_option_params.len()
             + self.secdef.calendar_requests_held()
+            + self.hmds.hist_queue.len()
             + self.hmds.scanner_params_queued
             + self.asks.len()
             + self.intake.waiting()
@@ -8463,6 +8506,188 @@ mod tests {
         assert_eq!(hmds::tests::over(&shared), [7], "and the bar request is over");
         assert!(hl.hmds.asked_again.is_empty() && hl.hmds.pending_scanner.is_empty());
         assert!(hl.ccp.pending_scanner_enrichment.is_empty(), "and the scan's parked rows go with it");
+    }
+
+    /// A gateway answers at most fifty bar requests at once: it holds the rest
+    /// in the order they arrived and starts each held one as a request in
+    /// flight ends, so a held request is not refused — it waits its turn, and
+    /// the head of the queue takes the freed place. Every end of a request in
+    /// flight frees its place, because the count is of the series still held,
+    /// and every end — an answer, a refusal, a give-up, a withdrawal — lets
+    /// the series go. A second request under a held number is refused as one
+    /// under a live number is, and a withdrawal reaches into the queue: a
+    /// withdrawn held request must never start later.
+    #[test]
+    fn the_fifty_first_bar_request_waits_for_a_slot_and_takes_the_first_freed() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (conn, _peer) = Connection::for_test();
+        hl.hmds_conn = Some(conn);
+        let (tx, rx) = std::sync::mpsc::sync_channel(8);
+        hl.set_control_rx(rx);
+        // Fifty requests the venue is answering.
+        for req_id in 1..=50u32 {
+            hl.hmds.held.push(hmds::HeldSeries {
+                req_id, fold: hmds::Fold::None, bars: Vec::new(), timezone: String::new(),
+                actions_query: None, actions: None, complete: false,
+                along: Default::default(), pair: None,
+            });
+        }
+        let ask = |req_id: u32| ControlCommand::FetchHistorical {
+            req_id,
+            contract: ContractRef {
+                con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(),
+                exchange: "IDEALPRO".into(), currency: "USD".into(), ..Default::default()
+            },
+            end_date_time: String::new(), duration: "1 D".into(), bar_size: "1 hour".into(),
+            what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false,
+            format_date: 1, include_expired: false, filters: Default::default(),
+        };
+        for req_id in [51, 52, 53] {
+            tx.send(ask(req_id)).unwrap();
+        }
+        hl.poll_control_commands();
+        assert_eq!(hl.hmds.held.len(), 50, "none of them starts while fifty are answered");
+        assert_eq!(hl.commands_held(), 3, "and each is held as a command the loop has taken");
+        assert!(
+            hl.hmds.pending_historical.iter().all(|(_, rid)| *rid < 51),
+            "and no query of theirs goes out",
+        );
+        assert!(
+            shared.reference.drain_historical_errors().is_empty(),
+            "and their callers are refused nothing: a gateway holds rather than refuses",
+        );
+        // A second request under a held number is refused, and the number is
+        // not queued twice.
+        tx.send(ask(51)).unwrap();
+        hl.poll_control_commands();
+        assert_eq!(hl.hmds.hist_queue.len(), 3, "the number is not queued twice");
+        assert_eq!(
+            shared.reference.drain_historical_errors(),
+            [(51, 322, "Error processing request:-'' : cause - \
+                       Duplicate ticker ID for API historical data query".to_string())],
+        );
+        // A withdrawal reaches into the queue, and what it withdrew never
+        // starts later.
+        tx.send(ControlCommand::CancelHistorical { req_id: 52 }).unwrap();
+        hl.poll_control_commands();
+        assert_eq!(hl.hmds.hist_queue.len(), 2, "the withdrawal took the held request out of the queue");
+        assert!(
+            shared.reference.drain_historical_errors().is_empty(),
+            "and a withdrawal that acted says nothing beside it",
+        );
+        // The requests in flight end — as any of them does, by letting their
+        // held series go — and what was held starts in the order it arrived.
+        hl.hmds.held.retain(|h| h.req_id != 1);
+        hl.poll_control_commands();
+        assert!(
+            hl.hmds.held.iter().any(|h| h.req_id == 51),
+            "the head of the queue takes the freed place",
+        );
+        assert!(
+            hl.hmds.pending_historical.iter().any(|(_, rid)| *rid == 51),
+            "and its query goes out",
+        );
+        assert_eq!(hl.hmds.hist_queue.len(), 1, "with the next one moved up");
+        hl.hmds.held.retain(|h| h.req_id != 2);
+        hl.poll_control_commands();
+        assert!(hl.hmds.held.iter().any(|h| h.req_id == 53), "the last takes the next freed place");
+        assert!(hl.hmds.hist_queue.is_empty(), "and the queue is empty");
+        assert!(
+            hl.hmds.held.iter().all(|h| h.req_id != 52)
+                && hl.hmds.pending_historical.iter().all(|(_, rid)| *rid != 52),
+            "and what was withdrawn never started",
+        );
+    }
+
+    /// A bar request held for a slot rides out a dropped connection: it has
+    /// asked the venue nothing, so the drop fails the requests in flight and
+    /// leaves the held one standing, and nothing of it is started against a
+    /// connection that is down. It starts once the connection is back, as a
+    /// request left to be asked again does.
+    #[test]
+    fn a_held_bar_request_rides_out_a_dropped_connection() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (conn, _peer) = Connection::for_test();
+        hl.hmds_conn = Some(conn);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        for req_id in 1..=50u32 {
+            hl.hmds.held.push(hmds::HeldSeries {
+                req_id, fold: hmds::Fold::None, bars: Vec::new(), timezone: String::new(),
+                actions_query: None, actions: None, complete: false,
+                along: Default::default(), pair: None,
+            });
+        }
+        tx.send(ControlCommand::FetchHistorical {
+            req_id: 51,
+            contract: ContractRef {
+                con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(),
+                exchange: "IDEALPRO".into(), currency: "USD".into(), ..Default::default()
+            },
+            end_date_time: String::new(), duration: "1 D".into(), bar_size: "1 hour".into(),
+            what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false,
+            format_date: 1, include_expired: false, filters: Default::default(),
+        }).unwrap();
+        hl.poll_control_commands();
+        assert_eq!(hl.hmds.hist_queue.len(), 1, "held while fifty are answered");
+        // The connection drops: the fifty in flight are failed where that is
+        // stated, and the held one — which asked nothing — rides it out.
+        hl.hmds.disconnect(&mut hl.hmds_conn, &hl.shared, &None);
+        let told = shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 50, "the requests in flight are told of the drop");
+        assert!(told.iter().all(|(rid, ..)| *rid <= 50), "and the held one is not among them: {told:?}");
+        assert_eq!(hl.hmds.hist_queue.len(), 1, "the queue stands through the drop");
+        hl.poll_control_commands();
+        assert_eq!(hl.hmds.hist_queue.len(), 1, "and nothing of it is started against a connection that is down");
+        assert!(hl.hmds.held.iter().all(|h| h.req_id != 51), "so the held request is not in flight");
+        // The connection is back and the held request starts.
+        let (conn, _peer) = Connection::for_test();
+        hl.hmds_conn = Some(conn);
+        hl.hmds.disconnected = false;
+        hl.poll_control_commands();
+        assert!(hl.hmds.held.iter().any(|h| h.req_id == 51), "the held request starts once the connection is back");
+        assert!(hl.hmds.hist_queue.is_empty(), "and the queue is empty");
+    }
+
+    /// A bar request still held in the queue when this client stops trying for
+    /// the historical connection is failed as the ones left to be asked again
+    /// are: nothing is left to ask any of them on.
+    #[test]
+    fn a_queued_bar_request_is_failed_when_the_farm_is_given_up() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (conn, _peer) = Connection::for_test();
+        hl.hmds_conn = Some(conn);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        for req_id in 1..=50u32 {
+            hl.hmds.held.push(hmds::HeldSeries {
+                req_id, fold: hmds::Fold::None, bars: Vec::new(), timezone: String::new(),
+                actions_query: None, actions: None, complete: false,
+                along: Default::default(), pair: None,
+            });
+        }
+        tx.send(ControlCommand::FetchHistorical {
+            req_id: 51,
+            contract: ContractRef {
+                con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(),
+                exchange: "IDEALPRO".into(), currency: "USD".into(), ..Default::default()
+            },
+            end_date_time: String::new(), duration: "1 D".into(), bar_size: "1 hour".into(),
+            what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false,
+            format_date: 1, include_expired: false, filters: Default::default(),
+        }).unwrap();
+        hl.poll_control_commands();
+        hl.hmds.give_up_those_asked_again(&hl.shared);
+        let told = shared.reference.drain_historical_errors();
+        assert!(
+            told.iter().any(|(rid, code, _)| *rid == 51 && *code == 504),
+            "the held request is failed under the number that says the service is not there: {told:?}",
+        );
+        assert_eq!(hmds::tests::over(&shared), [51], "and the bar request is over");
+        assert!(hl.hmds.hist_queue.is_empty(), "and the queue is empty");
     }
 
     /// A calendar withdrawal that throws away an answer already queued acted,
