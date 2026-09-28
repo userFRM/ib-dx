@@ -56,9 +56,10 @@ jobs:
         env:
           REPORT: ${{ steps.compare.outputs.report }}
         run: |
-          # Said here rather than filed as an issue: this repository has issues
-          # turned off, and the report died on that every night without ever
-          # being read. A red nightly run is the notification.
+          # Said here rather than filed as an issue on purpose: what the report
+          # asks for is a deliberate change against a paper session, as the
+          # note at the top of this file says, not one to make unattended.
+          # A red nightly run is the notification.
           {
             echo "## The vendor has published a build this repository has not looked at"
             echo
