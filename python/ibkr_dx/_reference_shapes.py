@@ -488,6 +488,85 @@ def listOfValues(cls):
 #: client's decoder reads a fund's kind through (ibapi utils.py:238).
 getEnumTypeFromString = member_for
 
+
+class BadMessage(Exception):
+    """A wire message that ran out of fields, as the reference client raises it.
+
+    Its `decode` names this when the field iterator is spent (ibapi
+    utils.py:51,107), and its readers catch it by this name from this module —
+    `from ibapi.utils import BadMessage` — so a program decoding hand-built
+    field iterators the reference way catches the same exception here.
+    """
+
+    def __init__(self, text):
+        self.text = text
+
+
+def decode(the_type, fields, show_unset=False, use_unicode=False):
+    """The next field of an iterator, converted to the asked-for type.
+
+    The reference client's own field reader (ibapi utils.py:103), which its
+    decoders run every incoming message through: take the next field string,
+    answer it as `the_type`, and where `show_unset` is asked, answer an empty
+    field with the unset marker its type carries. A spent iterator raises
+    :class:`BadMessage`; a string that does not convert raises the conversion's
+    own error, as it does there.
+    """
+    try:
+        s = next(fields)
+    except StopIteration:
+        raise BadMessage("no more fields")
+
+    if the_type is Decimal:
+        if (
+            s is None
+            or len(s) == 0
+            or s.decode() == "2147483647"
+            or s.decode() == "9223372036854775807"
+            or s.decode() == "1.7976931348623157E308"
+            or s.decode() == "-9223372036854775808"
+        ):
+            return UNSET_DECIMAL
+        return the_type(s.decode())
+
+    if the_type is str:
+        if type(s) is str:
+            return s
+        if type(s) is bytes:
+            return s.decode(
+                "unicode-escape" if use_unicode else "UTF-8", errors="backslashreplace"
+            )
+        else:
+            raise TypeError(
+                "unsupported incoming type " + type(s) + " for desired type 'str"
+            )
+
+    orig_type = the_type
+    if the_type is bool:
+        the_type = int
+
+    if the_type is float:
+        if s.decode() == INFINITY_STR:
+            return DOUBLE_INFINITY
+
+    if show_unset:
+        if s is None or len(s) == 0:
+            if the_type is float:
+                n = UNSET_DOUBLE
+            elif the_type is int:
+                n = UNSET_INTEGER
+            else:
+                raise TypeError("unsupported desired type for empty value" + the_type)
+        else:
+            n = the_type(s)
+    else:
+        n = the_type(s or 0)
+
+    if orig_type is bool:
+        n = n != 0
+
+    return n
+
 class RealTimeBar:
     """One five-second bar, as a callback hands it over.
 

@@ -10,6 +10,8 @@ the enumerations, a comparison that could never hold.
 Run: pytest tests/python/test_the_reference_modules_publish_their_constants.py -v
 """
 
+import pytest
+
 from ibkr_dx import contract, execution, news, order, scanner
 from ibkr_dx import ContractDetails, Execution, Order, ScannerSubscription
 
@@ -93,6 +95,35 @@ def test_the_utils_module_publishes_its_helpers():
     assert utils.listOfValues(OptionExerciseType)[0] is OptionExerciseType.NoneItem
     assert utils.getEnumTypeFromString(OptionExerciseType, 2) is OptionExerciseType.Lapse
     assert utils.getEnumTypeFromString(OptionExerciseType, "no such") is OptionExerciseType.NoneItem
+
+    # The field decoder the reference's readers run every message through
+    # (ibapi utils.py:103): the next field of an iterator, converted to the
+    # asked-for type; an unset field answers the type's unset marker where
+    # asked to show it; a spent iterator is a BadMessage of the same module.
+    from decimal import Decimal
+
+    from ibkr_dx import UNSET_DECIMAL, UNSET_DOUBLE, UNSET_INTEGER
+
+    fields = iter([b"42", b"1.5", b"abc"])
+    assert utils.decode(int, fields) == 42
+    assert utils.decode(float, fields) == 1.5
+    assert utils.decode(str, fields) == "abc"
+    assert utils.decode(int, iter([b""])) == 0
+    assert utils.decode(int, iter([b""]), show_unset=True) == UNSET_INTEGER
+    assert utils.decode(float, iter([b""]), show_unset=True) == UNSET_DOUBLE
+    assert utils.decode(Decimal, iter([b"2147483647"])) == UNSET_DECIMAL
+    assert utils.decode(Decimal, iter([b"1.5"])) == Decimal("1.5")
+    assert utils.decode(bool, iter([b"1"])) is True
+    assert utils.decode(bool, iter([b"0"])) is False
+    assert utils.decode(str, iter([b"a\\u00e9b"]), use_unicode=True) == "aéb"
+    assert utils.decode(float, iter([b"Infinity"])) == float("inf")
+    with pytest.raises(utils.BadMessage):
+        utils.decode(int, iter([]))
+    # A string that does not convert raises as the reference's does: the
+    # conversion's own error, not a BadMessage — its decode wraps only the
+    # taking of the field (ibapi utils.py:104-107).
+    with pytest.raises(ValueError):
+        utils.decode(int, iter([b"abc"]))
 
 
 def test_the_common_module_publishes_the_plain_enum_holder():

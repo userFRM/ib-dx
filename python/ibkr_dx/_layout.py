@@ -159,7 +159,7 @@ def install(surface: dict) -> dict:
                  "isValidFloatValue", "isValidIntValue", "isValidLongValue",
                  "isValidDecimalValue", "isAsciiPrintable", "isPegBenchOrder",
                  "isPegMidOrder", "isPegBestOrder", "currentTimeMillis", "listOfValues",
-                 "getEnumTypeFromString", "UNSET_DOUBLE"),
+                 "getEnumTypeFromString", "UNSET_DOUBLE", "decode", "BadMessage"),
             "The helpers a program's own callbacks call.",
         ),
     }
