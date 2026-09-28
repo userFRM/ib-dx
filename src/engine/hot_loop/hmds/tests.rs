@@ -454,6 +454,46 @@ fn query_error_releases_head_timestamp_without_sentinel() {
     assert!(shared.reference.drain_historical_data().is_empty());
 }
 
+/// A second head timestamp under a live number is refused in the wrapper a
+/// gateway wraps it in, and the first keeps answering: held as a second
+/// pending entry, the 5-second wait later fires a timeout for a request that
+/// was already answered. The gateway keeps head timestamps and histograms in
+/// one shared map, so a live histogram under the number refuses a head
+/// timestamp as well.
+#[test]
+fn a_second_head_timestamp_under_a_live_req_id_is_refused() {
+    let aapl = crate::types::ContractRef {
+        con_id: 265598, sec_type: "STK".into(), exchange: "SMART".into(),
+        ..Default::default()
+    };
+    // The query already live under the number when the head timestamp arrives.
+    for live in ["head-timestamp", "histogram"] {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let (conn, _peer) = Connection::for_test();
+        let mut conn = Some(conn);
+        if live == "head-timestamp" {
+            hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
+            assert_eq!(hmds.pending_head_ts.len(), 1, "the first is held");
+        } else {
+            hmds.pending_histogram.push(("hg_1".to_string(), 7));
+        }
+
+        hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
+
+        let held = usize::from(live == "head-timestamp");
+        assert_eq!(hmds.pending_head_ts.len(), held, "{live}: the second is not held");
+        let errors = shared.reference.drain_historical_errors();
+        assert_eq!(
+            errors,
+            vec![(7, 321, "Error validating request:-'' : cause - Duplicate head time stamp query for tickid".to_string())],
+            "{live}",
+        );
+    }
+}
+
+
 /// The request carries no number of its own, but it is still told when it
 /// cannot be made: returned as though the question had gone out, the caller
 /// waited on an answer nothing was ever going to send.

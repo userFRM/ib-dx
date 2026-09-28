@@ -662,7 +662,7 @@ impl EClient {
         // number — nothing was ever sent under it — and this is not a
         // malformed request, so neither the id nor the validation code the
         // refusals above carry is the one a caller branching on the pair
-        // reads there. The reason is a gateway's own words for the miss.
+        // reads there. The reason is a gateway's words for the miss.
         self.report_refusal_as(
             py,
             refused,

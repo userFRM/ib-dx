@@ -3109,6 +3109,22 @@ fn build_tbt_query(
         if self.refused_as_a_second_query(req_id, shared) {
             return;
         }
+        // A gateway keeps head timestamps and histograms in one shared map, so
+        // a second head timestamp under a number either kind is live under is
+        // refused before anything of it exists — held instead, its 5-second
+        // wait later fires a timeout for a request the first already answered.
+        if self.pending_head_ts.iter().any(|(_, id, ..)| *id == req_id)
+            || self.pending_histogram.iter().any(|(_, id)| *id == req_id)
+        {
+            super::push_hmds_refusal(
+                shared,
+                req_id,
+                crate::error_codes::Refusal::VALIDATION,
+                "Duplicate head time stamp query for tickid".into(),
+                false,
+            );
+            return;
+        }
         let con_id = contract.con_id;
         // The head-timestamp table, which is the bar one and the rate: this
         // was a third divergent copy with a silent TRADES fallback.

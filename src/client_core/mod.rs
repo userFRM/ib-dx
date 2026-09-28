@@ -2402,7 +2402,7 @@ impl ClientCore {
         delayed_allowed: bool,
     ) -> Result<(), Refusal> {
         // A quote request naming no exchange is refused before anything is
-        // registered or looked up, in a gateway's own first word on the
+        // registered or looked up, in a gateway's first word on the
         // request — no trailing period, which the book refusal has. A contract
         // given by id alone is refused as instantly as one described: the
         // exchange is read off the contract as the caller stated it. Only the

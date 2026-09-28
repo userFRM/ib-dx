@@ -2167,7 +2167,7 @@ impl CcpState {
         // original remains working on the terms the venue last accepted, and
         // the engine's own book goes back to them.
         //
-        // What the order is stated as is a gateway's own statement of it,
+        // What the order is stated as is a gateway's statement of it,
         // which puts nothing back: it keeps the terms it sent, and takes the
         // terms and the size the refusal states only where the refusal is an
         // ordinary report stating some of the order left, as it takes them

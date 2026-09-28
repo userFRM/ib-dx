@@ -328,7 +328,7 @@ was stated stands through a reconnect until the venue states it again, so a
 tick owed when the connection drops is built from what was stated before it.
 
 The bid's, the ask's and the last's computations, 10, 11 and 12 (80, 81 and 82
-on a delayed feed), are a gateway's own and not the venue's. This client works
+on a delayed feed), are a gateway's and not the venue's. This client works
 them out the way a gateway does, with an option model of its own, from the
 inputs below; the underlying's price it works them from is not always the one a
 gateway takes, as [Limits](./limits.md) says.
@@ -743,7 +743,7 @@ it. The recovery is given up a minute after the logon that began it, and a
 connection that replaced one mid-recovery leaves it to that minute.
 
 Where the logon offers the recovery (`APINTLRCV`, or `APINTLRCV-WB` for a
-partner's login; a gateway's own setting for it is on unless changed, and this
+partner's login; a gateway's setting for it is on unless changed, and this
 client has none), the placements a drop leaves not yet sent are listed after
 the 1100: not yet built under 1104, `Pending to create 2 orders: 5,6`, built
 and not sent under 1105, previews under 1106, ten numbers at most followed by
