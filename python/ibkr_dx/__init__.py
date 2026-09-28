@@ -89,6 +89,12 @@ from ._reference_shapes import (  # noqa: F401
     longMaxString,
 )
 
+#: What a fill cost, under the name the reference client gave it before the
+#: fees were reported beside the commission. A program written against those
+#: releases imports `commission_report.CommissionReport`, so both spellings are
+#: published and name the one class.
+CommissionReport = CommissionAndFeesReport  # noqa: F405
+
 
 def _reference_name(ours: str) -> str:
     """What the reference client calls the call or callback this one calls `ours`.

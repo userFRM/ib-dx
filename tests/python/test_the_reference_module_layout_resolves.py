@@ -28,6 +28,7 @@ LAYOUT = [
     ("order_condition", ["OrderCondition", "PriceCondition", "TimeCondition"]),
     ("execution", ["Execution", "ExecutionFilter", "OptionExerciseType"]),
     ("commission_and_fees_report", ["CommissionAndFeesReport"]),
+    ("commission_report", ["CommissionReport"]),
     ("scanner", ["ScannerSubscription", "ScanData", "NO_ROW_NUMBER_SPECIFIED"]),
     ("news", ["NewsProvider", "NEWS_MSG", "EXCHANGE_AVAIL_MSG"]),
     ("tag_value", ["TagValue"]),
@@ -62,12 +63,16 @@ def test_a_module_is_a_view_and_not_a_second_implementation():
     # `from ibapi.client import EClient` and `from ibapi import EClient` name
     # one class there, and they have to name one here.
     from ibkr_dx.client import EClient
+    from ibkr_dx.commission_report import CommissionReport
     from ibkr_dx.contract import Contract
     from ibkr_dx.execution import ExecutionFilter
 
     assert EClient is ibkr_dx.EClient
     assert Contract is ibkr_dx.Contract
     assert ExecutionFilter is ibkr_dx.ExecutionFilter
+    # The earlier spelling of the fill-cost report names the one class, not a
+    # second one beside it.
+    assert CommissionReport is ibkr_dx.CommissionAndFeesReport
 
 
 def test_the_module_is_reachable_as_an_attribute_too():

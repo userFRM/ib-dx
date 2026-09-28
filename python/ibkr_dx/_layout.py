@@ -110,6 +110,8 @@ def install(surface: dict) -> dict:
         "execution": (held("Execution", "ExecutionFilter", "OptionExerciseType"),
                       "A fill, which fills are asked for, and how an option came to be exercised."),
         "commission_and_fees_report": (held("CommissionAndFeesReport"), "What a fill cost."),
+        "commission_report": (held("CommissionReport"),
+                              "What a fill cost, under the earlier name for it."),
         "scanner": (held("ScannerSubscription", "ScanData", "NO_ROW_NUMBER_SPECIFIED"), "A scan and one of its rows."),
         "tag_value": (held("TagValue"), "One named value."),
         "ticktype": (held("TickType", "TickTypeEnum"),
