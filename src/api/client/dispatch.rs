@@ -775,7 +775,13 @@ impl EClient {
             );
             // Unsolicited executions carry request id -1. A market-data
             // subscription id does not identify a `reqExecutions` request.
-            wrapper.exec_details(NO_REQUEST, &c, &exec);
+            // The time is published as a gateway publishes it, on the
+            // session's clock; the record stored above keeps the venue's stamp.
+            let mut published = exec.clone();
+            published.time = crate::protocol::datetime::published_execution_time(
+                &exec.time, &self.shared.settings().timezone,
+            );
+            wrapper.exec_details(NO_REQUEST, &c, &published);
         }
         self.core.update_order_fill(
             fill.order_id, status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
@@ -1014,8 +1020,15 @@ impl EClient {
                     );
                     wrapper.error_from(origin, raised_now(), crate::error_codes::Refusal::VALIDATION as i64, &why, "");
                 }
+                // Published as a gateway publishes the time, on the session's
+                // clock; the record itself keeps the venue's stamp.
+                let zone = self.shared.settings().timezone.clone();
                 for se in rows {
-                    wrapper.exec_details(req_id, &se.contract, &se.execution);
+                    let mut published = se.execution.clone();
+                    published.time = crate::protocol::datetime::published_execution_time(
+                        &se.execution.time, &zone,
+                    );
+                    wrapper.exec_details(req_id, &se.contract, &published);
                     // Only where the venue has said what it cost. An execution
                     // is stored with its charge deliberately unstated, and an
                     // empty name can only mean nobody has said.

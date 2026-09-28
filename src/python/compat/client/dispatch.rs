@@ -1040,7 +1040,8 @@ impl EClient {
         let api_commission = ApiCommissionAndFeesReport::default();
 
         let c_py = Py::new(py, Contract::from_api(py, &api_contract)?)?.into_any();
-        let exec_py = Py::new(py, Execution::from_api(&api_exec))?.into_any();
+        let exec_py =
+            Py::new(py, Execution::from_api(&api_exec, &shared.settings().timezone))?.into_any();
         // Kept for `req_executions` to answer from, before either callback
         // about the print.
         self.core.push_execution(api_contract, api_exec, api_commission);
@@ -1313,9 +1314,10 @@ impl EClient {
                         crate::error_codes::Refusal::VALIDATION as i64, &why,
                     )?);
                 }
+                let zone = shared.settings().timezone.clone();
                 for se in snapshot {
                     let c_py = Py::new(py, Contract::from_api(py, &se.contract)?)?.into_any();
-                    let exec_py = Py::new(py, Execution::from_api(&se.execution))?.into_any();
+                    let exec_py = Py::new(py, Execution::from_api(&se.execution, &zone))?.into_any();
                     owed!(out, py, "exec_details", (req_id, &c_py, &exec_py));
                     // Only where the venue has said what it cost.
                     if !se.commission_and_fees.exec_id.is_empty() {

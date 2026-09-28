@@ -3806,20 +3806,35 @@ fn req_executions_does_not_hold_the_lock_across_callbacks() {
         "executions lock must be released before the callback runs");
 }
 
-/// `ExecutionFilter.time` is a lower bound in ibapi. It was parsed and then
-/// ignored, so a caller asking for today's fills got the whole history.
+/// `ExecutionFilter.time` is a lower bound on an instant, and the times
+/// published beside the answer are written on the session's clock with the
+/// zone named, as a gateway publishes them. The bound was compared on digits
+/// against the venue's raw UTC stamp, so a bound stated on a zone east of UTC
+/// dropped fills near midnight a gateway keeps; the published stamp was the
+/// venue's raw one, a shape no documented parser reads; and a bound a gateway
+/// cannot read was answered rather than refused.
 #[test]
 fn execution_filter_time_is_a_lower_bound() {
-    #[derive(Default)]
-    struct Rows { seen: Vec<String> }
+    #[derive(Default, Debug)]
+    struct Rows { seen: Vec<String>, errors: Vec<(i64, String)> }
     impl Wrapper for Rows {
         fn exec_details(&mut self, _r: i64, _c: &Contract, e: &crate::types::model::Execution) {
             self.seen.push(e.time.clone());
         }
+        fn error_from(
+            &mut self, _o: crate::types::model::ErrorOrigin, _t: i64,
+            code: i64, msg: &str, _j: &str,
+        ) {
+            self.errors.push((code, msg.to_string()));
+        }
     }
 
-    let (client, _rx, _shared) = test_client();
-    for t in ["20260729-09:00:00", "20260729-11:00:00"] {
+    let (client, _rx, shared) = test_client();
+    shared.set_settings(Arc::new(crate::settings::SessionSettings {
+        timezone: "Europe/Brussels".into(),
+        ..Default::default()
+    }));
+    for t in ["20260729-09:00:00", "20260729-11:00:00", "not-a-time"] {
         client.core.push_execution(
             crate::types::model::Contract { symbol: "AAPL".into(), ..Default::default() },
             crate::types::model::Execution { time: t.into(), ..Default::default() },
@@ -3827,26 +3842,70 @@ fn execution_filter_time_is_a_lower_bound() {
         );
     }
 
+    // A dash-joined bound is UTC. The fill at 11:00 UTC is at or after
+    // 10:00 UTC, one the venue never timed cannot be placed either side and
+    // is kept, and what is published is written on Brussels' clock — two
+    // hours ahead of UTC in July — with the zone beside it.
     let mut w = Rows::default();
     client.req_executions(1, &crate::types::model::ExecutionFilter {
         time: "20260729-10:00:00".into(), ..Default::default()
     }); client.process_msgs(&mut w);
-    assert_eq!(w.seen, vec!["20260729-11:00:00"], "only executions at or after the bound");
+    assert_eq!(w.seen, vec!["20260729 13:00:00 Europe/Brussels", "not-a-time"],
+        "only executions at or after the bound, published on the session's clock");
 
-    // Punctuation differs between the two sides in practice; the comparison is
-    // on digits, so a space-separated bound behaves identically.
+    // A bound naming a zone is read on that zone: 12:00 in Brussels is
+    // 10:00 UTC, the same bound as above. Compared on digits, its stamp
+    // reads later than the fill's and drops it.
     let mut w2 = Rows::default();
     client.req_executions(1, &crate::types::model::ExecutionFilter {
-        time: "20260729 10:00:00".into(), ..Default::default()
+        time: "20260729 12:00:00 Europe/Brussels".into(), ..Default::default()
     }); client.process_msgs(&mut w2);
-    assert_eq!(w2.seen, vec!["20260729-11:00:00"], "separator must not change the bound");
+    assert_eq!(w2.seen, vec!["20260729 13:00:00 Europe/Brussels", "not-a-time"],
+        "a zoned bound compares instants, not digits");
 
-    // A date-only bound keeps the whole day rather than dropping it.
+    // A date alone is no moment a gateway reads: it refuses the request.
     let mut w3 = Rows::default();
     client.req_executions(1, &crate::types::model::ExecutionFilter {
         time: "20260729".into(), ..Default::default()
     }); client.process_msgs(&mut w3);
-    assert_eq!(w3.seen.len(), 2, "a date-only bound keeps that day");
+    assert_eq!(w3.errors.len(), 1, "an unreadable bound is refused");
+    assert_eq!(w3.errors[0].0, 10314);
+    assert!(
+        w3.errors[0].1.starts_with("Time: The date, time, or time-zone entered is invalid."),
+        "{}", w3.errors[0].1,
+    );
+    assert!(w3.seen.is_empty(), "and nothing is answered");
+
+    // A live fill is published in the same shape as a replayed one, and the
+    // record kept for the replay holds the venue's own stamp.
+    shared.orders.push_order_info(77, crate::bridge::RichOrderInfo {
+        contract: crate::types::model::Contract { symbol: "AAPL".into(), ..Default::default() },
+        order: Order { order_id: 77, ..Default::default() },
+        order_state: Default::default(),
+        last_exec: crate::types::model::Execution {
+            exec_id: "live-1".into(), time: "20260729-11:00:00".into(), ..Default::default()
+        },
+    });
+    shared.orders.push_fill(Fill {
+        instrument: 0, order_id: 77, side: Side::Buy,
+        price: 150 * PRICE_SCALE, qty: 10 * crate::types::QTY_SCALE, remaining: 0,
+        timestamp_ns: 0, cum_qty: 10 * crate::types::QTY_SCALE,
+        avg_price: 150 * PRICE_SCALE,
+    });
+    let mut w4 = Rows::default();
+    client.process_msgs(&mut w4);
+    assert_eq!(w4.seen, vec!["20260729 13:00:00 Europe/Brussels"],
+        "a live fill is published in the same shape");
+
+    // And the fill the live callback published replays published too, out of
+    // the raw record kept for the replay.
+    let mut w5 = Rows::default();
+    client.req_executions(2, &crate::types::model::ExecutionFilter::default());
+    client.process_msgs(&mut w5);
+    assert!(
+        w5.seen.iter().any(|t| t == "20260729 13:00:00 Europe/Brussels"),
+        "the live fill replays published too: {w5:?}",
+    );
 }
 
 /// A window reaching back before what the session holds is answered with what

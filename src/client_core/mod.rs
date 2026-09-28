@@ -1208,22 +1208,20 @@ fn execution_matches(se: &StoredExecution, filter: &ExecutionFilter) -> bool {
         return false;
     }
     // ibapi treats `time` as a lower bound — executions at or after it. The
-    // two sides can be punctuated differently ("20260729-10:00:00" against
-    // "20260729 10:00:00"), so compare on digits alone; both are yyyyMMdd
-    // first, so that ordering is chronological. A bound carrying less
-    // precision than the timestamp compares against the same prefix, so a
-    // date-only filter keeps that whole day rather than dropping it. An
-    // execution the venue stated no time for compares on nothing and is kept:
-    // it cannot be placed either side of a bound, and a caller asking what has
-    // traded is worse served by a fill they are never shown.
-    if !filter.time.is_empty() {
-        let digits = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
-        let lo = digits(&filter.time);
-        let at = digits(&se.execution.time);
-        let n = lo.len().min(at.len());
-        if at.get(..n).unwrap_or("") < lo.get(..n).unwrap_or("") {
-            return false;
-        }
+    // bound is read as a gateway reads a moment: a zone may be named after
+    // the stamp, one joined by a dash is UTC and one joined by a space is on
+    // this machine's clock. The comparison is of instants: the venue stamps
+    // in UTC, and a bound stated on a zone ahead of it reads digits that land
+    // fills near midnight on the wrong side. An execution the venue stated no
+    // time for cannot be placed either side of a bound and is kept: a caller
+    // asking what has traded is worse served by a fill they are never shown.
+    if !filter.time.is_empty()
+        && let Some(bound) = crate::protocol::datetime::request_end(&filter.time)
+        && let Some(secs) = crate::protocol::datetime::ib_datetime_to_unix(&se.execution.time)
+        && let Ok(at) = jiff::Timestamp::from_second(secs)
+        && at < bound.timestamp()
+    {
+        return false;
     }
     true
 }
@@ -3746,6 +3744,17 @@ impl ClientCore {
     pub fn executions_for_request(
         &self, shared: &SharedState, accounts: &[String], filter: &ExecutionFilter, now: jiff::Timestamp,
     ) -> Result<(Vec<StoredExecution>, Vec<jiff::civil::Date>), Refusal> {
+        // A gateway reads the filter's time before it answers, and a moment
+        // it cannot read is refused in the words it refuses a moment in —
+        // rather than answered as if no bound had been stated.
+        if !filter.time.is_empty()
+            && crate::protocol::datetime::request_end(&filter.time).is_none()
+        {
+            return Err(Refusal::stated(
+                10314,
+                format!("Time{}", crate::control::algorithms::MOMENT_FORMATS),
+            ));
+        }
         let zone = shared.settings().timezone.clone();
         let clock = crate::protocol::datetime::clock_named(&zone).unwrap_or_else(|| {
             log::warn!("the session's time zone {zone} cannot be read, so days are counted on UTC");

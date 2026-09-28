@@ -3400,6 +3400,10 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         Python::initialize();
         Python::attach(|py| {
             let (client, _rx, shared, w) = wired_client(py);
+            shared.set_settings(Arc::new(crate::settings::SessionSettings {
+                timezone: "Europe/Brussels".into(),
+                ..Default::default()
+            }));
             shared.orders.push_order_info(77, crate::bridge::RichOrderInfo {
                 contract: ApiContract { symbol: "SPY".into(), ..Default::default() },
                 order: Default::default(),
@@ -3409,6 +3413,9 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                     order_ref: "my-strategy".into(),
                     liquidation: 1,
                     last_liquidity: 2,
+                    // The venue's own stamp, which both surfaces publish on
+                    // the session's clock with the zone beside it.
+                    time: "20260925-09:46:36".into(),
                     ..Default::default()
                 },
             });
@@ -3423,25 +3430,26 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
 
             let g = pyo3::types::PyDict::new(py);
             g.set_item("w", &w).unwrap();
-            let told = || -> Vec<(String, i32, i32)> {
+            let told = || -> Vec<(String, i32, i32, String)> {
                 py.eval(
-                    c"[(c[3].orderRef, c[3].liquidation, c[3].lastLiquidity) \
+                    c"[(c[3].orderRef, c[3].liquidation, c[3].lastLiquidity, c[3].time) \
                        for c in w.calls if c[0] in ('exec_details', 'execDetails')]",
                     Some(&g), None,
                 ).unwrap().extract().unwrap()
             };
+            let stated = || {
+                ("my-strategy".to_string(), 1, 2,
+                 "20260925 11:46:36 Europe/Brussels".to_string())
+            };
             assert_eq!(
-                told(), [("my-strategy".to_string(), 1, 2)],
-                "the callback states what the report stated",
+                told(), [stated()],
+                "the callback states what the report stated, published on the session's clock",
             );
 
             client.call_method1(py, "req_executions", (7i64,)).unwrap();
             client.borrow(py).dispatch_once(py, &shared).unwrap();
             assert_eq!(
-                told(), [
-                    ("my-strategy".to_string(), 1, 2),
-                    ("my-strategy".to_string(), 1, 2),
-                ],
+                told(), [stated(), stated()],
                 "and the replay of that same fill states it too",
             );
         });

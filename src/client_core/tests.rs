@@ -3430,6 +3430,10 @@ fn a_time_bound_reads_only_what_the_venue_timed() {
     };
 
     assert!(execution_matches(&at("20260905-10:00:00"), &after("20260101-00:00:00")));
+    assert!(
+        execution_matches(&at("20260905-10:00:00"), &after("20260905-10:00:00")),
+        "the bound itself is at or after the bound",
+    );
     assert!(!execution_matches(&at("20260101-10:00:00"), &after("20990101-00:00:00")));
     assert!(
         execution_matches(&at(""), &after("20990101-00:00:00")),
@@ -3438,6 +3442,19 @@ fn a_time_bound_reads_only_what_the_venue_timed() {
     assert!(
         execution_matches(&at("20260905-10:00:00"), &after("")),
         "and a request that states no bound reads them all",
+    );
+    // A bound naming a zone is read on that zone, and the comparison is of
+    // instants: 23:30 in Brussels is 21:30 UTC, so the fill at 22:00 UTC is
+    // at or after it, though its digits read earlier.
+    assert!(
+        execution_matches(&at("20260905-22:00:00"), &after("20260905 23:30:00 Europe/Brussels")),
+        "a zoned bound compares instants, not digits",
+    );
+    // And a bound past the fill drops it, whichever day its own zone reads:
+    // 00:30 in Brussels on the 6th is 22:30 UTC on the 5th.
+    assert!(
+        !execution_matches(&at("20260905-22:00:00"), &after("20260906 00:30:00 Europe/Brussels")),
+        "a zoned bound past the fill drops it",
     );
 }
 

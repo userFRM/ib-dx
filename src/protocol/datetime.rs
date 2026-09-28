@@ -503,7 +503,9 @@ pub fn bar_epoch_as_asked(secs: i64, end: Option<i64>, format_date: i32, zone: &
 ///
 /// A zone may be named after the stamp. Where none is, one joined by a dash is
 /// UTC and one joined by a space is on this machine's clock, which is how each
-/// is read.
+/// is read. A stamp that states a time and no date is that time today on this
+/// machine's clock, the seconds optional — as a gateway dates it — and a date
+/// alone is no moment at all.
 pub(crate) fn request_end(end_date_time: &str) -> Option<jiff::Zoned> {
     let given = end_date_time.trim();
     if given.is_empty() {
@@ -520,9 +522,41 @@ pub(crate) fn request_end(end_date_time: &str) -> Option<jiff::Zoned> {
         (None, Some(b'-')) => jiff::tz::TimeZone::UTC,
         (None, _) => jiff::tz::TimeZone::system(),
     };
-    let civil = jiff::civil::DateTime::strptime("%Y%m%d %H:%M:%S", stamp.replacen('-', " ", 1))
-        .ok()?;
+    let civil = match jiff::civil::DateTime::strptime(
+        "%Y%m%d %H:%M:%S",
+        stamp.replacen('-', " ", 1),
+    ) {
+        Ok(civil) => civil,
+        // A stamp that states a time and no date is that time today on this
+        // machine's clock, the seconds optional — how a gateway dates it.
+        Err(_) => {
+            let time = jiff::civil::Time::strptime("%H:%M:%S", stamp)
+                .or_else(|_| jiff::civil::Time::strptime("%H:%M", stamp))
+                .ok()?;
+            jiff::Zoned::now().date().to_datetime(time)
+        }
+    };
     civil.to_zoned(on).ok()
+}
+
+/// The time of an execution as a gateway publishes it: the venue's UTC stamp
+/// written on the session's clock, with the zone named beside it —
+/// `20260925 11:46:36 Europe/Brussels`. The record kept for a replay holds
+/// the venue's own stamp; only what a caller reads is written this way.
+///
+/// A stamp that cannot be read is published as it came: what the venue said
+/// beats a guess at what it meant. A zone no database answers to publishes on
+/// UTC and says so, rather than naming a clock the stamp was not written on.
+pub fn published_execution_time(raw: &str, zone: &str) -> String {
+    let Some(at) = ib_datetime_to_unix(raw).and_then(|secs| jiff::Timestamp::from_second(secs).ok())
+    else {
+        return raw.to_string();
+    };
+    let (clock, name) = match clock_named(zone) {
+        Some(clock) => (clock, zone.to_string()),
+        None => (jiff::tz::TimeZone::UTC, "UTC".to_string()),
+    };
+    format!("{} {name}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
 }
 
 /// The range a bar request named, as stated once its bars have all arrived.
@@ -707,6 +741,27 @@ mod bar_date_tests {
         );
         // A duration in no unit this reads is not a duration.
         assert_eq!(historical_range("20260227 16:00:00 US/Eastern", "1 Q", "US/Eastern"), None);
+    }
+
+    /// A gateway reads a moment that states a time and no date as that time
+    /// today on the operator's clock, seconds optional, and then on the zone
+    /// named beside it if one is. Only a moment it cannot read at all — a date
+    /// alone — is refused. This is the parse both a bar's end and an
+    /// execution's time bound go through.
+    #[test]
+    fn a_time_alone_is_that_time_today() {
+        let today_before = jiff::Zoned::now().date();
+        let got = request_end("15:59:00").expect("a time alone is a moment a gateway reads");
+        let today_after = jiff::Zoned::now().date();
+        assert_eq!(got.strftime("%H:%M:%S").to_string(), "15:59:00", "the time as stated");
+        assert!(got.date() == today_before || got.date() == today_after,
+            "dated today on the operator's clock");
+        // Seconds are optional, as a gateway reads them.
+        assert_eq!(request_end("15:59").map(|z| z.strftime("%H:%M:%S").to_string()), Some("15:59:00".into()));
+        // A zone named beside it is honored.
+        assert!(request_end("15:59:00 Europe/Brussels").is_some());
+        // A date alone still names no moment.
+        assert!(request_end("20260729").is_none());
     }
 }
 
