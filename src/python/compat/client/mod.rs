@@ -3192,6 +3192,33 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// The live bar series a gateway serves are its own table: everything
+    /// outside it — a historical series among them — is refused here too,
+    /// with the gateway's standing sentence and nothing sent.
+    #[test]
+    fn a_live_bar_series_a_gateway_does_not_serve_is_refused_here_too() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, w) = wired_client(py);
+            for what in ["BID_ASK", "trades"] {
+                let contract = Py::new(py, Contract {
+                    con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(),
+                    ..Default::default()
+                }).unwrap();
+                client.call_method1(py, "req_real_time_bars", (1i64, &contract, 5, what, 1, Option::<Vec<Py<PyAny>>>::None)).unwrap();
+                assert!(rx.try_recv().is_err(), "nothing was sent for {what:?}");
+                client.call_method0(py, "poll").unwrap();
+                let g = pyo3::types::PyDict::new(py);
+                g.set_item("w", &w).unwrap();
+                let said: Vec<(i64, i64, String)> = py
+                    .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
+                    .unwrap().extract().unwrap();
+                let wire = "Error validating request:-'' : cause - What to show field is missing or incorrect.";
+                assert!(said.contains(&(1, 321, wire.to_string())), "{what}: {said:?}");
+            }
+        });
+    }
+
     /// A combination stating no legs is refused on this surface as on the
     /// Rust one, with the gateway's reason and nothing sent; one stating
     /// legs is taken, the legs read off the caller's contract at the intake.

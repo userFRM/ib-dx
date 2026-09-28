@@ -72,6 +72,22 @@ pub enum BarDataType {
     PutOptionVolume,
 }
 
+/// The series a live bar request may name.
+///
+/// A gateway serves five of them live and matches the name exactly — a
+/// lower-case or mixed-case spelling is a miss as any other. Every name
+/// outside the five, a historical series among them, is refused with the one
+/// standing sentence rather than streamed as trade bars: an adjusted or
+/// two-sided series answered with trades looks like data.
+pub fn validate_realtime_what_to_show(what_to_show: &str) -> Result<(), crate::error_codes::Refusal> {
+    match what_to_show {
+        "TRADES" | "AGGTRADES" | "MIDPOINT" | "BID" | "ASK" => Ok(()),
+        _ => Err(crate::error_codes::Refusal::validation(
+            "What to show field is missing or incorrect.",
+        )),
+    }
+}
+
 impl BarDataType {
     /// Read the official API's `what_to_show` string.
     ///
@@ -86,21 +102,6 @@ impl BarDataType {
             "BID" => Self::Bid,
             "ASK" => Self::Ask,
             "BID_ASK" => Self::BidAsk,
-            // Not a name the venue answers to, and not a bar it streams: an
-            // adjusted series is built from the raw trades and the contract's
-            // own actions, not served ready-made. The bar requests fold the
-            // two — see [`what_to_show_is_adjusted`], which the historical
-            // paths read before this table — so a real-time bar, which has no
-            // history to fold and no actions in hand, is refused rather than
-            // answered with raw trades under an adjusted name.
-            "ADJUSTED_LAST" => return Err(
-                "an adjusted series is built from the raw trades and the contract's own \
-                 actions, so it is not a live bar the venue streams. Ask for it on a \
-                 historical bar request — `req_historical_data` and \
-                 `EClient::historical_data` both serve it. Do not fold TRADES a second \
-                 time: it already comes back adjusted for splits"
-                    .to_string(),
-            ),
             "AGGTRADES" => Self::AggTrades,
             "FEE_RATE" => Self::FeeRate,
             "YIELD_BID" => Self::YieldBid,

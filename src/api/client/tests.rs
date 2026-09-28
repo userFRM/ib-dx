@@ -6123,16 +6123,35 @@ fn req_historical_ticks_sends_fetch() {
 //  Real-time bars
 // ═══════════════════════════════════════════════════════════════════
 
-/// An unrecognised `what_to_show` is refused rather than encoded as TRADES,
-/// in the words the shared series table refuses it in.
+/// The series a live bar request may name are a gateway's own table: five
+/// names, matched exactly — a lower-case or mixed-case spelling is a miss as
+/// any other — and everything outside it is refused before anything is sent
+/// with the one standing sentence, not the historical handler's words and not
+/// a sentence of this client's own for the adjusted series.
 #[test]
 fn a_real_time_bar_request_states_a_series_the_venue_serves() {
-    let (client, _rx, _shared) = test_client();
-    let err = crate::api::client::tests::reported(&client, || client.req_real_time_bars(9, &spy(), 5, "BDI", true)).unwrap_err();
-    assert_eq!(
-        err.message,
-        "Error validating request:-'' : cause - What to show value of BDI rejected.",
-    );
+    const REFUSAL: &str =
+        "Error validating request:-'' : cause - What to show field is missing or incorrect.";
+    for name in ["TRADES", "AGGTRADES", "MIDPOINT", "BID", "ASK"] {
+        let (client, rx, _shared) = test_client();
+        crate::api::client::tests::reported(&client, || client.req_real_time_bars(9, &spy(), 5, name, true))
+            .unwrap_or_else(|why| panic!("{name} is a live series: {why:?}"));
+        assert!(
+            matches!(next_command(&rx), Some(ControlCommand::SubscribeRealTimeBar { .. })),
+            "{name} was not subscribed",
+        );
+    }
+    for name in [
+        "BDI", "FOO", "", "trades", "Trades", "TRADE", "BID_ASK", "ADJUSTED_LAST", "FEE_RATE",
+        "YIELD_LAST", "NAV_LAST", "HISTORICAL_VOLATILITY", "OPTION_IMPLIED_VOLATILITY",
+        "INDICATIVE_AUCTION_PRICE_SIZE", "CALL_OPTION_OPEN_INTEREST", "PUT_OPTION_VOLUME",
+    ] {
+        let (client, rx, _shared) = test_client();
+        let err = crate::api::client::tests::reported(&client, || client.req_real_time_bars(9, &spy(), 5, name, true))
+            .expect_err(&format!("{name:?} is no live series"));
+        assert_eq!((err.code, err.message.as_str()), (321, REFUSAL), "{name:?}");
+        assert!(next_command(&rx).is_none(), "{name:?} sent something");
+    }
 }
 
 #[test]

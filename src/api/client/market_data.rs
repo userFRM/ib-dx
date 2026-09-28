@@ -464,9 +464,11 @@ impl EClient {
     ) {
         if let Err(why) = (|| -> Result<(), Refusal> {
             crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
-            // Refused here rather than turned into trades on the way out: a
-            // misspelled "BID" answered with trade bars looks like data.
-            crate::control::historical::BarDataType::from_api_str(what_to_show)?;
+            // The live series are a gateway's own table, matched exactly:
+            // refused here rather than turned into trades on the way out,
+            // because a misspelled "BID" answered with trade bars looks like
+            // data.
+            crate::control::historical::validate_realtime_what_to_show(what_to_show)?;
             self.send(ControlCommand::SubscribeRealTimeBar {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,

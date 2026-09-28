@@ -1962,12 +1962,12 @@ impl HotLoop {
                     // ticks above: the builder falls back to trades on a name
                     // it does not know, and a caller reaching this loop by the
                     // control channel is refused nowhere else.
-                    if let Err(e) =
-                        crate::control::historical::BarDataType::from_api_str(&what_to_show)
+                    if let Err(why) =
+                        crate::control::historical::validate_realtime_what_to_show(&what_to_show)
                     {
-                        log::error!("live bars req_id={req_id}: {e}");
+                        log::error!("live bars req_id={req_id}: {why}");
                         push_hmds_refusal(
-                            &self.shared, req_id, crate::error_codes::Refusal::VALIDATION, e, false,
+                            &self.shared, req_id, why.code, why.message, false,
                         );
                     } else if self.hmds_conn.is_none() {
                         self.emit_hmds_unavailable(req_id, false);
@@ -5586,7 +5586,7 @@ mod tests {
                 what_to_show: "NOT_A_SERIES".into(),
                 use_rth: true,
                 filters: Default::default(),
-            }, "What to show value of NOT_A_SERIES rejected."),
+            }, "What to show field is missing or incorrect."),
         ] {
             let shared = Arc::new(SharedState::new());
             let mut hl = HotLoop::new(shared.clone(), None, None);

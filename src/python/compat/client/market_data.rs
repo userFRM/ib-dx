@@ -365,8 +365,8 @@ impl EClient {
         if let Some(why) = self.options_refused(py, &crate::client_core::REAL_TIME_BARS_OPTIONS, real_time_bars_options)? {
             return self.report_refusal(py, req_id, why);
         }
-        if let Err(why) = crate::control::historical::BarDataType::from_api_str(what_to_show) {
-            return self.report_refusal(py, req_id, why.into());
+        if let Err(why) = crate::control::historical::validate_realtime_what_to_show(what_to_show) {
+            return self.report_refusal(py, req_id, why);
         }
         let wire = wire_req_id(req_id)?;
         if let Err(why) = self.send_control(&tx, ControlCommand::SubscribeRealTimeBar {
