@@ -9583,7 +9583,8 @@ mod tests {
         hl.poll_control_commands();
         let refusal = answer_to(&shared, 7);
         assert!(
-            matches!(refusal, Some(Err((code, _))) if code == i64::from(crate::error_codes::DUPLICATE_TICKER_ID)),
+            matches!(refusal, Some(Err((code, ref words))) if code == i64::from(crate::error_codes::REQUEST_NOT_PROCESSED)
+                && words == "Error processing request:-'' : cause - Duplicate ticker id"),
             "the second is refused as a duplicate number, not admitted: {refusal:?}",
         );
         assert!(
@@ -9618,7 +9619,10 @@ mod tests {
         hl.poll_control_commands();
         let refusals = shared.drain_refused();
         assert_eq!(refusals.len(), 1);
-        assert_eq!((refusals[0].0, refusals[0].1), (2, 102));
+        assert_eq!(
+            refusals[0],
+            (2, 322, "Error processing request:-'' : cause - Duplicate ticker id".to_string()),
+        );
         assert_eq!(shared.backlog(), 2, "both later scans are held");
 
         shared.admit(&tx, ControlCommand::CancelMktData { req_id: 1 }).unwrap();
