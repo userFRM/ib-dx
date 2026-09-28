@@ -1,4 +1,11 @@
 //! What an order waits for before it works.
+//!
+//! Every field a condition carries is born unset, as the reference client
+//! births them, and an order placed holding one that was never set is refused
+//! under its id naming the field: the reference refuses to send a value nobody
+//! stated, and a default of zero or true here went on the wire as a trigger
+//! the caller never asked for — the opposite direction from the one an omitted
+//! reading meant.
 
 // The other families, and the two helpers every class here uses.
 use super::contract::set_from_keywords;
@@ -8,20 +15,28 @@ use super::{camel_aliases_copy, camel_aliases_owned};
 use crate::types::*;
 use super::super::types::PRICE_SCALE_F;
 
+/// A field nobody set, as Python says one: `None`.
+fn stated<T: std::fmt::Display>(held: Option<T>) -> String {
+    match held {
+        Some(held) => held.to_string(),
+        None => "None".to_string(),
+    }
+}
+
 /// Price condition: trigger when an instrument's price crosses a threshold.
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct PriceCondition {
     #[pyo3(get, set)]
-    pub con_id: i64,
+    pub con_id: Option<i64>,
     #[pyo3(get, set)]
-    pub exchange: String,
+    pub exchange: Option<String>,
     #[pyo3(get, set)]
-    pub price: f64,
+    pub price: Option<f64>,
     #[pyo3(get, set)]
-    pub is_more: bool,
+    pub is_more: Option<bool>,
     #[pyo3(get, set)]
-    pub trigger_method: i32,
+    pub trigger_method: Option<i32>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -32,43 +47,48 @@ impl PriceCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(conId)]
-    fn get_con_id_alias(&self) -> i64 { self.con_id }
+    fn get_con_id_alias(&self) -> Option<i64> { self.con_id }
     #[setter(conId)]
-    fn set_con_id_alias(&mut self, v: i64) { self.con_id = v; }
+    fn set_con_id_alias(&mut self, v: Option<i64>) { self.con_id = v; }
 
     #[new]
-    // Empty, which is what the reference client holds for a condition nobody
-    // named an exchange on. Named as SMART here, a condition watching a
-    // contract that trades elsewhere watched it on a venue nobody chose.
-    #[pyo3(signature = (trigger_method=0, con_id=0, exchange=String::new(), is_more=true, price=0.0, is_conjunction_connection=true, **keywords))]
-    fn new(trigger_method: i32, con_id: i64, exchange: String, is_more: bool, price: f64, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    // Unset, which is what the reference client holds for every field nobody
+    // named: a value invented here goes on the wire as a trigger the caller
+    // never stated.
+    #[pyo3(signature = (trigger_method=None, con_id=None, exchange=None, is_more=None, price=None, is_conjunction_connection=true, **keywords))]
+    fn new(trigger_method: Option<i32>, con_id: Option<i64>, exchange: Option<String>, is_more: Option<bool>, price: Option<f64>, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { con_id, exchange, price, is_more, trigger_method, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        let op = if self.is_more { ">" } else { "<" };
-        format!("PriceCondition(conId={}, price {} {})", self.con_id, op, self.price)
+        let op = if self.is_more == Some(true) { ">" } else { "<" };
+        format!("PriceCondition(conId={}, price {} {})", stated(self.con_id), op, stated(self.price))
     }
 }
 
 impl PriceCondition {
     /// A condition this client cannot carry as stated is refused rather than
-    /// changed: a price the wire's fixed point cannot hold, converted in
-    /// silence, sent the order to the venue waiting for something the caller
-    /// never stated.
+    /// changed: a field nobody set, sent as an invented default, waits on
+    /// something the caller never stated, and a price the wire's fixed point
+    /// cannot hold, converted in silence, waits on a number nobody stated.
     ///
     /// The trigger method is an `int`, as the TWS API carries it, and goes to
     /// the venue as stated: no gateway refusal of any value has been read.
     pub fn to_internal(&self) -> Result<OrderCondition, String> {
-        crate::client_core::require_finite_price("a price condition's price", self.price)?;
+        let is_more = self.is_more.ok_or("a price condition states no isMore")?;
+        let price = self.price.ok_or("a price condition states no price")?;
+        let con_id = self.con_id.ok_or("a price condition states no conId")?;
+        let exchange = self.exchange.clone().ok_or("a price condition states no exchange")?;
+        let trigger_method = self.trigger_method.ok_or("a price condition states no triggerMethod")?;
+        crate::client_core::require_finite_price("a price condition's price", price)?;
         Ok(OrderCondition::Price {
-            con_id: self.con_id,
-            exchange: self.exchange.clone(),
-            price: crate::types::price_from_f64(self.price),
-            is_more: self.is_more,
-            trigger_method: self.trigger_method,
+            con_id,
+            exchange,
+            price: crate::types::price_from_f64(price),
+            is_more,
+            trigger_method,
             is_conjunction_connection: self.is_conjunction_connection,
         })
     }
@@ -79,9 +99,9 @@ impl PriceCondition {
 #[derive(Clone)]
 pub struct TimeCondition {
     #[pyo3(get, set)]
-    pub time: String,
+    pub time: Option<String>,
     #[pyo3(get, set)]
-    pub is_more: bool,
+    pub is_more: Option<bool>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -92,27 +112,30 @@ impl TimeCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(isMore)]
-    fn get_is_more_alias(&self) -> bool { self.is_more }
+    fn get_is_more_alias(&self) -> Option<bool> { self.is_more }
     #[setter(isMore)]
-    fn set_is_more_alias(&mut self, v: bool) { self.is_more = v; }
+    fn set_is_more_alias(&mut self, v: Option<bool>) { self.is_more = v; }
 
     #[new]
-    #[pyo3(signature = (is_more=true, time="".to_string(), is_conjunction_connection=true, **keywords))]
-    fn new(is_more: bool, time: String, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    #[pyo3(signature = (is_more=None, time=None, is_conjunction_connection=true, **keywords))]
+    fn new(is_more: Option<bool>, time: Option<String>, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { time, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        let op = if self.is_more { ">" } else { "<" };
-        format!("TimeCondition(time {} '{}')", op, self.time)
+        let op = if self.is_more == Some(true) { ">" } else { "<" };
+        format!("TimeCondition(time {} '{}')", op, stated(self.time.clone()))
     }
 }
 
 impl TimeCondition {
-    pub fn to_internal(&self) -> OrderCondition {
-        OrderCondition::Time { time: self.time.clone(), is_more: self.is_more, is_conjunction_connection: self.is_conjunction_connection }
+    /// A field nobody set is refused rather than sent as an invented value.
+    pub fn to_internal(&self) -> Result<OrderCondition, String> {
+        let is_more = self.is_more.ok_or("a time condition states no isMore")?;
+        let time = self.time.clone().ok_or("a time condition states no time")?;
+        Ok(OrderCondition::Time { time, is_more, is_conjunction_connection: self.is_conjunction_connection })
     }
 }
 
@@ -121,9 +144,9 @@ impl TimeCondition {
 #[derive(Clone)]
 pub struct MarginCondition {
     #[pyo3(get, set)]
-    pub percent: i32,
+    pub percent: Option<i32>,
     #[pyo3(get, set)]
-    pub is_more: bool,
+    pub is_more: Option<bool>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -134,26 +157,29 @@ impl MarginCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(isMore)]
-    fn get_is_more_alias(&self) -> bool { self.is_more }
+    fn get_is_more_alias(&self) -> Option<bool> { self.is_more }
     #[setter(isMore)]
-    fn set_is_more_alias(&mut self, v: bool) { self.is_more = v; }
+    fn set_is_more_alias(&mut self, v: Option<bool>) { self.is_more = v; }
 
     #[new]
-    #[pyo3(signature = (is_more=true, percent=0, is_conjunction_connection=true, **keywords))]
-    fn new(is_more: bool, percent: i32, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    #[pyo3(signature = (is_more=None, percent=None, is_conjunction_connection=true, **keywords))]
+    fn new(is_more: Option<bool>, percent: Option<i32>, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { percent, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        format!("MarginCondition({}% {})", self.percent, if self.is_more { "above" } else { "below" })
+        format!("MarginCondition({}% {})", stated(self.percent), if self.is_more == Some(true) { "above" } else { "below" })
     }
 }
 
 impl MarginCondition {
-    pub fn to_internal(&self) -> OrderCondition {
-        OrderCondition::Margin { percent: self.percent, is_more: self.is_more, is_conjunction_connection: self.is_conjunction_connection }
+    /// A field nobody set is refused rather than sent as an invented value.
+    pub fn to_internal(&self) -> Result<OrderCondition, String> {
+        let is_more = self.is_more.ok_or("a margin condition states no isMore")?;
+        let percent = self.percent.ok_or("a margin condition states no percent")?;
+        Ok(OrderCondition::Margin { percent, is_more, is_conjunction_connection: self.is_conjunction_connection })
     }
 }
 
@@ -162,11 +188,11 @@ impl MarginCondition {
 #[derive(Clone)]
 pub struct ExecutionCondition {
     #[pyo3(get, set)]
-    pub symbol: String,
+    pub symbol: Option<String>,
     #[pyo3(get, set)]
-    pub exchange: String,
+    pub exchange: Option<String>,
     #[pyo3(get, set)]
-    pub sec_type: String,
+    pub sec_type: Option<String>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -177,31 +203,35 @@ impl ExecutionCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(exch)]
-    fn get_exchange_alias(&self) -> String { self.exchange.clone() }
+    fn get_exchange_alias(&self) -> Option<String> { self.exchange.clone() }
     #[setter(exch)]
-    fn set_exchange_alias(&mut self, v: String) { self.exchange = v; }
+    fn set_exchange_alias(&mut self, v: Option<String>) { self.exchange = v; }
 
     #[new]
-    #[pyo3(signature = (sec_type="".to_string(), exchange="".to_string(), symbol="".to_string(), is_conjunction_connection=true, **keywords))]
-    fn new(sec_type: String, exchange: String, symbol: String, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    #[pyo3(signature = (sec_type=None, exchange=None, symbol=None, is_conjunction_connection=true, **keywords))]
+    fn new(sec_type: Option<String>, exchange: Option<String>, symbol: Option<String>, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { symbol, exchange, sec_type, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        format!("ExecutionCondition(symbol='{}', exchange='{}')", self.symbol, self.exchange)
+        format!("ExecutionCondition(symbol='{}', exchange='{}')", stated(self.symbol.clone()), stated(self.exchange.clone()))
     }
 }
 
 impl ExecutionCondition {
-    pub fn to_internal(&self) -> OrderCondition {
-        OrderCondition::Execution {
-            symbol: self.symbol.clone(),
-            exchange: self.exchange.clone(),
-            sec_type: self.sec_type.clone(),
+    /// A field nobody set is refused rather than sent as an invented value.
+    pub fn to_internal(&self) -> Result<OrderCondition, String> {
+        let sec_type = self.sec_type.clone().ok_or("an execution condition states no secType")?;
+        let exchange = self.exchange.clone().ok_or("an execution condition states no exchange")?;
+        let symbol = self.symbol.clone().ok_or("an execution condition states no symbol")?;
+        Ok(OrderCondition::Execution {
+            symbol,
+            exchange,
+            sec_type,
             is_conjunction_connection: self.is_conjunction_connection,
-        }
+        })
     }
 }
 
@@ -210,13 +240,13 @@ impl ExecutionCondition {
 #[derive(Clone)]
 pub struct VolumeCondition {
     #[pyo3(get, set)]
-    pub con_id: i64,
+    pub con_id: Option<i64>,
     #[pyo3(get, set)]
-    pub exchange: String,
+    pub exchange: Option<String>,
     #[pyo3(get, set)]
-    pub volume: i64,
+    pub volume: Option<i64>,
     #[pyo3(get, set)]
-    pub is_more: bool,
+    pub is_more: Option<bool>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -227,33 +257,38 @@ impl VolumeCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(conId)]
-    fn get_con_id_alias(&self) -> i64 { self.con_id }
+    fn get_con_id_alias(&self) -> Option<i64> { self.con_id }
     #[setter(conId)]
-    fn set_con_id_alias(&mut self, v: i64) { self.con_id = v; }
+    fn set_con_id_alias(&mut self, v: Option<i64>) { self.con_id = v; }
 
     #[new]
-    #[pyo3(signature = (con_id=0, exchange=String::new(), is_more=true, volume=0, is_conjunction_connection=true, **keywords))]
-    fn new(con_id: i64, exchange: String, is_more: bool, volume: i64, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    #[pyo3(signature = (con_id=None, exchange=None, is_more=None, volume=None, is_conjunction_connection=true, **keywords))]
+    fn new(con_id: Option<i64>, exchange: Option<String>, is_more: Option<bool>, volume: Option<i64>, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { con_id, exchange, volume, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        let op = if self.is_more { ">" } else { "<" };
-        format!("VolumeCondition(conId={}, volume {} {})", self.con_id, op, self.volume)
+        let op = if self.is_more == Some(true) { ">" } else { "<" };
+        format!("VolumeCondition(conId={}, volume {} {})", stated(self.con_id), op, stated(self.volume))
     }
 }
 
 impl VolumeCondition {
-    pub fn to_internal(&self) -> OrderCondition {
-        OrderCondition::Volume {
-            con_id: self.con_id,
-            exchange: self.exchange.clone(),
-            volume: self.volume,
-            is_more: self.is_more,
+    /// A field nobody set is refused rather than sent as an invented value.
+    pub fn to_internal(&self) -> Result<OrderCondition, String> {
+        let is_more = self.is_more.ok_or("a volume condition states no isMore")?;
+        let volume = self.volume.ok_or("a volume condition states no volume")?;
+        let con_id = self.con_id.ok_or("a volume condition states no conId")?;
+        let exchange = self.exchange.clone().ok_or("a volume condition states no exchange")?;
+        Ok(OrderCondition::Volume {
+            con_id,
+            exchange,
+            volume,
+            is_more,
             is_conjunction_connection: self.is_conjunction_connection,
-        }
+        })
     }
 }
 
@@ -262,13 +297,15 @@ impl VolumeCondition {
 #[derive(Clone)]
 pub struct PercentChangeCondition {
     #[pyo3(get, set)]
-    pub con_id: i64,
+    pub con_id: Option<i64>,
     #[pyo3(get, set)]
-    pub exchange: String,
+    pub exchange: Option<String>,
+    /// Born at the reference client's own unset marker for a double rather
+    /// than `None`, as it is born there: `UNSET_DOUBLE`, which is `f64::MAX`.
     #[pyo3(get, set)]
     pub change_percent: f64,
     #[pyo3(get, set)]
-    pub is_more: bool,
+    pub is_more: Option<bool>,
     #[pyo3(get, set)]
     pub is_conjunction_connection: bool,
 }
@@ -279,33 +316,40 @@ impl PercentChangeCondition {
     // names an exchange `exch`. A condition built the way that client builds
     // it sets them by those names.
     #[getter(conId)]
-    fn get_con_id_alias(&self) -> i64 { self.con_id }
+    fn get_con_id_alias(&self) -> Option<i64> { self.con_id }
     #[setter(conId)]
-    fn set_con_id_alias(&mut self, v: i64) { self.con_id = v; }
+    fn set_con_id_alias(&mut self, v: Option<i64>) { self.con_id = v; }
 
     #[new]
-    #[pyo3(signature = (con_id=0, exchange=String::new(), is_more=true, change_percent=0.0, is_conjunction_connection=true, **keywords))]
-    fn new(con_id: i64, exchange: String, is_more: bool, change_percent: f64, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
+    #[pyo3(signature = (con_id=None, exchange=None, is_more=None, change_percent=f64::MAX, is_conjunction_connection=true, **keywords))]
+    fn new(con_id: Option<i64>, exchange: Option<String>, is_more: Option<bool>, change_percent: f64, is_conjunction_connection: bool, keywords: Option<&Bound<'_, pyo3::types::PyDict>>, py: Python<'_>) -> PyResult<Py<Self>> {
         let made = Py::new(py, Self { con_id, exchange, change_percent, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
 
     fn __repr__(&self) -> String {
-        let op = if self.is_more { ">" } else { "<" };
-        format!("PercentChangeCondition(conId={}, {}% {})", self.con_id, op, self.change_percent)
+        let op = if self.is_more == Some(true) { ">" } else { "<" };
+        format!("PercentChangeCondition(conId={}, {}% {})", stated(self.con_id), op, self.change_percent)
     }
 }
 
 impl PercentChangeCondition {
-    pub fn to_internal(&self) -> OrderCondition {
-        OrderCondition::PercentChange {
-            con_id: self.con_id,
-            exchange: self.exchange.clone(),
+    /// A field nobody set is refused rather than sent as an invented value.
+    /// The percent is not one of them: the reference client births it at its
+    /// unset marker for a double and sends that marker as stated, so it goes
+    /// as stated here too.
+    pub fn to_internal(&self) -> Result<OrderCondition, String> {
+        let is_more = self.is_more.ok_or("a percent-change condition states no isMore")?;
+        let con_id = self.con_id.ok_or("a percent-change condition states no conId")?;
+        let exchange = self.exchange.clone().ok_or("a percent-change condition states no exchange")?;
+        Ok(OrderCondition::PercentChange {
+            con_id,
+            exchange,
             percent: self.change_percent,
-            is_more: self.is_more,
+            is_more,
             is_conjunction_connection: self.is_conjunction_connection,
-        }
+        })
     }
 }
 
@@ -315,7 +359,8 @@ impl PercentChangeCondition {
 /// from, so an order read back carries none and, placed again, works at once
 /// with nothing holding it. Each kind the venue carries has a class here with
 /// the same fields the engine keeps, so what the venue
-/// reported is what comes back.
+/// reported is what comes back. What the venue reported was stated, so every
+/// field comes back set.
 pub(crate) fn condition_from_internal(
     py: Python<'_>,
     held: &OrderCondition,
@@ -324,47 +369,47 @@ pub(crate) fn condition_from_internal(
         OrderCondition::Price { con_id, exchange, price, is_more, trigger_method, is_conjunction_connection } => {
             Py::new(py, PriceCondition {
                 is_conjunction_connection: *is_conjunction_connection,
-                con_id: *con_id,
-                exchange: exchange.clone(),
-                price: *price as f64 / PRICE_SCALE_F,
-                is_more: *is_more,
-                trigger_method: *trigger_method,
+                con_id: Some(*con_id),
+                exchange: Some(exchange.clone()),
+                price: Some(*price as f64 / PRICE_SCALE_F),
+                is_more: Some(*is_more),
+                trigger_method: Some(*trigger_method),
             })?.into_any()
         }
         OrderCondition::Time { time, is_more, is_conjunction_connection } => Py::new(py, TimeCondition {
             is_conjunction_connection: *is_conjunction_connection,
-            time: time.clone(),
-            is_more: *is_more,
+            time: Some(time.clone()),
+            is_more: Some(*is_more),
         })?.into_any(),
         OrderCondition::Margin { percent, is_more, is_conjunction_connection } => Py::new(py, MarginCondition {
             is_conjunction_connection: *is_conjunction_connection,
-            percent: *percent,
-            is_more: *is_more,
+            percent: Some(*percent),
+            is_more: Some(*is_more),
         })?.into_any(),
         OrderCondition::Execution { symbol, exchange, sec_type, is_conjunction_connection } => {
             Py::new(py, ExecutionCondition {
                 is_conjunction_connection: *is_conjunction_connection,
-                symbol: symbol.clone(),
-                exchange: exchange.clone(),
-                sec_type: sec_type.clone(),
+                symbol: Some(symbol.clone()),
+                exchange: Some(exchange.clone()),
+                sec_type: Some(sec_type.clone()),
             })?.into_any()
         }
         OrderCondition::Volume { con_id, exchange, volume, is_more, is_conjunction_connection } => {
             Py::new(py, VolumeCondition {
                 is_conjunction_connection: *is_conjunction_connection,
-                con_id: *con_id,
-                exchange: exchange.clone(),
-                volume: *volume,
-                is_more: *is_more,
+                con_id: Some(*con_id),
+                exchange: Some(exchange.clone()),
+                volume: Some(*volume),
+                is_more: Some(*is_more),
             })?.into_any()
         }
         OrderCondition::PercentChange { con_id, exchange, percent, is_more, is_conjunction_connection } => {
             Py::new(py, PercentChangeCondition {
                 is_conjunction_connection: *is_conjunction_connection,
-                con_id: *con_id,
-                exchange: exchange.clone(),
+                con_id: Some(*con_id),
+                exchange: Some(exchange.clone()),
                 change_percent: *percent,
-                is_more: *is_more,
+                is_more: Some(*is_more),
             })?.into_any()
         }
     })
@@ -382,21 +427,38 @@ mod tests {
     fn a_condition_carries_its_trigger_method_and_percent_as_stated() {
         for tm in [0i32, 4, 5, 6, 7, 8, 256, -1] {
             let c = PriceCondition {
-                con_id: 1, exchange: "SMART".into(), price: 100.0,
-                is_more: true, trigger_method: tm, is_conjunction_connection: true,
+                con_id: Some(1), exchange: Some("SMART".into()), price: Some(100.0),
+                is_more: Some(true), trigger_method: Some(tm), is_conjunction_connection: true,
             };
             match c.to_internal().unwrap_or_else(|e| panic!("trigger {tm} refused on a condition: {e}")) {
                 OrderCondition::Price { trigger_method, .. } => assert_eq!(trigger_method, tm),
                 other => panic!("not a price condition: {other:?}"),
             }
         }
-        let margin = MarginCondition { percent: -5, is_more: false, is_conjunction_connection: true };
+        let margin = MarginCondition { percent: Some(-5), is_more: Some(false), is_conjunction_connection: true };
         assert_eq!(
-            margin.to_internal(),
+            margin.to_internal().expect("a condition stated in full converts"),
             OrderCondition::Margin { percent: -5, is_more: false, is_conjunction_connection: true },
         );
     }
 
+    /// A condition holding a field nobody set is refused naming the field,
+    /// rather than placed with a value invented for it: an omitted reading
+    /// went to the venue as a trigger in the opposite direction from the one
+    /// the caller meant.
+    #[test]
+    fn a_condition_a_field_was_never_set_on_is_refused_naming_the_field() {
+        let stated_but_one = PriceCondition {
+            con_id: Some(1), exchange: Some("SMART".into()), price: Some(100.0),
+            is_more: None, trigger_method: Some(0), is_conjunction_connection: true,
+        };
+        let why = stated_but_one.to_internal().expect_err("a reading nobody stated is refused");
+        assert!(why.contains("isMore"), "the refusal names the field: {why}");
+
+        let empty = TimeCondition { time: None, is_more: Some(true), is_conjunction_connection: true };
+        let why = empty.to_internal().expect_err("a time nobody stated is refused");
+        assert!(why.contains("time"), "the refusal names the field: {why}");
+    }
 
     /// An order read back states what it is waiting for.
     ///
@@ -454,8 +516,8 @@ mod tests {
                 order
             };
             let why = holding(PriceCondition {
-                con_id: 756733, exchange: "SMART".into(), price: f64::NAN,
-                is_more: true, trigger_method: 0, is_conjunction_connection: true,
+                con_id: Some(756733), exchange: Some("SMART".into()), price: Some(f64::NAN),
+                is_more: Some(true), trigger_method: Some(0), is_conjunction_connection: true,
             })
             .convert_conditions(py)
             .expect_err("a price nobody can state is refused");
@@ -467,40 +529,40 @@ mod tests {
 
 camel_aliases_copy! {
     PriceCondition {
-        get_is_more_alias set_is_more_alias isMore is_more bool;
-        get_trigger_method_alias set_trigger_method_alias triggerMethod trigger_method i32;
+        get_is_more_alias set_is_more_alias isMore is_more Option<bool>;
+        get_trigger_method_alias set_trigger_method_alias triggerMethod trigger_method Option<i32>;
         get_is_conjunction_connection_alias set_is_conjunction_connection_alias isConjunctionConnection is_conjunction_connection bool;
     }
 }
 
 camel_aliases_owned! {
     PriceCondition {
-        get_exchange_alias set_exchange_alias exch exchange String;
+        get_exchange_alias set_exchange_alias exch exchange Option<String>;
     }
 }
 
 camel_aliases_owned! {
     ExecutionCondition {
-        get_sec_type_alias set_sec_type_alias secType sec_type String;
+        get_sec_type_alias set_sec_type_alias secType sec_type Option<String>;
     }
 }
 
 camel_aliases_copy! {
     VolumeCondition {
-        get_is_more_alias set_is_more_alias isMore is_more bool;
+        get_is_more_alias set_is_more_alias isMore is_more Option<bool>;
         get_is_conjunction_connection_alias set_is_conjunction_connection_alias isConjunctionConnection is_conjunction_connection bool;
     }
 }
 
 camel_aliases_owned! {
     VolumeCondition {
-        get_exchange_alias set_exchange_alias exch exchange String;
+        get_exchange_alias set_exchange_alias exch exchange Option<String>;
     }
 }
 
 camel_aliases_copy! {
     PercentChangeCondition {
-        get_is_more_alias set_is_more_alias isMore is_more bool;
+        get_is_more_alias set_is_more_alias isMore is_more Option<bool>;
         get_change_percent_alias set_change_percent_alias changePercent change_percent f64;
         get_is_conjunction_connection_alias set_is_conjunction_connection_alias isConjunctionConnection is_conjunction_connection bool;
     }
@@ -508,7 +570,7 @@ camel_aliases_copy! {
 
 camel_aliases_owned! {
     PercentChangeCondition {
-        get_exchange_alias set_exchange_alias exch exchange String;
+        get_exchange_alias set_exchange_alias exch exchange Option<String>;
     }
 }
 

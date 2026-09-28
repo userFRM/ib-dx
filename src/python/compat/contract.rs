@@ -583,11 +583,11 @@ mod tests {
     #[test]
     fn price_condition_to_internal() {
         let pc = PriceCondition {
-            con_id: 265598,
-            exchange: "SMART".into(),
-            price: 200.0,
-            is_more: true,
-            trigger_method: 1,
+            con_id: Some(265598),
+            exchange: Some("SMART".into()),
+            price: Some(200.0),
+            is_more: Some(true),
+            trigger_method: Some(1),
             is_conjunction_connection: true,
         };
         match pc.to_internal().expect("a condition stated in full converts") {
@@ -603,8 +603,8 @@ mod tests {
 
     #[test]
     fn time_condition_to_internal() {
-        let tc = TimeCondition { time: "20260311-09:30:00".into(), is_more: true, is_conjunction_connection: true };
-        match tc.to_internal() {
+        let tc = TimeCondition { time: Some("20260311-09:30:00".into()), is_more: Some(true), is_conjunction_connection: true };
+        match tc.to_internal().expect("a condition stated in full converts") {
             OrderCondition::Time { time, is_more, .. } => {
                 assert_eq!(time, "20260311-09:30:00");
                 assert!(is_more);
@@ -616,13 +616,13 @@ mod tests {
     #[test]
     fn volume_condition_to_internal() {
         let vc = VolumeCondition {
-            con_id: 265598,
-            exchange: "SMART".into(),
-            volume: 1_000_000,
-            is_more: true,
+            con_id: Some(265598),
+            exchange: Some("SMART".into()),
+            volume: Some(1_000_000),
+            is_more: Some(true),
             is_conjunction_connection: true,
         };
-        match vc.to_internal() {
+        match vc.to_internal().expect("a condition stated in full converts") {
             OrderCondition::Volume { con_id, volume, is_more, .. } => {
                 assert_eq!(con_id, 265598);
                 assert_eq!(volume, 1_000_000);

@@ -269,9 +269,9 @@ def test_execution_condition():
 
 def test_execution_condition_defaults():
     ec = ExecutionCondition()
-    assert ec.symbol == ""
-    assert ec.exchange == ""
-    assert ec.sec_type == ""
+    assert ec.symbol is None
+    assert ec.exchange is None
+    assert ec.sec_type is None
 
 
 # ── EWrapper subclassing ──

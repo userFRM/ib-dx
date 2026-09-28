@@ -825,11 +825,21 @@ impl Order {
             if let Ok(c) = any.cast::<PriceCondition>() {
                 return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
             }
-            if let Ok(c) = any.cast::<TimeCondition>() { return Ok(c.borrow().to_internal()); }
-            if let Ok(c) = any.cast::<MarginCondition>() { return Ok(c.borrow().to_internal()); }
-            if let Ok(c) = any.cast::<ExecutionCondition>() { return Ok(c.borrow().to_internal()); }
-            if let Ok(c) = any.cast::<VolumeCondition>() { return Ok(c.borrow().to_internal()); }
-            if let Ok(c) = any.cast::<PercentChangeCondition>() { return Ok(c.borrow().to_internal()); }
+            if let Ok(c) = any.cast::<TimeCondition>() {
+                return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
+            }
+            if let Ok(c) = any.cast::<MarginCondition>() {
+                return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
+            }
+            if let Ok(c) = any.cast::<ExecutionCondition>() {
+                return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
+            }
+            if let Ok(c) = any.cast::<VolumeCondition>() {
+                return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
+            }
+            if let Ok(c) = any.cast::<PercentChangeCondition>() {
+                return c.borrow().to_internal().map_err(|why| format!("condition {at}: {why}"));
+            }
             Err(format!(
                 "condition {at} is of a kind this client does not carry. It is \
                  one of PriceCondition, TimeCondition, MarginCondition, \

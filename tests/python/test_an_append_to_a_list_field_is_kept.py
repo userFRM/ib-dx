@@ -243,6 +243,31 @@ def test_a_condition_appended_as_the_sample_appends_one_holds_the_order():
     ]
 
 
+def test_a_condition_a_field_was_never_set_on_is_refused_before_anything_is_sent():
+    """The issue's own condition: `conId`, `exchange` and `price` set, `isMore`
+    omitted. The reference client refuses to send a value nobody stated, and
+    the order never goes out; defaulted here, it went waiting on a `>= 600`
+    trigger — the opposite direction from the omitted `<=` reading, silently."""
+    order = _limit("BUY", 100, 400.0)
+    condition = PriceCondition()
+    condition.conId = 208813720
+    condition.exchange = "SMART"
+    condition.price = 600.0
+    order.conditions.append(condition)
+
+    recorder, client = _session()
+    client.place_order(1011, _spy(), order)
+    client.poll()
+    assert recorder.errors, "a field nobody set must be refused"
+    req, code, why = recorder.errors[-1]
+    assert (req, code) == (1011, 321), recorder.errors
+    assert "isMore" in why, why
+    recorder.errors.clear()
+    client.req_open_orders()
+    client._test_dispatch_once()
+    assert 1011 not in recorder.placed, "refused before anything was sent, so nothing is held"
+
+
 def test_a_leg_price_appended_as_the_sample_appends_one_is_read():
     # `OrderSamples.LimitOrderForComboWithLegPrices`, with a price the client
     # refuses so the refusal names the leg: a price nobody read is not refused.
