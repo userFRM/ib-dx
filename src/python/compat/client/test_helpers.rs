@@ -168,6 +168,20 @@ impl EClient {
         Ok(())
     }
 
+    /// Set the news providers the venue named at logon (test-only). A tick
+    /// list asking for the headlines is legal only on a session that holds
+    /// some.
+    #[doc(hidden)]
+    fn _test_set_news_providers(&self, codes: Vec<String>) -> PyResult<()> {
+        self.shared_state()?.reference.set_news_providers(
+            codes
+                .into_iter()
+                .map(|code| crate::types::NewsProvider { name: code.clone(), code })
+                .collect(),
+        );
+        Ok(())
+    }
+
     /// Seed the venue's model for a contract as a market-data subscription
     /// does: the model, then the answers to the calculations kept for it, as
     /// the engine pushes them. Then a model tick carrying the model's own

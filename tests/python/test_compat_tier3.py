@@ -123,7 +123,7 @@ def test_a_rule_never_seen_is_refused_in_the_slots_a_refusal_goes_in():
     # Reported the way the venue reports it: against no request in particular,
     # under the code it uses for a rule it does not know.
     assert (req_id, code) == (-1, 322), heard
-    assert "market rule 26" in message
+    assert "Market rule with id = 26 is missing" in message, message
     assert error_time > 1_700_000_000_000, f"a clock reading in milliseconds, got {error_time}"
 
 

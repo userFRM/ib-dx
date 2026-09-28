@@ -12,6 +12,9 @@ import ibkr_dx
 def test_a_description_asking_for_headlines_by_provider_asks_them():
     c = ibkr_dx.EClient(ibkr_dx.EWrapper())
     c._test_connect("DU0000000")
+    # The headlines are legal on a session the venue has said may read news,
+    # whatever the entry names beside the number.
+    c._test_set_news_providers(["BRFG", "DJNL"])
     described = ibkr_dx.Contract()
     described.symbol = "AAPL"
     described.secType = "STK"
