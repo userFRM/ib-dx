@@ -2265,6 +2265,56 @@ fn a_tick_list_names_its_headlines_with_or_without_their_providers() {
     assert_eq!(parse_generic_tick_list(""), GenericTicks::default());
 }
 
+/// A request naming a series by an older number asks the venue for the
+/// series itself: what rides the subscription is a gateway's resolution of
+/// the list. "59" subscribes the dividends series 456, "47" the fundamentals
+/// series 258, "104" the historical volatility series 512, "220" the credit
+/// mark 221, and "221" the pl-price series 232 — the credit mark is answered
+/// by the pl-price series' older number, so a gateway resolves it through the
+/// older-number map like any other. A number that is itself the venue's for a
+/// series stands as it is. Subscribed under the number the request stated,
+/// the venue was asked for a series no gateway ever asks for and the tick
+/// never fired for the life of the subscription.
+#[test]
+fn a_list_naming_a_series_by_an_older_number_subscribes_the_series_itself() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let core = ClientCore::new();
+    let shared = SharedState::new();
+    let next = std::cell::Cell::new(265598i64);
+    let asked = |tick_list: &str| -> Option<Vec<u32>> {
+        let con_id = next.get();
+        next.set(con_id + 1);
+        let _ = core.register_mkt_data(
+            &shared, &tx, con_id, con_id, "SPY", "SMART", "STK", "USD", &Default::default(),
+            false, false, false, tick_list, 0, None, None, false,
+        );
+        let mut series = None;
+        while let Ok(cmd) = rx.try_recv() {
+            if let ControlCommand::Subscribe { generic_ticks, .. } = cmd {
+                series = Some(generic_ticks);
+            }
+        }
+        series
+    };
+
+    assert_eq!(asked("59").as_deref(), Some([456u32].as_slice()), "the dividends series");
+    assert_eq!(asked("47").as_deref(), Some([258u32].as_slice()), "the fundamentals series");
+    assert_eq!(
+        asked("104").as_deref(), Some([512u32].as_slice()),
+        "the historical volatility series",
+    );
+    assert_eq!(asked("220").as_deref(), Some([221u32].as_slice()), "the credit mark");
+    assert_eq!(
+        asked("221").as_deref(), Some([232u32].as_slice()),
+        "the pl-price series, which the credit mark's older number names",
+    );
+    assert_eq!(
+        asked("233,236").as_deref(), Some([233u32, 236].as_slice()),
+        "a number that is itself the venue's for a series stands as it is",
+    );
+    assert_eq!(asked("221,232").as_deref(), Some([232u32].as_slice()), "and asked twice is asked once");
+}
+
 /// A mask with bits set and no letters to show for them is one the venue has
 /// not named its exchanges for yet. Caching it as delivered leaves it equal to
 /// the next mask, so it is never rendered again once the names arrive and the

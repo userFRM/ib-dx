@@ -233,17 +233,35 @@ fn resolve_one(entry: &str, kind: &str, news_capable: bool) -> Option<i32> {
         Some(_) => return None,
     };
     let n: i32 = number.parse().ok()?;
-    let (id, legal) = if n == 221 {
-        // The credit mark is answered by the pl-price series' older number:
-        // a request for 221 resolves to 232, as an alias resolves.
-        alias_of(221)?
-    } else if let Ok(at) = CATALOGUE.binary_search_by_key(&n, |series| series.0) {
-        let series = CATALOGUE[at];
-        (series.0, series.3)
-    } else {
-        alias_of(n)?
-    };
+    let (id, legal) = series_named_by(n)?;
     legal.allows(kind, news_capable).then_some(id)
+}
+
+/// The series a number names, and the legality of the entry it is kept under.
+///
+/// The credit mark is answered by the pl-price series' older number, so a
+/// request for 221 resolves to 232 the way an older number resolves; a number
+/// the venue registers a series under names that series; and an older number
+/// names the series it is kept beside.
+fn series_named_by(n: i32) -> Option<(i32, Legal)> {
+    if n == 221 {
+        return alias_of(221);
+    }
+    if let Ok(at) = CATALOGUE.binary_search_by_key(&n, |series| series.0) {
+        let series = CATALOGUE[at];
+        return Some((series.0, series.3));
+    }
+    alias_of(n)
+}
+
+/// The venue's own number for the series a request entry names, for the
+/// reading that turns a list into the series to subscribe: a number the venue
+/// registers a series under stands as it is — except the credit mark's, which
+/// a gateway resolves to the pl-price series — and an older number resolves to
+/// its series. A number no series is behind stands as it is too: the request's
+/// validation is what answers for it.
+pub(crate) fn series_of(n: u32) -> u32 {
+    i32::try_from(n).ok().and_then(series_named_by).map_or(n, |(id, _)| id as u32)
 }
 
 /// What an older number resolves to.

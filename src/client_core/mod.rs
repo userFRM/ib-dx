@@ -1447,6 +1447,11 @@ pub(crate) struct GenericTicks<'a> {
 /// session already names, and `292:BRFG+DJNL` from the providers named after
 /// the colon, joined by `+` as the reference client writes them. `mdoff` is
 /// passed over: it is not a series, and the quote is subscribed regardless.
+///
+/// A number naming a series by its older request number reads as the series
+/// itself — `59` as `456`, `221` as `232` — the way a gateway resolves the
+/// list before it asks the venue for anything, so what is held here is the
+/// series the venue is asked for, each under the venue's own number for it.
 pub(crate) fn parse_generic_tick_list(list: &str) -> GenericTicks<'_> {
     let mut read = GenericTicks::default();
     let mut providers: Vec<&str> = Vec::new();
@@ -1465,8 +1470,12 @@ pub(crate) fn parse_generic_tick_list(list: &str) -> GenericTicks<'_> {
             continue;
         }
         match entry.parse::<u32>() {
-            Ok(tick) if !read.series.contains(&tick) => read.series.push(tick),
-            Ok(_) => {}
+            Ok(tick) => {
+                let series = tick_catalogue::series_of(tick);
+                if !read.series.contains(&series) {
+                    read.series.push(series);
+                }
+            }
             Err(_) => read.unread.push(entry),
         }
     }
@@ -2475,10 +2484,12 @@ impl ClientCore {
         // The chargeable snapshot is one burst by construction, so it ends the
         // way an ordinary snapshot does and the caller hears the same end.
         let snapshot = snapshot || regulatory_snapshot;
-        // Each remaining entry is asked for. The number a caller states is the
-        // venue's own number for the series, so there is nothing to translate:
-        // it goes out as a subscription of its own under that number, the way
-        // the option model, the trading status and the venue map already do.
+        // Each remaining entry is asked for, under the venue's own number for
+        // the series it names: the reading above resolved an older number a
+        // request names a series by to the series itself, the way a gateway
+        // resolves the list before it asks the venue for anything. Each goes
+        // out as a subscription of its own under that number, the way the
+        // option model, the trading status and the venue map already do.
         //
         // An entry that is not a number is not one of the venue's series, and
         // saying so is better than sending it and having the whole request
