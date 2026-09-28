@@ -326,4 +326,25 @@ mod tests {
             assert!(CATALOGUE.binary_search_by_key(id, |s| s.0).is_ok(), "{alias} names a series");
         }
     }
+
+    /// The type a request states reads as the venue reads its spellings:
+    /// case-blind for the names it knows, the share spelling for the
+    /// venue's own short one, the combination spelling for the short one of
+    /// its own, and the empty spelling for whatever it reads as none.
+    #[test]
+    fn the_type_a_request_states_reads_as_the_venue_reads_it() {
+        assert_eq!(canonical("STK"), "STK");
+        assert_eq!(canonical("stk"), "STK");
+        assert_eq!(canonical("Crypto"), "CRYPTO");
+        assert_eq!(canonical("CS"), "STK");
+        assert_eq!(canonical("cs"), "STK");
+        assert_eq!(canonical("COMB"), "BAG");
+        assert_eq!(canonical("NONE"), "");
+        assert_eq!(canonical("none"), "");
+        assert_eq!(canonical(""), "");
+        assert_eq!(canonical("*"), "");
+        assert_eq!(canonical("ANY"), "");
+        assert_eq!(canonical("any"), "");
+        assert_eq!(canonical("XYZ"), "", "a spelling no name is behind");
+    }
 }
