@@ -141,8 +141,12 @@ jobs:
       - name: Build the extension into the environment under test
         run: |
           python -m venv .venv
-          .venv/bin/pip install maturin pytest ib_async
-          .venv/bin/maturin develop --release --features python
+          # The whole suite runs below, offline files included: they call the
+          # injection methods by name and import both reference clients, so
+          # this mirrors tests.yml — the same pins, and --features replaces
+          # what pyproject configures rather than adding to it.
+          .venv/bin/pip install maturin pytest "ib_async==2.1.0" "ibapi==9.81.1.post1"
+          .venv/bin/maturin develop --release --features python,extension-module,test-helpers
       - name: Test
         env:
           IB_USERNAME: ${{ secrets.IB_USERNAME }}
