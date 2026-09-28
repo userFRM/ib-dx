@@ -1390,7 +1390,10 @@ impl ReferenceState {
             ] {
                 if !stated.is_empty() { *field = stated; }
             }
-            if strike != 0.0 { existing.strike = strike; }
+            // Neither marker for "not stated" overwrites what is cached:
+            // the zero a definition defaults to, nor the unset a contract
+            // is born with.
+            if strike != 0.0 && strike != f64::MAX { existing.strike = strike; }
         } else {
             cache.insert(con_id, contract);
         }

@@ -50,7 +50,7 @@ pub struct DeltaNeutralContract {
 // ── Contract ──
 
 /// ibapi-compatible Contract. Matches C++ `Contract` struct fields.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Contract {
     /// Contract id assigned by the venue, and the only field that
     /// names one on its own. Every request that carries a contract is answered
@@ -70,7 +70,9 @@ pub struct Contract {
     /// An option's expiry or a future's month,
     /// `YYYYMMDD` or `YYYYMM`. Empty for anything a symbol names completely.
     pub last_trade_date_or_contract_month: String,
-    /// An option's strike. Zero for anything that has none.
+    /// An option's strike. The unset double for anything that states none:
+    /// zero is a strike a contract can have, and the wire says which of the
+    /// two a request means.
     pub strike: f64,
     /// `C` or `P` for an option, empty otherwise.
     pub right: String,
@@ -107,6 +109,36 @@ pub struct Contract {
     pub combo_legs: Vec<ComboLeg>,
     /// The hedge that goes with a delta-neutral order.
     pub delta_neutral_contract: Option<DeltaNeutralContract>,
+}
+
+impl Default for Contract {
+    fn default() -> Self {
+        Self {
+            // What the reference client's fresh contract holds: every figure
+            // unset, so a request filter states nothing it was not given.
+            strike: f64::MAX,
+            con_id: Default::default(),
+            symbol: Default::default(),
+            sec_type: Default::default(),
+            exchange: Default::default(),
+            currency: Default::default(),
+            last_trade_date_or_contract_month: Default::default(),
+            right: Default::default(),
+            multiplier: Default::default(),
+            local_symbol: Default::default(),
+            primary_exchange: Default::default(),
+            trading_class: Default::default(),
+            last_trade_date: Default::default(),
+            include_expired: Default::default(),
+            sec_id_type: Default::default(),
+            sec_id: Default::default(),
+            description: Default::default(),
+            issuer_id: Default::default(),
+            combo_legs_descrip: Default::default(),
+            combo_legs: Default::default(),
+            delta_neutral_contract: Default::default(),
+        }
+    }
 }
 
 // ── Order ──
@@ -2038,7 +2070,7 @@ pub struct PriceIncrement {
 pub fn contract_identity(
     last_trade_date: &str, strike: f64, right: &str, multiplier: &str, currency: &str,
 ) -> String {
-    let named_by_symbol = last_trade_date.is_empty() && strike <= 0.0 && right.is_empty();
+    let named_by_symbol = last_trade_date.is_empty() && strike == f64::MAX && right.is_empty();
     // A holding priced in the account's own currency is named completely by
     // its symbol. One priced in another is not: an order that says nothing
     // about the currency is taken as an order in the default one, which is a
@@ -2047,7 +2079,10 @@ pub fn contract_identity(
     if named_by_symbol && !stated_currency {
         return String::new();
     }
-    format!("{last_trade_date}|{strike}|{right}|{multiplier}|||{currency}")
+    // An unstated strike keys as nothing stated, rather than as the digits of
+    // the unset marker: what reads the key back tests it for emptiness.
+    let strike_key = if strike == f64::MAX { String::new() } else { format!("{strike}") };
+    format!("{last_trade_date}|{strike_key}|{right}|{multiplier}|||{currency}")
 }
 
 // ── What an error is about ──
@@ -2168,7 +2203,7 @@ mod tests {
         assert_eq!(c.sec_type, "");
         assert_eq!(c.exchange, "");
         assert_eq!(c.currency, "");
-        assert_eq!(c.strike, 0.0);
+        assert_eq!(c.strike, f64::MAX);
     }
 
     #[test]

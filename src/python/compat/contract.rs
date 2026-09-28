@@ -451,16 +451,23 @@ mod tests {
     fn contract_default_values() {
         // What the reference client leaves a fresh contract holding: nothing.
         // Defaulting to a US stock on SMART sends those terms beside an id that
-        // names something else. Strike stays 0.0 here rather than the
-        // reference's unset marker: a fresh contract is used as a request
-        // filter, and the unset marker there would match no strike at all.
+        // names something else. The strike carries the unset marker, as the
+        // reference's does: the wire writers send nothing for it, and send a
+        // stated zero as the zero strike it is.
         let c = Contract::default();
         assert_eq!(c.con_id, 0);
         assert_eq!(c.symbol, "");
         assert_eq!(c.sec_type, "");
         assert_eq!(c.exchange, "");
         assert_eq!(c.currency, "");
-        assert_eq!(c.strike, 0.0);
+        assert_eq!(c.strike, f64::MAX);
+        // A contract struck at zero states the zero: it keys apart from one
+        // that states no strike.
+        let zero = Contract { strike: 0.0, ..Default::default() };
+        assert_ne!(
+            crate::types::model::contract_identity("", zero.strike, "", "", ""),
+            crate::types::model::contract_identity("", c.strike, "", "", ""),
+        );
     }
 
     #[test]

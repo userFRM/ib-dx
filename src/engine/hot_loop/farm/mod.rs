@@ -4077,7 +4077,8 @@ impl FarmState {
 
             } else {
                 // No con_id — send descriptive fields
-                let strike_str = if strike > 0.0 { strike.to_string() } else { String::new() };
+                // Empty only for the unset marker: a zero strike is stated.
+                let strike_str = if strike != f64::MAX { strike.to_string() } else { String::new() };
                 let mut tags: Vec<(u32, &str)> = vec![
                     (fix::TAG_MSG_TYPE, fix::MSG_MARKET_DATA_REQ),
                     (fix::TAG_SENDING_TIME, &ts),
@@ -4096,7 +4097,7 @@ impl FarmState {
                     tags.push((207, fix_exchange));
                     tags.push((167, fix_sec_type));
                     if !last_trade_date.is_empty() { tags.push((200, last_trade_date)); }
-                    if strike > 0.0 { tags.push((202, &strike_str)); }
+                    if strike != f64::MAX { tags.push((202, &strike_str)); }
                     if !right.is_empty() { tags.push((201, right)); }
                     if !multiplier.is_empty() { tags.push((231, multiplier)); }
                     tags.push((264, depth));

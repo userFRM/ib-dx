@@ -3,6 +3,7 @@
 import pytest
 from ibkr_dx import (
     UNSET_DECIMAL,
+    UNSET_DOUBLE,
     Contract, Order, BarData, ContractDetails, TagValue, OrderState,
     EWrapper, EClient,
     TickAttrib, TickAttribLast, TickAttribBidAsk, TickTypeEnum,
@@ -27,7 +28,10 @@ def test_contract_defaults():
     assert c.sec_type == ""
     assert c.exchange == ""
     assert c.currency == ""
-    assert c.strike == 0.0
+    # The reference client's fresh contract carries its unset double in the
+    # strike: zero is a strike a contract can have, and a program written
+    # against it compares with the unset.
+    assert c.strike == UNSET_DOUBLE
 
 
 def test_contract_kwargs():

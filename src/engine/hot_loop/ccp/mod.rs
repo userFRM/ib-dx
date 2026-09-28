@@ -3141,7 +3141,9 @@ impl CcpState {
             } else {
                 ""
             };
-            let strike_str = if filters.strike > 0.0 { format!("{}", filters.strike) } else { String::new() };
+            // Empty only for the unset marker: a contract struck at zero
+            // states the zero, and only it names that contract.
+            let strike_str = if filters.strike != f64::MAX { format!("{}", filters.strike) } else { String::new() };
             // PutOrCall: Call = 1, Put = 0.
             let right_code = match filters.right.to_uppercase().as_str() {
                 "C" | "CALL" => "1",

@@ -939,7 +939,8 @@ mod tests {
         contract.sec_type = "FUT".into();
         contract.last_trade_date_or_contract_month = "202612".into();
         contract.multiplier = "50".into();
-        assert_eq!(registration_identity(&contract), "202612|0||50|||USD");
+        // An unstated strike keys as nothing stated, not as a fabricated zero.
+        assert_eq!(registration_identity(&contract), "202612|||50|||USD");
     }
 
     fn definition(

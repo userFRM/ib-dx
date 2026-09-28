@@ -196,7 +196,10 @@ impl Default for Contract {
             currency: String::new(),
             last_trade_date_or_contract_month: String::new(),
             last_trade_date: String::new(),
-            strike: 0.0,
+            // The unset the reference client's fresh contract carries: zero
+            // is a strike a contract can have, and a request filter states
+            // nothing it was not given.
+            strike: f64::MAX,
             right: String::new(),
             multiplier: String::new(),
             local_symbol: String::new(),
@@ -293,7 +296,10 @@ impl Contract {
             currency: c.currency.clone(),
             last_trade_date_or_contract_month: c.last_trade_date_or_contract_month.clone(),
             last_trade_date: c.last_trade_date.clone(),
-            strike: c.strike,
+            // A contract the engine holds and never stated a strike for is
+            // delivered as the reference client's decoder delivers an empty
+            // strike field: zero.
+            strike: if c.strike == f64::MAX { 0.0 } else { c.strike },
             right: c.right.clone(),
             multiplier: c.multiplier.clone(),
             local_symbol: c.local_symbol.clone(),
@@ -347,7 +353,7 @@ impl Contract {
 #[pymethods]
 impl Contract {
     #[new]
-    #[pyo3(signature = (con_id=0, symbol="".to_string(), sec_type="".to_string(), exchange="".to_string(), currency="".to_string(), last_trade_date_or_contract_month="".to_string(), strike=0.0, right="".to_string(), multiplier="".to_string(), local_symbol="".to_string(), primary_exchange="".to_string(), trading_class="".to_string(), **keywords))]
+    #[pyo3(signature = (con_id=0, symbol="".to_string(), sec_type="".to_string(), exchange="".to_string(), currency="".to_string(), last_trade_date_or_contract_month="".to_string(), strike=f64::MAX, right="".to_string(), multiplier="".to_string(), local_symbol="".to_string(), primary_exchange="".to_string(), trading_class="".to_string(), **keywords))]
     fn new(
         con_id: i64,
         symbol: String,

@@ -784,7 +784,7 @@ pub(crate) fn drain_and_send_orders(
                     id.expiry.is_empty()
                         && id.right.is_empty()
                         && (id.strike.is_empty()
-                            || id.strike.parse::<f64>().is_ok_and(|s| s <= 0.0))
+                            || id.strike.parse::<f64>().is_ok_and(|s| s == f64::MAX))
                 });
                 let local_symbol = identity
                     .map(|id| id.local_symbol)
@@ -1534,7 +1534,9 @@ fn push_contract_identity(
             fields.push((6035, local_symbol));
         }
     }
-    if strike.parse::<f64>().unwrap_or(0.0) > 0.0 {
+    // The identity keys an unstated strike as nothing, so what is there is
+    // stated: a zero strike goes as the zero that names the contract.
+    if !strike.is_empty() && strike.parse::<f64>().is_ok_and(|s| s != f64::MAX) {
         fields.push((202, strike));
     }
     // PutOrCall is a code on this wire, not the letter: Call = 1, Put = 0, the
