@@ -1606,10 +1606,13 @@ impl HotLoop {
                         || self.ccp.resolved_named.iter().any(|cmd| ccp::request_id(cmd) == Some(req_id)
                             && matches!(cmd, ControlCommand::FetchHistorical { .. } | ControlCommand::FetchHistoricalSchedule { .. }));
                     if !held {
+                        // In a gateway's words for the number, which its text
+                        // for 366 ends on: the number is written after the
+                        // colon the text carries.
                         push_hmds_refusal(
                             &self.shared, req_id,
                             crate::error_codes::NO_SUCH_HISTORICAL_QUERY,
-                            format!("no historical query is answering under request {req_id}"),
+                            format!("No historical data query found for ticker id:{req_id}"),
                             false,
                         );
                     }
@@ -9744,12 +9747,13 @@ mod withdrawal_tests {
     /// request kinds answered and five did not.
     #[test]
     fn every_withdrawal_says_when_it_names_nothing() {
-        for (what, cmd, code) in [
-            ("bars", crate::types::ControlCommand::CancelHistorical { req_id: 9 }, 366),
-            ("a head timestamp", crate::types::ControlCommand::CancelHeadTimestamp { req_id: 9 }, 300),
-            ("corporate actions", crate::types::ControlCommand::CancelCorporateActions { req_id: 9 }, 300),
-            ("a histogram", crate::types::ControlCommand::CancelHistogramData { req_id: 9 }, 300),
-            ("live bars", crate::types::ControlCommand::CancelRealTimeBar { req_id: 9 }, 300),
+        for (what, cmd, code, words) in [
+            ("bars", crate::types::ControlCommand::CancelHistorical { req_id: 9 }, 366,
+             Some("No historical data query found for ticker id:9")),
+            ("a head timestamp", crate::types::ControlCommand::CancelHeadTimestamp { req_id: 9 }, 300, None),
+            ("corporate actions", crate::types::ControlCommand::CancelCorporateActions { req_id: 9 }, 300, None),
+            ("a histogram", crate::types::ControlCommand::CancelHistogramData { req_id: 9 }, 300, None),
+            ("live bars", crate::types::ControlCommand::CancelRealTimeBar { req_id: 9 }, 300, None),
         ] {
             let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
             let (tx, rx) = std::sync::mpsc::sync_channel(4);
@@ -9764,6 +9768,9 @@ mod withdrawal_tests {
                 (told[0].0, told[0].1), (9, code),
                 "{what}: under the number that names it",
             );
+            if let Some(words) = words {
+                assert_eq!(told[0].2, words, "{what}: in a gateway's words");
+            }
         }
     }
 
