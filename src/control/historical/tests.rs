@@ -148,10 +148,18 @@ fn a_week_and_a_month_go_out_under_the_name_the_venue_answers() {
 fn bar_data_type_from_api_str() {
     assert_eq!(BarDataType::from_api_str("TRADES").unwrap(), BarDataType::Trades);
     assert_eq!(BarDataType::from_api_str("trades").unwrap(), BarDataType::Trades);
-    assert_eq!(BarDataType::from_api_str("").unwrap(), BarDataType::Trades);
     assert_eq!(BarDataType::from_api_str("BID_ASK").unwrap(), BarDataType::BidAsk);
-    // A misspelled value is refused rather than answered with trade bars.
-    assert!(BarDataType::from_api_str("TRADE").is_err());
+    // A name outside the table is refused rather than answered with trade
+    // bars, in a gateway's words, spelled as the caller spelled it — and the
+    // empty name is outside the table, rendering its two spaces.
+    assert_eq!(
+        BarDataType::from_api_str("TRADE"),
+        Err("What to show value of TRADE rejected.".to_string()),
+    );
+    assert_eq!(
+        BarDataType::from_api_str(""),
+        Err("What to show value of  rejected.".to_string()),
+    );
     assert!(BarDataType::from_api_str("BIDD").is_err());
 }
 
@@ -808,29 +816,6 @@ fn parse_tick_response_midpoint() {
     }
 }
 
-/// The venue's interest-rate series is a value with a moment, not a print.
-///
-/// Read through the trade decoder it arrived as a trade, with a size of zero
-/// and no venue — a rate reported as something that changed hands.
-#[test]
-fn the_interest_rate_series_is_not_read_as_a_trade() {
-    let xml = r#"<ResultSetTick>
-            <id>tk_4</id>
-        <eoq>true</eoq>
-        <Events>
-            <Tick><time>20260312-14:30:01</time><price>0.0425</price></Tick>
-        </Events>
-    </ResultSetTick>"#;
-    let (_, data, _) = parse_tick_response(xml, "OPTION_EXERCISE_INTEREST_RATE").unwrap();
-    match data {
-        crate::types::HistoricalTickData::Midpoint(ticks) => {
-            assert_eq!(ticks.len(), 1);
-            assert_eq!(ticks[0].price, 0.0425);
-        }
-        other => panic!("a rate is not a trade: {other:?}"),
-    }
-}
-
 #[test]
 fn parse_tick_response_rejects_other() {
     assert!(parse_tick_response("<ResultSetBar>...</ResultSetBar>", "TRADES").is_none());
@@ -1112,41 +1097,37 @@ mod duration_spelling_tests {
 mod tick_data_type_tests {
     use super::super::tick_data_type;
 
-    /// The rate is a tick series and not a bar series.
-    ///
-    /// Asked for it as bars the venue answers "QueryType BarData is not
-    /// supported for tick type OptExInterestRate", whatever the step and
-    /// whether the contract is the option or what it is written on. Offered as
-    /// a bar name it was a name that could only ever come back refused.
-    #[test]
-    fn the_rate_is_a_tick_series_and_is_not_offered_as_a_bar_one() {
-        assert!(crate::control::historical::BarDataType::from_api_str(
-            "OPTION_EXERCISE_INTEREST_RATE"
-        ).is_err());
-        assert_eq!(tick_data_type("OPTION_EXERCISE_INTEREST_RATE"), Ok("OptExInterestRate"));
-    }
-
-    /// Each name a caller can use names a series the venue serves.
+    /// Each name a caller can use names a series the venue serves. A gateway
+    /// reads a tick query's series against four names alone.
     #[test]
     fn each_known_name_maps_to_the_venues_own() {
-        assert_eq!(tick_data_type(""), Ok("AllLast"));
         assert_eq!(tick_data_type("TRADES"), Ok("AllLast"));
         assert_eq!(tick_data_type("MIDPOINT"), Ok("MidPoint"));
         assert_eq!(tick_data_type("BID_ASK"), Ok("BidAsk"));
-        assert_eq!(
-            tick_data_type("OPTION_EXERCISE_INTEREST_RATE"),
-            Ok("OptExInterestRate"),
-        );
     }
 
-    /// One it does not know is refused rather than turned into trades. Turned
-    /// into trades, a caller asking for the venue's interest-rate series was
-    /// answered with a list of option prints and told nothing.
+    /// A name outside the four is refused rather than turned into trades, in
+    /// a gateway's words — the option-exercise rate included, which is no
+    /// name a gateway takes on any query. Turned into trades, a caller asking
+    /// for another series was answered with a list of option prints and told
+    /// nothing.
     #[test]
     fn a_name_it_does_not_know_is_refused() {
-        for unknown in ["MIDPONT", "BID", "OptExInterestRate ", "anything"] {
-            assert!(tick_data_type(unknown).is_err(), "{unknown} was taken for trades");
+        for unknown in [
+            "MIDPONT", "BID", "OptExInterestRate ", "anything",
+            "OPTION_EXERCISE_INTEREST_RATE",
+        ] {
+            assert_eq!(
+                tick_data_type(unknown),
+                Err("Invalid source price".to_string()),
+                "{unknown} was taken for trades",
+            );
         }
+        // An empty name has a refusal of its own.
+        assert_eq!(
+            tick_data_type(""),
+            Err("Source price must not be empty".to_string()),
+        );
     }
     // ── decode_bar_payload ───────────────────────────────────────────────
     //
@@ -1436,16 +1417,16 @@ fn aggregated_trades_can_be_asked_for_as_ticks() {
     assert!(xml.contains("<data>AggLast</data>"), "{xml}");
 }
 
-/// The head timestamp takes a name the bar query refuses.
-///
-/// Its query type is its own and so is the venue's vocabulary for it: asked
-/// here for the option-exercise rate the venue answers that it holds no data
-/// for the contract, naming the series back, where a bar query for the same
-/// name is refused as a query type that does not take it. Read through the bar
-/// table alone, the one name the two differ on was refused without being asked.
+/// The head timestamp reads the bar table, and a name outside it is refused
+/// in a gateway's words — the option-exercise rate included, which a gateway
+/// refuses on a head timestamp as it refuses it on a bar query: the name is
+/// in neither table, and the venue is never reached to say what it holds.
 #[test]
-fn the_head_timestamp_takes_the_rate_the_bar_query_refuses() {
-    assert_eq!(head_timestamp_data_type("OPTION_EXERCISE_INTEREST_RATE"), Ok("OptExInterestRate"));
+fn the_head_timestamp_reads_the_bar_table() {
+    assert_eq!(
+        head_timestamp_data_type("OPTION_EXERCISE_INTEREST_RATE"),
+        Err("What to show value of OPTION_EXERCISE_INTEREST_RATE rejected.".to_string()),
+    );
     assert!(BarDataType::from_api_str("OPTION_EXERCISE_INTEREST_RATE").is_err());
     // And everything the bar table takes, under the same names.
     for asked in ["TRADES", "MIDPOINT", "BID_ASK", "HISTORICAL_VOLATILITY"] {
@@ -1455,7 +1436,10 @@ fn the_head_timestamp_takes_the_rate_the_bar_query_refuses() {
             "{asked}",
         );
     }
-    assert!(head_timestamp_data_type("NONSENSE").is_err());
+    assert_eq!(
+        head_timestamp_data_type("NONSENSE"),
+        Err("What to show value of NONSENSE rejected.".to_string()),
+    );
 }
 
 /// One name that is two series is asked as a gateway asks it: the bid side's

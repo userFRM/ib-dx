@@ -4328,7 +4328,7 @@ fn req_historical_data_refuses_a_duration_a_gateway_refuses() {
 fn req_historical_data_rejects_unknown_what_to_show() {
     let (client, rx, _shared) = test_client();
     let err = client.try_req_historical_data(5, &spy(), "", "2 D", "1 min", "TRADE", true, 1, false).unwrap_err();
-    assert!(err.message.contains("what_to_show"), "got: {err}");
+    assert_eq!(err.message, "What to show value of TRADE rejected.");
     assert!(rx.try_recv().is_err());
 }
 
@@ -4421,8 +4421,9 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
         (combo, "", "5 mins", "TRADES", true, 1, "Live updates for combos are not supported"),
         (spy(), "", "5 mins", "BID_ASK", true, 1, "Source price not supported with live updates"),
         (spy(), "", "5 mins", "YIELD_BID", true, 1, "Source price not supported with live updates"),
-        // A name left empty is compared as it stands, and matches none.
-        (spy(), "", "5 mins", "", true, 1, "Source price not supported with live updates"),
+        // A name left empty is refused by the series table, before any
+        // live-update reading of it — and renders its two spaces.
+        (spy(), "", "5 mins", "", true, 1, "What to show value of  rejected."),
         // A date format outside the three a gateway renders is refused where
         // the request is taken.
         (spy(), "", "5 mins", "TRADES", false, 4, "Date formatting selection of 4 rejected."),
@@ -5956,12 +5957,16 @@ fn req_historical_ticks_sends_fetch() {
 //  Real-time bars
 // ═══════════════════════════════════════════════════════════════════
 
-/// An unrecognised `what_to_show` is refused rather than encoded as TRADES.
+/// An unrecognised `what_to_show` is refused rather than encoded as TRADES,
+/// in the words the shared series table refuses it in.
 #[test]
 fn a_real_time_bar_request_states_a_series_the_venue_serves() {
     let (client, _rx, _shared) = test_client();
     let err = crate::api::client::tests::reported(&client, || client.req_real_time_bars(9, &spy(), 5, "BDI", true)).unwrap_err();
-    assert!(err.message.contains("Unsupported what_to_show"), "got: {err}");
+    assert_eq!(
+        err.message,
+        "Error validating request:-'' : cause - What to show value of BDI rejected.",
+    );
 }
 
 #[test]

@@ -5481,8 +5481,8 @@ mod tests {
     /// for. These two had none.
     #[test]
     fn a_series_this_client_does_not_know_is_refused_on_the_control_channel() {
-        for command in [
-            ControlCommand::FetchHistoricalTicks {
+        for (command, reason) in [
+            (ControlCommand::FetchHistoricalTicks {
                 contract: ContractRef { con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(), ..Default::default() },
                 req_id: 61,
                 start_date_time: String::new(),
@@ -5493,14 +5493,14 @@ mod tests {
                 ignore_size: false,
                 include_expired: false,
                 filters: Default::default(),
-            },
-            ControlCommand::SubscribeRealTimeBar {
+            }, "Invalid source price"),
+            (ControlCommand::SubscribeRealTimeBar {
                 contract: ContractRef { con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(), ..Default::default() },
                 req_id: 62,
                 what_to_show: "NOT_A_SERIES".into(),
                 use_rth: true,
                 filters: Default::default(),
-            },
+            }, "What to show value of NOT_A_SERIES rejected."),
         ] {
             let shared = Arc::new(SharedState::new());
             let mut hl = HotLoop::new(shared.clone(), None, None);
@@ -5510,8 +5510,9 @@ mod tests {
             hl.poll_once();
 
             let told = shared.reference.drain_historical_errors();
+            let wire = format!("Error validating request:-'' : cause - {reason}");
             assert!(
-                told.iter().any(|(_, _, said)| said.contains("Unsupported what_to_show")),
+                told.iter().any(|(_, _, said)| said == &wire),
                 "a series this client does not know was asked for as trades, and \
                  what came back read as what the caller wanted: {told:?}",
             );

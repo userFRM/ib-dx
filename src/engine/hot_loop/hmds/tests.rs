@@ -1462,10 +1462,9 @@ fn a_trades_request_with_an_action_nobody_can_name_is_refused() {
     let shared = SharedState::new();
     let mut hb = HeartbeatState::new();
 
-    // Asked under the documented default, which is TRADES; the venue names an
-    // action this client does not know.
+    // Asked for trades; the venue names an action this client does not know.
     let bars = folded_and_answered(
-        &mut hmds, &mut conn, &mut peer, &shared, &mut hb, "",
+        &mut hmds, &mut conn, &mut peer, &shared, &mut hb, "TRADES",
         "conc\n756733,-1,-1\nZZ\n20240610,10,,20240522\n",
     );
     hmds.process_hmds_message(

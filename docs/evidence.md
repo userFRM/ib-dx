@@ -21,7 +21,7 @@ Verification runs against a paper account on IBKR production servers, and the or
 | Requests | 86. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,408 offline, and 183 more that live in the suites run against a broker session |
+| Tests | 4,406 offline, and 183 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,7 +72,7 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,216 | No |
+| Rust unit and integration | 3,214 | No |
 | Rust, live | 9 | Yes |
 | Python | 1,192 | No |
 | Python, live | 123 | Yes |
@@ -229,9 +229,12 @@ client's own allocation; what a gateway answers the same way is on
   are folded on the calendar, opening on the Monday and on the 1st at
   midnight UTC.
 - **The option-exercise interest rate series is not served.**
-  `OptExInterestRate` is accepted as a tick query against an option contract
-  and rejected by name against the underlying, and every window tested returns
-  an empty result set.
+  The name is refused where the request is taken, as a gateway refuses it:
+  `Invalid source price` on a tick query, `What to show value of
+  OPTION_EXERCISE_INTEREST_RATE rejected.` on a bar query or a head
+  timestamp. The venue itself accepted `OptExInterestRate` as a tick query
+  against an option contract and rejected it by name against the underlying,
+  and every window tested returned an empty result set.
 - **A crypto's trade stream delivers and its book does not.** Measured on 13
   September: the tick-by-tick `AllLast` stream on BTC on PAXOS delivered 61
   records in 30 seconds, and the pair's book delivered nothing on an account

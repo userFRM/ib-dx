@@ -75,13 +75,13 @@ pub enum BarDataType {
 impl BarDataType {
     /// Read the official API's `what_to_show` string.
     ///
-    /// An empty string is the documented TRADES default; anything else must
-    /// match exactly, case aside. A value this does not know is an error
-    /// rather than a fallback — a misspelled "BID" answered as trade bars
-    /// looks like data.
+    /// The table is the legal set, matched case aside. A name outside it —
+    /// the empty name included — is refused in a gateway's words rather than
+    /// fallen back from: a misspelled "BID" answered as trade bars looks
+    /// like data.
     pub fn from_api_str(s: &str) -> Result<BarDataType, String> {
         Ok(match s.to_uppercase().as_str() {
-            "" | "TRADES" => Self::Trades,
+            "TRADES" => Self::Trades,
             "MIDPOINT" => Self::Midpoint,
             "BID" => Self::Bid,
             "ASK" => Self::Ask,
@@ -123,15 +123,10 @@ impl BarDataType {
             "PUT_OPTION_OPEN_INTEREST" => Self::PutOptionOpenInterest,
             "CALL_OPTION_VOLUME" => Self::CallOptionVolume,
             "PUT_OPTION_VOLUME" => Self::PutOptionVolume,
-            other => {
-                return Err(format!(
-                    "Unsupported what_to_show '{other}': expected TRADES, MIDPOINT, \
-                     BID, ASK, BID_ASK, AGGTRADES, FEE_RATE, YIELD_BID, YIELD_ASK, \
-                     YIELD_BID_ASK, YIELD_LAST, YIELD_MARK, NAV_LAST, HISTORICAL_VOLATILITY, \
-                     OPTION_IMPLIED_VOLATILITY, INDICATIVE_AUCTION_PRICE_SIZE, \
-                     CALL_OPTION_OPEN_INTEREST, PUT_OPTION_OPEN_INTEREST, \
-                     CALL_OPTION_VOLUME or PUT_OPTION_VOLUME",
-                ));
+            // Spelled as the caller spelled it; the empty name renders the
+            // two spaces a gateway's rendering of it carries.
+            _ => {
+                return Err(format!("What to show value of {s} rejected."));
             }
         })
     }
@@ -1153,17 +1148,10 @@ pub fn parse_ticker_id(xml: &str) -> Option<String> {
 
 /// What the venue calls a series asked for the earliest moment it holds.
 ///
-/// A head timestamp is a query type of its own, and the venue's vocabulary for
-/// it is not the bar one. Asked here for the option-exercise rate it answers
-/// that it holds no data for the contract, naming the series back — the same
-/// answer the tick query gives — where a bar query for the same name is
-/// refused as a query type that does not take it. Read through the bar table
-/// alone, the one name the two vocabularies differ on was refused here without
-/// being asked.
+/// A head timestamp reads the bar table, and a name outside it is refused in
+/// the table's words before the venue is asked — whatever the venue itself
+/// would have answered for the name.
 pub fn head_timestamp_data_type(what_to_show: &str) -> Result<&'static str, String> {
-    if what_to_show.eq_ignore_ascii_case("OPTION_EXERCISE_INTEREST_RATE") {
-        return Ok("OptExInterestRate");
-    }
     // The adjusted series begins where the raw trades it is folded from do,
     // and a gateway asks for the earliest trade to answer it.
     if what_to_show_is_adjusted(what_to_show) {
@@ -1261,28 +1249,23 @@ pub fn build_head_timestamp_xml(req: &HeadTimestampRequest) -> String {
 /// Map whatToShow to data type.
 /// What the venue calls a tick series, from what a caller calls it.
 ///
-/// A name this does not know is refused rather than turned into trades.
-/// Falling back to trades answers a misspelled `BID`, or the venue's
-/// interest-rate series, with option prints and reports nothing.
+/// A gateway reads a tick query's series against four names alone, and
+/// refuses anything else in its own words — an empty name with a refusal of
+/// its own. Falling back to trades instead answers a misspelled `BID` with
+/// option prints and reports nothing.
 pub fn tick_data_type(what_to_show: &str) -> Result<&'static str, String> {
+    if what_to_show.is_empty() {
+        return Err("Source price must not be empty".to_string());
+    }
     Ok(match what_to_show.to_uppercase().as_str() {
-        "" | "TRADES" => "AllLast",
+        "TRADES" => "AllLast",
         "MIDPOINT" => "MidPoint",
         "BID_ASK" => "BidAsk",
         // Trades as the venue aggregates them, which it serves on the tick
         // query as well as the bar one.
         "AGGTRADES" => "AggLast",
-        // The rate the venue prices options at. A tick type, not a bar one:
-        // asked for as bars the venue answers that the query type is not
-        // supported for it, and names the tick type back. Every window asked
-        // for so far has come back empty, so what it takes and what it holds
-        // are two different questions and only the first is answered here.
-        "OPTION_EXERCISE_INTEREST_RATE" => "OptExInterestRate",
-        other => {
-            return Err(format!(
-                "Unsupported what_to_show '{other}' for historical ticks: expected TRADES, \
-                 MIDPOINT, BID_ASK, AGGTRADES or OPTION_EXERCISE_INTEREST_RATE",
-            ));
+        _ => {
+            return Err("Invalid source price".to_string());
         }
     })
 }
@@ -1398,9 +1381,7 @@ pub fn build_tick_query_xml(
 pub fn no_ticks_of_the_kind(what_to_show: &str) -> crate::types::HistoricalTickData {
     match what_to_show.to_uppercase().as_str() {
         "BID_ASK" => crate::types::HistoricalTickData::BidAsk(Vec::new()),
-        "MIDPOINT" | "OPTION_EXERCISE_INTEREST_RATE" => {
-            crate::types::HistoricalTickData::Midpoint(Vec::new())
-        }
+        "MIDPOINT" => crate::types::HistoricalTickData::Midpoint(Vec::new()),
         _ => crate::types::HistoricalTickData::Last(Vec::new()),
     }
 }
@@ -1480,10 +1461,10 @@ pub fn parse_tick_response(xml: &str, what_to_show: &str) -> Option<(String, cra
             }
             Some((query_id, crate::types::HistoricalTickData::BidAsk(ticks), is_complete))
         }
-        // A rate is a value with a moment, and nothing else. Read through
-        // the trade decoder it arrives as a print, with a size and a venue it
-        // never had. No trade is involved in this series.
-        "MIDPOINT" | "OPTION_EXERCISE_INTEREST_RATE" => {
+        // A midpoint is a value with a moment, and nothing else. Read
+        // through the trade decoder it arrives as a print, with a size and a
+        // venue it never had. No trade is involved in this series.
+        "MIDPOINT" => {
             let mut ticks = Vec::new();
             while let Some(tick_pos) = xml[search_start..].find("<Tick>") {
                 let abs = search_start + tick_pos;
