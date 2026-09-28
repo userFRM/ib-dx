@@ -794,12 +794,12 @@ fn req_completed_orders_keeps_what_it_read() {
     shared.orders.push_completed_order(CompletedOrder {
         venue_order: String::new(), stated: None, held: None,
         order_id: 100, instrument: 0, status: OrderStatus::Filled,
-        filled_qty: 50, timestamp_ns: 1000,
+        filled_qty: 50, timestamp_ns: 0,
     });
     shared.orders.push_completed_order(CompletedOrder {
         venue_order: String::new(), stated: None, held: None,
         order_id: 200, instrument: 0, status: OrderStatus::Cancelled,
-        filled_qty: 0, timestamp_ns: 2000,
+        filled_qty: 0, timestamp_ns: 0,
     });
 
     let mut w = RecordingWrapper::default();
