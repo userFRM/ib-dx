@@ -309,7 +309,7 @@ impl EClient {
             // run past what a request id can hold — had this stream's refusals
             // reported against somebody else's request.
             let _ = wire_req_id(req_id)?;
-            let kind = TbtType::named(tick_type)?;
+            let kind = TbtType::named(&contract.sec_type, tick_type)?;
             // A stream is asked for by the venue's id for the contract, and states
             // what the contract is and where it trades: the engine names one the
             // caller described, or gave by id alone, before it asks.

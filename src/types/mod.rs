@@ -652,13 +652,34 @@ impl TbtType {
     /// `Last` and `AllLast` are two streams, not two names for one: the second
     /// carries trades reported away from the exchange and the first does not.
     /// Both clients read the name here, so neither can drift from the other.
-    pub fn named(name: &str) -> Result<Self, String> {
+    ///
+    /// The request's type is read before the stream's name, as a gateway
+    /// reads the request, and a combination — however the caller spelled it —
+    /// or a predefined combination carries no stream at all: it is refused
+    /// before anything is looked up, under the type's standing spelling.
+    pub fn named(sec_type: &str, name: &str) -> Result<Self, String> {
+        let unsupported = if sec_type.eq_ignore_ascii_case("BAG")
+            || sec_type.eq_ignore_ascii_case("COMB")
+        {
+            Some("BAG")
+        } else if sec_type.eq_ignore_ascii_case("PDC") {
+            Some("PDC")
+        } else {
+            None
+        };
+        if let Some(stated) = unsupported {
+            return Err(format!(
+                "'{stated}' security type is not supported in ReqTickByTick(97) request"
+            ));
+        }
         match name {
             "AllLast" => Ok(Self::AllLast),
             "Last" => Ok(Self::Last),
             "BidAsk" => Ok(Self::BidAsk),
             "MidPoint" => Ok(Self::MidPoint),
-            other => Err(format!("no such kind of tick: {other}")),
+            // The standing text a gateway refuses a stream named in any other
+            // words, or named in none, with.
+            _ => Err("Tick-by-tick data type is incorrect/not set".to_string()),
         }
     }
 }

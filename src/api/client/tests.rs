@@ -2291,11 +2291,49 @@ fn req_tick_by_tick_data_is_sent_rather_than_refused() {
     // so rather than for the feed being unreachable.
     let err = crate::api::client::tests::reported(&client, || client.req_tick_by_tick_data(10, &spy(), "Sideways", 0, false))
         .expect_err("a kind that is not a kind is refused");
-    assert!(err.message.contains("no such kind"), "{err}");
+    assert!(err.message.contains("Tick-by-tick data type is incorrect/not set"), "{err}");
     assert!(
         !err.message.contains("not served to this session"),
         "the old reasoning is gone: {err}"
     );
+}
+
+/// A tick stream whose request states a combination type is refused before
+/// anything is looked up or opened, as a gateway refuses one: under the
+/// type's standing spelling, whatever way the caller cased or spelled it, and
+/// the type is read before the stream's name, so a request wrong in both ways
+/// is refused for the type. A stream whose name is none of the four is
+/// refused in a gateway's standing text rather than in words of this client's
+/// own.
+#[test]
+fn a_tick_stream_on_a_combination_type_or_a_bad_name_is_refused_as_a_gateway_refuses_it() {
+    let (client, rx, _shared) = test_client();
+    let bag = "'BAG' security type is not supported in ReqTickByTick(97) request";
+    let pdc = "'PDC' security type is not supported in ReqTickByTick(97) request";
+    let name = "Tick-by-tick data type is incorrect/not set";
+    for (req_id, (sec_type, tick_type, said)) in [
+        ("BAG", "Last", bag),
+        ("bag", "BidAsk", bag),
+        ("COMB", "Last", bag),
+        ("PDC", "MidPoint", pdc),
+        ("BAG", "Sideways", bag),
+        ("STK", "last", name),
+        ("STK", "", name),
+    ].into_iter().enumerate() {
+        let req_id = 71 + req_id as i64;
+        let contract = Contract {
+            con_id: 28868674, sec_type: sec_type.into(), exchange: "SMART".into(),
+            ..Default::default()
+        };
+        let why = reported(&client, || client.req_tick_by_tick_data(req_id, &contract, tick_type, 0, false))
+            .expect_err(&format!("{sec_type}/{tick_type}"));
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (321, format!("Error validating request:-'' : cause - {said}").as_str()),
+            "{sec_type}/{tick_type}",
+        );
+        assert!(next_command(&rx).is_none(), "{sec_type}/{tick_type} sent something");
+    }
 }
 
 /// The two trade streams are two streams. Asking for one under the other's
@@ -2303,10 +2341,10 @@ fn req_tick_by_tick_data_is_sent_rather_than_refused() {
 /// from the exchange arrived on a subscription that wanted the exchange's own.
 #[test]
 fn the_two_trade_streams_are_asked_for_separately() {
-    assert_eq!(TbtType::named("AllLast"), Ok(TbtType::AllLast));
-    assert_eq!(TbtType::named("Last"), Ok(TbtType::Last));
-    assert_eq!(TbtType::named("BidAsk"), Ok(TbtType::BidAsk));
-    assert!(TbtType::named("Sideways").is_err(), "a kind that is not a kind is refused");
+    assert_eq!(TbtType::named("STK", "AllLast"), Ok(TbtType::AllLast));
+    assert_eq!(TbtType::named("STK", "Last"), Ok(TbtType::Last));
+    assert_eq!(TbtType::named("STK", "BidAsk"), Ok(TbtType::BidAsk));
+    assert!(TbtType::named("STK", "Sideways").is_err(), "a kind that is not a kind is refused");
 }
 
 #[test]

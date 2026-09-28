@@ -139,10 +139,11 @@ impl EClient {
             return self.report_refusal(py, req_id, why);
         }
 
-        let tbt_type = match TbtType::named(tick_type) {
+        let tbt_type = match TbtType::named(&contract.sec_type, tick_type) {
             Ok(named) => named,
-            // A tick type this client does not carry is a request it will not
-            // send, which is what validation means.
+            // A request whose type carries no stream, or whose tick type this
+            // client does not carry, is a request it will not send, which is
+            // what validation means.
             Err(why) => return self.report_refusal(py, req_id, Refusal::validation(why)),
         };
 
