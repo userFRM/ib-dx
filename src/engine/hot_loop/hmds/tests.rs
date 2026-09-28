@@ -454,6 +454,54 @@ fn query_error_releases_head_timestamp_without_sentinel() {
     assert!(shared.reference.drain_historical_data().is_empty());
 }
 
+/// A QueryError naming a news, an article or a fundamentals query releases it
+/// and is told under the number and the words a gateway relays the kind's
+/// failure in: a fundamentals failure under 430 with the standing text, which
+/// the venue's own words follow directly, and the news kinds under numbers of
+/// their own. Without the branches the pending entry leaks until the
+/// connection drops, and the caller is told the drop's reason, not the
+/// venue's.
+#[test]
+fn query_error_releases_news_article_and_fundamental_queries_under_their_own_codes() {
+    let venue = "Query failed";
+    let cases = [
+        ("news", "news_5", 7, 10173, format!("Failed to request historical news:{venue}")),
+        ("article", "art_6", 8, 10172, format!("Failed to request news article:{venue}")),
+        (
+            "fundamental",
+            "COMPANY_FUNDAMENTALS9",
+            9,
+            430,
+            format!("We are sorry, but fundamentals data for the security specified is not available.{venue}"),
+        ),
+    ];
+    for (kind, query_id, req_id, code, text) in cases {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let mut conn: Option<Connection> = None;
+        match kind {
+            "news" => hmds.pending_news.push((query_id.to_string(), req_id, String::new())),
+            "article" => hmds.pending_articles.push((query_id.to_string(), req_id, String::new())),
+            _ => hmds.pending_fundamental.push((query_id.to_string(), req_id, String::new())),
+        }
+
+        let msg = make_query_error_msg(query_id, venue);
+        hmds.process_hmds_message(&msg, &mut conn, &shared, &None, &mut hb);
+
+        assert!(
+            hmds.pending_news.is_empty()
+                && hmds.pending_articles.is_empty()
+                && hmds.pending_fundamental.is_empty(),
+            "{kind}: released",
+        );
+        let errors = shared.reference.drain_historical_errors();
+        assert_eq!(errors, vec![(req_id, code, text)], "{kind}");
+        assert!(shared.reference.drain_historical_data().is_empty(), "{kind}: no end follows it");
+    }
+}
+
+
 /// A second head timestamp under a live number is refused in the wrapper a
 /// gateway wraps it in, and the first keeps answering: held as a second
 /// pending entry, the 5-second wait later fires a timeout for a request that

@@ -4251,6 +4251,39 @@ pub(crate) fn push_hmds_ticks_error(shared: &SharedState, req_id: u32, message: 
     );
 }
 
+/// The same, for a historical-news failure: a gateway relays the venue's
+/// failure of the query under a number and a prefix of its own.
+pub(crate) fn push_hmds_news_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const NEWS_ERROR_CODE: i32 = 10173;
+    push_hmds_refusal(
+        shared, req_id, NEWS_ERROR_CODE,
+        format!("Failed to request historical news:{message}"),
+        from_historical,
+    );
+}
+
+/// The same, for a news-article failure.
+pub(crate) fn push_hmds_article_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const ARTICLE_ERROR_CODE: i32 = 10172;
+    push_hmds_refusal(
+        shared, req_id, ARTICLE_ERROR_CODE,
+        format!("Failed to request news article:{message}"),
+        from_historical,
+    );
+}
+
+/// The same, for a fundamentals failure. A gateway states one under the
+/// fundamentals code with its standing text for it, and the venue's own words
+/// follow that text directly — it ends its sentence, so nothing joins them.
+pub(crate) fn push_hmds_fundamental_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const FUNDAMENTALS_ERROR_CODE: i32 = 430;
+    push_hmds_refusal(
+        shared, req_id, FUNDAMENTALS_ERROR_CODE,
+        format!("We are sorry, but fundamentals data for the security specified is not available.{message}"),
+        from_historical,
+    );
+}
+
 /// The same, under a number of its own rather than the service's.
 ///
 /// A request refused before it is sent is not the service reporting a
