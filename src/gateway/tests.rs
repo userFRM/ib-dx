@@ -5,6 +5,10 @@
 //! file belongs to.
 
 
+/// The port a logon dials is one for the process, so the tests that redirect
+/// it hold this turn between them.
+static LOGON_PORT_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Field 4 is where the second-factor type lives, and reading the wrong
 /// field is what caused both live failures this gate was written for — a
 /// sub-type sent to the wrong account shape, and a factor routed to the
@@ -1797,6 +1801,7 @@ fn a_socket_let_go_at_the_logon_is_not_closed_by_a_stop() {
 fn a_logon_is_taken_back_before_its_dial_and_inside_its_handshake() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    let _turn = LOGON_PORT_TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
     LOGON_PORT.store(listener.local_addr().unwrap().port(), Ordering::Relaxed);
     let cancel = Arc::new(AtomicBool::new(true));
@@ -1806,7 +1811,6 @@ fn a_logon_is_taken_back_before_its_dial_and_inside_its_handshake() {
         password: zeroize::Zeroizing::new("p".into()),
         host: "127.0.0.1".into(),
         paper: true,
-        accept_invalid_certs: true,
         ib_key_timeout_secs: 1,
         ib_key_token_sub_type: String::new(),
         resume: None,
@@ -1837,6 +1841,104 @@ fn a_logon_is_taken_back_before_its_dial_and_inside_its_handshake() {
     assert_eq!(err.kind(), io::ErrorKind::Interrupted, "said as the caller's doing: {err}");
     assert!(err.to_string().contains("cancelled by the client"), "{err}");
     LOGON_PORT.store(AUTH_PORT, Ordering::Relaxed);
+}
+
+/// The auth connection checks the peer's certificate the way any TLS client
+/// does: a self-signed peer is refused for its certificate, and the exchange
+/// behind it is never reached.
+#[test]
+fn the_auth_connection_refuses_a_peer_whose_certificate_does_not_check_out() {
+    use native_tls::{Identity, TlsAcceptor};
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::sync::atomic::Ordering;
+
+    const A_TEST_CERTIFICATE: &str = r#"-----BEGIN CERTIFICATE-----
+MIIDJTCCAg2gAwIBAgIUIwEVY1hzwxKuUM8zoVnTBONBt6wwDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDkyODEyNTY1NVoXDTQ2MDky
+MzEyNTY1NVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAyxDvz82zFl4L98mfZpWMh0XGCfuxOOZFtF+pfCq1RLdO
+6bKGb942900qQCe58EbwT8SlV+pgiNBxMr2ixJ55ASAWsBHyMv9Lr2IX9nWQgyNf
+44aqbsV9VXW3gbtQ9k2hGMZxFaeBJYu/3R/XINlbMLbP/TGyr9k6crkF+9rKiPKI
+UOg6PvZcq7SIbwmA54oe8NBt9GipE3w4+E+0fOwSmHBYxcBQcw6WLnY9qbAQeiSc
+iHmmXLVHn4DWSb+ZPPJMmr+PJz1wii+vZX6J17jK/iEjQLaTAjB4eNUt3n4n5udc
+7upbrK/iyleSUb9XRLb4xRtgzxQ8Ng2Hh1o/r3QgJQIDAQABo28wbTAdBgNVHQ4E
+FgQU/C/gg67jQ8LzBIh/n+BFkcEM17gwHwYDVR0jBBgwFoAU/C/gg67jQ8LzBIh/
+n+BFkcEM17gwDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARgglsb2NhbGhvc3SH
+BH8AAAEwDQYJKoZIhvcNAQELBQADggEBAFO0YoiViKiZaovipnadnl/wypkYLVMf
+ZQt8H74UTa557PblSTm/u9qX3+rIzPPVfDJOZvBcFNBsNs1AKOq9MKHsEBRaz2Qs
+uvz89mzmC//Z3zTwXcurj4ZNvjHR1HPjZpxcascaiwnHbquJ5NW8TfkiHm4n2dM6
+ZMe1KwAQOfjUwgu/PN2RQt2lf9tL+Ejz3jEHVRw9nJzdoc4kVAh/TLkycLcqSLd2
+GeUQnI69MpH9JhBB55iSR0tHaLU7bPFnM/kmfo2wvRlPP3j81Oe0AyONW90cMgEO
+7X5JR2TQp2i3rMr12FYZoT/sZkQXgipHlSgWcK3KFOTR6y3nSarb97g=
+-----END CERTIFICATE-----"#;
+    const A_TEST_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDLEO/PzbMWXgv3
+yZ9mlYyHRcYJ+7E45kW0X6l8KrVEt07psoZv3jb3TSpAJ7nwRvBPxKVX6mCI0HEy
+vaLEnnkBIBawEfIy/0uvYhf2dZCDI1/jhqpuxX1VdbeBu1D2TaEYxnEVp4Eli7/d
+H9cg2Vswts/9MbKv2TpyuQX72sqI8ohQ6Do+9lyrtIhvCYDnih7w0G30aKkTfDj4
+T7R87BKYcFjFwFBzDpYudj2psBB6JJyIeaZctUefgNZJv5k88kyav48nPXCKL69l
+fonXuMr+ISNAtpMCMHh41S3efifm51zu6lusr+LKV5JRv1dEtvjFG2DPFDw2DYeH
+Wj+vdCAlAgMBAAECgf9sRhuYMZXL11mKRXc4u4SynAF8UTetnxqLknZMPnloqlTp
+Rsdn3pRwSDS/AG+kLi70WWXP+qh+SqYQ6Axhyh26++EdAHSjvHweh68/OnBTfAkk
+yCkX5zVs29d81OPWcI31J9okMawq2Nj0joWmfj6hOtirqFQebzU69my6XW6glby2
+r5HRRzazHb0hDTxPyD2+pqceR17lS8zk4cQHg/uuv5vqolCJ/EJ3pEFQvXE5SqSl
+Ta01gqmTFQ4mYllrtgo5Td+DHfWWNWpzxd3W3M5VWG1BG1EP07JX9e0zDrk5gcIn
+pOS1gY6UE8Lp/oOXRnnptXuuC8FDbQIYWRUq+nECgYEA/D/qthJAugAqDSVxa3hf
+6eN1pDqeggrudNKZgHLmB59aKxIFTADGHVWkuf8hA+u5lVKmAkKCVI5cJD29PJeY
+aPEJuWYi+KVkcVx56z27DgERgPZ3sHMhZT3Qzyqu6MINWZRd/2zNY3iVv5TIaMlA
+fasYVJp16QVXQyAVqIbosP0CgYEAzhXSyY9036n8D+0m301fjwYOFh1RNMWph8ao
+xn3GQP1XRcYHekaVvlPYmVCLwKsMkSyMtPVG4gdOplvUaiPUzjeZhXQ6Z5H1b27g
+Y1BrLhYYhfiZtitj7Ha8mIqUUG6ABd0TTYV3GPLLgDwEMdbRUI0BXf8dCmey8dgQ
+rpJkyEkCgYEAllQ9O8669l58sSL8ahDuEER3aq1oo5WCMOsFgjB3eFl2ci6mK3pW
+l0rgBdzPPzfvfNcpijU62MuSjCKjMYYi1X+4zN3av5ZJuuli21gJrznhxZqdD/I9
+F8n0NFJ6tMpZDGbIch3UdZB6phc0LIarwXkC4gC/fmSpcZ6gabQk3r0CgYBLxKxF
+3M9seBOrS1ayXMEYVXKSYN79VvrYZ4qfx5g/RqVyircvFopxemQ1Ie7vvDOXoFhv
+I4qXCXa6JSL4jwnrc3enIC9k6r3g5VPsT6HIROlpQBhLaLKJOrJmJvUWiTnabght
+xPcfngyBrg8gv8kfI2hwRZ5IuA2LaxPfCwWwuQKBgQCJsJanJx3DfQG7qyJmgDoQ
+8ahbUd7jb689b7RTXNgeFCMIm6XO6NDttjTLR1oG20a4LEr+jq6Y57LL3QZ7uPRu
+FhiwbWUKl8FiW/5h8gktypXhKMx3KIXSLdJFCFY6/8h5ztPIkpzeTVnjWzgS4mZy
+k4DZ1J8+M4/VK3/iqz2dDA==
+-----END PRIVATE KEY-----"#;
+
+    let identity =
+        Identity::from_pkcs8(A_TEST_CERTIFICATE.as_bytes(), A_TEST_KEY.as_bytes())
+            .expect("a test identity");
+    let acceptor = TlsAcceptor::new(identity).expect("a test acceptor");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().unwrap().port();
+    let turn = LOGON_PORT_TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    LOGON_PORT.store(port, Ordering::Relaxed);
+    let server = std::thread::spawn(move || {
+        if let Ok((peer, _)) = listener.accept()
+            && let Ok(mut tls) = acceptor.accept(peer)
+        {
+            let mut buf = [0u8; 64];
+            let _ = tls.read(&mut buf);
+        }
+    });
+
+    let config = GatewayConfig {
+        settings: Default::default(),
+        username: "u".into(),
+        password: zeroize::Zeroizing::new("p".into()),
+        host: "127.0.0.1".into(),
+        paper: true,
+        ib_key_timeout_secs: 1,
+        ib_key_token_sub_type: String::new(),
+        resume: None,
+        code_provider: None,
+        cancel: None,
+    };
+    let Err(err) = super::dial_auth_server(&config, &super::TakeBack::new(None), "127.0.0.1", port)
+    else { panic!("a self-signed peer opened an auth connection") };
+    LOGON_PORT.store(AUTH_PORT, Ordering::Relaxed);
+    drop(turn);
+    assert!(
+        err.to_string().to_lowercase().contains("certificate"),
+        "refused for something other than its certificate: {err}",
+    );
+    let _ = server.join();
 }
 
 /// A dial taken back before it starts opens no connection.

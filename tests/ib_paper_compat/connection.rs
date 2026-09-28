@@ -410,7 +410,6 @@ pub(super) fn phase_auth_wrong_password(config: &GatewayConfig) {
         password: zeroize::Zeroizing::new("definitely_wrong_password_12345".to_string()),
         host: config.host.clone(),
         paper: config.paper,
-        accept_invalid_certs: false,
         ib_key_timeout_secs: ibkr_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
         ib_key_token_sub_type: ibkr_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
         code_provider: None,

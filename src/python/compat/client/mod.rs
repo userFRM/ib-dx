@@ -530,7 +530,6 @@ impl EClient {
             password: zeroize::Zeroizing::new(password),
             host,
             paper,
-            accept_invalid_certs: false,
             ib_key_timeout_secs: ib_key_timeout_secs
                 .unwrap_or(crate::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS),
             ib_key_token_sub_type: ib_key_token_sub_type

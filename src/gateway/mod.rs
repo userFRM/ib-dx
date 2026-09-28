@@ -1546,9 +1546,6 @@ pub struct GatewayConfig {
     /// Whether this is a paper session. It decides one step of the logon and
     /// nothing after it.
     pub paper: bool,
-    /// Accept invalid TLS certificates during auth. Default: `false` (secure).
-    /// Only set to `true` for local testing against self-signed gateways.
-    pub accept_invalid_certs: bool,
     /// Per-session second-factor approval timeout. Defaults to
     /// [`session::IB_KEY_DEFAULT_TIMEOUT_SECS`] (~18 min, matching the
     /// server-side deadline). Set lower to fail fast for unattended logins.
@@ -2041,7 +2038,6 @@ fn dial_auth_server(
     tcp.set_write_timeout(Some(Duration::from_secs(TIMEOUT_SSL_AUTH)))?;
 
     let connector = TlsConnector::builder()
-        .danger_accept_invalid_certs(config.accept_invalid_certs)
         .build()
         .map_err(|e| io::Error::other(e.to_string()))?;
     let mut tls = shake_hands_by(
