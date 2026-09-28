@@ -90,7 +90,7 @@ fn a_reconnect_asks_for_the_five_second_bars_again() {
     let (_peer, _) = listener.accept().unwrap();
     let mut conn = Some(crate::protocol::connection::Connection::new_raw(sock).unwrap());
     let mut hb = HeartbeatState::new();
-    hmds.send_realtime_bar_subscribe(9, 265598, "", "STK", "SMART", "TRADES", true, &mut conn, &mut hb);
+    hmds.send_realtime_bar_subscribe(9, 265598, "", "STK", "SMART", "TRADES", true, &mut conn, &mut hb, &SharedState::new());
     let first = hmds.rtbar_subs[0].0.clone();
 
     let sock2 = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
@@ -678,6 +678,63 @@ fn a_bar_query_past_a_limited_contract_window_is_refused_under_166() {
                 assert_eq!((*id, *code), (7, 166), "{row}");
                 assert!(message.starts_with(prefix), "{row}: {message}");
             }
+        }
+    }
+}
+
+/// A crypto contract's bars reach a session whose login carries the
+/// crypto-aggregation feature as aggregated prints: the query and the
+/// five-second stream continuing it both query the mapped series, and the
+/// program is advised of the mapping under 10299 — non-fatally, the query
+/// still goes out. Without the feature the mapping stands as it is: the
+/// raw prints, and silence.
+#[test]
+fn a_crypto_bar_query_under_the_aggregation_feature_is_served_aggregated_and_advised() {
+    use crate::protocol::connection::Connection;
+
+    for feature_on in [true, false] {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let mut conn = Some(Connection::new_raw(client).unwrap());
+        let mut hmds = super::HmdsState::new();
+        let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+        let shared = crate::bridge::SharedState::new();
+        if feature_on {
+            shared.reference.set_enabled_features(vec!["ZHAGGCHART".to_string()]);
+        }
+
+        assert!(hmds.send_historical_request_ex(
+            11, 596518305, "20260101 16:00:00", "1 D", "5 mins", "TRADES",
+            true, true, false, "BTC", "CRYPTO", "PAXOS", &mut conn, &mut hb, &shared,
+        ));
+        let wire = String::from_utf8_lossy(&read_frame(&mut peer)).to_string();
+        let errors = shared.reference.drain_historical_errors();
+
+        // The five-second stream that continues a query kept up to date.
+        hmds.send_realtime_bar_subscribe(
+            11, 596518305, "BTC", "CRYPTO", "PAXOS", "TRADES", true,
+            &mut conn, &mut hb, &shared,
+        );
+        let stream = String::from_utf8_lossy(&read_frame(&mut peer)).to_string();
+
+        if feature_on {
+            assert!(wire.contains("<data>AggLast</data>"), "the query queries the mapped series: {wire}");
+            assert!(stream.contains("<data>AggLast</data>"), "and so does the stream: {stream}");
+            assert_eq!(
+                errors,
+                vec![(
+                    11,
+                    crate::error_codes::SOURCE_PRICE_EXPECTED,
+                    "Expected what to show is AGGTRADES, please use that instead of TRADES.".to_string(),
+                )],
+                "the program is advised of the mapping, and the query goes on",
+            );
+        } else {
+            assert!(wire.contains("<data>Last</data>"), "{wire}");
+            assert!(stream.contains("<data>Last</data>"), "{stream}");
+            assert!(errors.is_empty(), "silence: {errors:?}");
         }
     }
 }

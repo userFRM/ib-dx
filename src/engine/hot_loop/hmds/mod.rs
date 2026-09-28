@@ -861,7 +861,7 @@ impl HmdsState {
         for r in &bars {
             self.send_realtime_bar_subscribe(
                 r.req_id, r.con_id, "", &r.sec_type, &r.exchange,
-                &r.what_to_show, r.use_rth, hmds_conn, hb,
+                &r.what_to_show, r.use_rth, hmds_conn, hb, shared,
             );
         }
         if !bars.is_empty() {
@@ -2527,6 +2527,31 @@ fn build_tbt_query(
                 }
             }
         };
+        // A gateway maps a bar query naming TRADES on a crypto contract
+        // through its series registry where the login carries the venue's
+        // crypto-aggregation feature: the query goes out under the aggregated
+        // series, and the parser tells the program, non-fatally and in the
+        // gateway's words, which name it expected — served the raw prints
+        // instead, a program reads a series the venue never sent, and the
+        // bars kept up to date continue the wrong one. An adjusted name is
+        // not TRADES and is left alone: it is the gateway's choice of raw
+        // trades, not the program's naming of a series. Where the feature is
+        // absent the mapping stands as it is.
+        let data_type = if !adjusted
+            && data_type == crate::control::historical::BarDataType::Trades
+            && crate::control::historical::serves_aggregated_trades(
+                &hist_sec_type(sec_type), shared.reference.enables("ZHAGGCHART"),
+            )
+        {
+            super::push_hmds_refusal(
+                shared, req_id, crate::error_codes::SOURCE_PRICE_EXPECTED,
+                "Expected what to show is AGGTRADES, please use that instead of TRADES.".into(),
+                false,
+            );
+            crate::control::historical::BarDataType::AggTrades
+        } else {
+            data_type
+        };
         // A gateway asks every bar query for a stock or a fund along the
         // contract's id history, whatever series it names, and folds it: the
         // series whose kind it adjusts with the actions that move the scale,
@@ -3881,7 +3906,7 @@ fn build_tbt_query(
         self.pending_ticks.push((query_id, req_id, what_to_show.to_string()));
     }
 
-    pub(crate) fn send_realtime_bar_subscribe(&mut self, req_id: u32, con_id: i64, _symbol: &str, sec_type: &str, exchange: &str, what_to_show: &str, use_rth: bool, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState) {
+    pub(crate) fn send_realtime_bar_subscribe(&mut self, req_id: u32, con_id: i64, _symbol: &str, sec_type: &str, exchange: &str, what_to_show: &str, use_rth: bool, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
         self.rtbar_resub.retain(|r| r.req_id != req_id);
         let asked = RtBarRequest {
             req_id, con_id,
@@ -3909,9 +3934,13 @@ fn build_tbt_query(
             self.rtbar_subs.push((query_id, req_id, ticker_id, min_tick, size_tick));
             return;
         }
+        let sec_type = hist_sec_type(sec_type);
         let xml = crate::control::historical::build_realtime_bar_xml(
             &query_id, con_id, what_to_show, use_rth,
-            &hist_sec_type(sec_type), &hist_exchange(exchange),
+            &sec_type, &hist_exchange(exchange),
+            crate::control::historical::serves_aggregated_trades(
+                &sec_type, shared.reference.enables("ZHAGGCHART"),
+            ),
         );
         if let Some(conn) = hmds_conn.as_mut() {
             let ts = chrono_free_timestamp();

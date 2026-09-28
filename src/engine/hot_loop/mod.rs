@@ -1275,7 +1275,7 @@ impl HotLoop {
                 });
                 self.hmds.send_realtime_bar_subscribe(
                     req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show,
-                    use_rth, &mut self.hmds_conn, &mut self.hb,
+                    use_rth, &mut self.hmds_conn, &mut self.hb, &self.shared,
                 );
             }
         } else if self.hmds.send_historical_request_ex(req_id, con_id, &end_date_time, &duration, &bar_size, &what_to_show, use_rth, false, include_expired, &symbol, &sec_type, &exchange, &mut self.hmds_conn, &mut self.hb, &self.shared) {
@@ -1982,7 +1982,7 @@ impl HotLoop {
                             false,
                         );
                     } else {
-                        self.hmds.send_realtime_bar_subscribe(req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show, use_rth, &mut self.hmds_conn, &mut self.hb);
+                        self.hmds.send_realtime_bar_subscribe(req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show, use_rth, &mut self.hmds_conn, &mut self.hb, &self.shared);
                     }
                 }
                 ControlCommand::CancelRealTimeBar { req_id } => {

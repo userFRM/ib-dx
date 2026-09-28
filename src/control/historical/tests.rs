@@ -831,9 +831,9 @@ fn parse_tick_response_rejects_other() {
 
 #[test]
 fn build_realtime_bar_xml_structure() {
-    let xml = build_realtime_bar_xml("rt_1", 265598, "TRADES", true, "CS", "BEST");
+    let xml = build_realtime_bar_xml("rt_1", 265598, "TRADES", true, "CS", "BEST", false);
     // The contract is stated, not assumed: an FX pair is not a US stock.
-    let fx = build_realtime_bar_xml("rt_2", 12087792, "MIDPOINT", false, "CASH", "IDEALPRO");
+    let fx = build_realtime_bar_xml("rt_2", 12087792, "MIDPOINT", false, "CASH", "IDEALPRO", false);
     assert!(fx.contains("<secType>CASH</secType>"), "{fx}");
     assert!(fx.contains("<exchange>IDEALPRO</exchange>"), "{fx}");
     assert!(fx.contains("<data>MidPoint</data>"), "{fx}");
@@ -1291,7 +1291,7 @@ fn every_request_asks_for_a_series_by_the_same_name() {
         let through_the_type = BarDataType::from_api_str(name)
             .unwrap_or_else(|e| panic!("{name}: {e}"))
             .as_str();
-        let xml = build_realtime_bar_xml("q", 12087792, name, false, "CASH", "IDEALPRO");
+        let xml = build_realtime_bar_xml("q", 12087792, name, false, "CASH", "IDEALPRO", false);
         assert!(
             xml.contains(&format!("<data>{through_the_type}</data>")),
             "{name} goes out as something other than {through_the_type}: {xml}",

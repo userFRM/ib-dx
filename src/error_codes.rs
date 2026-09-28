@@ -314,6 +314,11 @@ pub const LIVE_UPDATES_DISCONNECTED: i32 = 10182;
 /// historical connection is down and as it comes back.
 pub const HISTORICAL_QUERY_MESSAGE: i32 = 165;
 
+/// The code a bar query naming a series its contract is not served under is
+/// advised of the mapping under, as a gateway advises it: the query goes on
+/// under the mapped series, and the program is told which name was expected.
+pub const SOURCE_PRICE_EXPECTED: i32 = 10299;
+
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)

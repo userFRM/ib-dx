@@ -1506,10 +1506,33 @@ pub fn parse_tick_response(xml: &str, what_to_show: &str) -> Option<(String, cra
     }
 }
 
+/// Whether the trades of a contract of this type reach this session as
+/// aggregated prints: the login carries the venue's crypto-aggregation
+/// feature, and the contract is a crypto one. A gateway maps a bar query
+/// naming TRADES through its series registry under exactly this pair — the
+/// bars are served from the aggregated series, the query goes out under its
+/// name, and the program is advised of the mapping — and the five-second
+/// lookup that continues a query kept up to date queries the mapped series
+/// too. Where the feature is absent the mapping stands as it is.
+///
+/// `sec_type` is the type as the wire states it; `session_aggregates` is the
+/// feature the login carried.
+pub fn serves_aggregated_trades(sec_type: &str, session_aggregates: bool) -> bool {
+    session_aggregates
+        && matches!(
+            crate::control::contracts::SecurityType::from_fix(sec_type),
+            crate::control::contracts::SecurityType::Crypto,
+        )
+}
+
 /// Build the XML subscription for real-time 5-second bars.
+///
+/// `aggregated` says the venue serves this contract's trades to this session
+/// as aggregated prints — see [`serves_aggregated_trades`] — and the trades
+/// series is queried under the name the venue keeps them under.
 pub fn build_realtime_bar_xml(
     query_id: &str, con_id: i64, what_to_show: &str, use_rth: bool,
-    sec_type: &str, exchange: &str,
+    sec_type: &str, exchange: &str, aggregated: bool,
 ) -> String {
     // Stated from the contract rather than assumed. A stock routed BEST was
     // the only shape this ever described, so a request for anything else — an
@@ -1525,9 +1548,15 @@ pub fn build_realtime_bar_xml(
     // Refused at the request, so nothing reaches here that this does not know.
     // Falling back to trades sent a different series than the one asked for,
     // and the bars that came back read as the ones the caller wanted.
-    let data = BarDataType::from_api_str(what_to_show)
-        .map(|kind| kind.as_str())
-        .unwrap_or("Last");
+    let data = match BarDataType::from_api_str(what_to_show) {
+        // A session the venue serves aggregated crypto prints queries the
+        // series the prints are kept under, so the bars that continue a
+        // query kept up to date are of the series the query itself was
+        // mapped onto — not of the raw prints the venue no longer sends it.
+        Ok(BarDataType::Trades) if aggregated => BarDataType::AggTrades.as_str(),
+        Ok(kind) => kind.as_str(),
+        Err(_) => "Last",
+    };
 
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
