@@ -3,6 +3,7 @@
 use pyo3::prelude::*;
 
 use super::{camel_aliases_copy};
+use super::contract::DecimalField;
 
 /// Every tick this venue numbers, by the name it goes by, in the order that
 /// numbers them.
@@ -281,14 +282,14 @@ pub struct HistoricalTick {
     #[pyo3(get, set)]
     pub price: f64,
     #[pyo3(get, set)]
-    pub size: f64,
+    pub size: DecimalField,
 }
 
 #[pymethods]
 impl HistoricalTick {
     #[new]
-    #[pyo3(signature = (time=0, price=0.0, size=0.0))]
-    fn new(time: i64, price: f64, size: f64) -> Self {
+    #[pyo3(signature = (time=0, price=0.0, size=DecimalField::unset()))]
+    fn new(time: i64, price: f64, size: DecimalField) -> Self {
         Self { time, price, size }
     }
 
@@ -308,7 +309,7 @@ pub struct HistoricalTickLast {
     #[pyo3(get, set)]
     pub price: f64,
     #[pyo3(get, set)]
-    pub size: f64,
+    pub size: DecimalField,
     #[pyo3(get, set)]
     pub exchange: String,
     #[pyo3(get, set)]
@@ -319,9 +320,9 @@ pub struct HistoricalTickLast {
 impl HistoricalTickLast {
     #[new]
     #[pyo3(signature = (time=0, tick_attrib_last=TickAttribLast::default(), price=0.0,
-                        size=0.0, exchange=String::new(), special_conditions=String::new()))]
+                        size=DecimalField::unset(), exchange=String::new(), special_conditions=String::new()))]
     fn new(
-        time: i64, tick_attrib_last: TickAttribLast, price: f64, size: f64,
+        time: i64, tick_attrib_last: TickAttribLast, price: f64, size: DecimalField,
         exchange: String, special_conditions: String,
     ) -> Self {
         Self { time, tick_attrib_last, price, size, exchange, special_conditions }
@@ -355,19 +356,19 @@ pub struct HistoricalTickBidAsk {
     #[pyo3(get, set)]
     pub price_ask: f64,
     #[pyo3(get, set)]
-    pub size_bid: f64,
+    pub size_bid: DecimalField,
     #[pyo3(get, set)]
-    pub size_ask: f64,
+    pub size_ask: DecimalField,
 }
 
 #[pymethods]
 impl HistoricalTickBidAsk {
     #[new]
     #[pyo3(signature = (time=0, tick_attrib_bid_ask=TickAttribBidAsk::default(),
-                        price_bid=0.0, price_ask=0.0, size_bid=0.0, size_ask=0.0))]
+                        price_bid=0.0, price_ask=0.0, size_bid=DecimalField::unset(), size_ask=DecimalField::unset()))]
     fn new(
         time: i64, tick_attrib_bid_ask: TickAttribBidAsk,
-        price_bid: f64, price_ask: f64, size_bid: f64, size_ask: f64,
+        price_bid: f64, price_ask: f64, size_bid: DecimalField, size_ask: DecimalField,
     ) -> Self {
         Self { time, tick_attrib_bid_ask, price_bid, price_ask, size_bid, size_ask }
     }
@@ -385,13 +386,13 @@ impl HistoricalTickBidAsk {
     #[setter(priceAsk)]
     fn set_price_ask(&mut self, v: f64) { self.price_ask = v; }
     #[getter(sizeBid)]
-    fn get_size_bid(&self) -> f64 { self.size_bid }
+    fn get_size_bid(&self) -> DecimalField { self.size_bid.clone() }
     #[setter(sizeBid)]
-    fn set_size_bid(&mut self, v: f64) { self.size_bid = v; }
+    fn set_size_bid(&mut self, v: DecimalField) { self.size_bid = v; }
     #[getter(sizeAsk)]
-    fn get_size_ask(&self) -> f64 { self.size_ask }
+    fn get_size_ask(&self) -> DecimalField { self.size_ask.clone() }
     #[setter(sizeAsk)]
-    fn set_size_ask(&mut self, v: f64) { self.size_ask = v; }
+    fn set_size_ask(&mut self, v: DecimalField) { self.size_ask = v; }
 
     fn __repr__(&self) -> String {
         format!("HistoricalTickBidAsk(time={}, bid={}, ask={})",

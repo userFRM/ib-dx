@@ -2562,7 +2562,7 @@ One size of a quote, and which size it is: 0 bid, 3 ask, 5 last, 8 the day's vol
 |-----------|------|-------------|
 | `req_id` | `int` | Request identifier. Used to match responses to requests. |
 | `tick_type` | `int` | Tick type ID or tick-by-tick type string. |
-| `size` | `float` | Tick size. |
+| `size` | `Py<PyAny>` | Tick size. |
 
 ---
 
@@ -2619,8 +2619,8 @@ Where an order stands now: stated as the venue reports on the order, again on ea
 |-----------|------|-------------|
 | `order_id` | `int` | Order identifier. Must be unique per session. |
 | `status` | `str` | Order status string (`"Submitted"`, `"Filled"`, `"Cancelled"`, etc.). |
-| `filled` | `float` | Cumulative filled quantity. |
-| `remaining` | `float` | Remaining quantity. |
+| `filled` | `Py<PyAny>` | Cumulative filled quantity. |
+| `remaining` | `Py<PyAny>` | Remaining quantity. |
 | `avg_fill_price` | `float` | Average fill price. |
 | `perm_id` | `int` | The order's permanent id: the number it goes to the venue under. |
 | `parent_id` | `int` | Parent order ID (0 if no parent). |
@@ -2702,7 +2702,7 @@ One position, as the venue values it now.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `contract` | `Py<PyAny>` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `position` | `float` | Book position (row index) or position size. |
+| `position` | `Py<PyAny>` | Book position (row index) or position size. |
 | `market_price` | `float` | Current market price. |
 | `market_value` | `float` | Current market value of position. |
 | `average_cost` | `float` | Average cost basis. |
@@ -2764,7 +2764,7 @@ One position held, on any account this login may act for.
 |-----------|------|-------------|
 | `account` | `str` | Account ID. |
 | `contract` | `Py<PyAny>` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `pos` | `float` | Position size (decimal shares). |
+| `pos` | `Py<PyAny>` | Position size (decimal shares). |
 | `avg_cost` | `float` | Average cost per share. |
 
 ---
@@ -2890,7 +2890,7 @@ One trade, as it happens. `tick_attrib_last` says whether it was past a limit an
 | `tick_type` | `int` | Tick type ID or tick-by-tick type string. |
 | `time` | `int` | Tick timestamp (Unix seconds). |
 | `price` | `float` | Tick price. |
-| `size` | `float` | Tick size. |
+| `size` | `Py<PyAny>` | Tick size. |
 | `tick_attrib_last` | `Py<PyAny>` |  |
 | `exchange` | `str` | Exchange name. |
 | `special_conditions` | `str` | Special trade conditions. |
@@ -2907,8 +2907,8 @@ One change to the top of the book, as it happens.
 | `time` | `int` | Tick timestamp (Unix seconds). |
 | `bid_price` | `float` | Bid price. |
 | `ask_price` | `float` | Ask price. |
-| `bid_size` | `float` | Bid size. |
-| `ask_size` | `float` | Ask size. |
+| `bid_size` | `Py<PyAny>` | Bid size. |
+| `ask_size` | `Py<PyAny>` | Ask size. |
 | `tick_attrib_bid_ask` | `Py<PyAny>` |  |
 
 ---
@@ -3034,7 +3034,7 @@ One level of a book that names no venue. `operation` is 0 to insert, 1 to update
 | `operation` | `int` | Book operation: 0=insert, 1=update, 2=delete. |
 | `side` | `int` | Book side: 0=ask, 1=bid. Or order side `"BOT"`/`"SLD"`. |
 | `price` | `float` | Tick price. |
-| `size` | `float` | Tick size. |
+| `size` | `Py<PyAny>` | Tick size. |
 
 ---
 
@@ -3050,7 +3050,7 @@ One level of a book that names the venue it stands on. Every level from this cli
 | `operation` | `int` | Book operation: 0=insert, 1=update, 2=delete. |
 | `side` | `int` | Book side: 0=ask, 1=bid. Or order side `"BOT"`/`"SLD"`. |
 | `price` | `float` | Tick price. |
-| `size` | `float` | Tick size. |
+| `size` | `Py<PyAny>` | Tick size. |
 | `is_smart_depth` | `bool` | If `true`, aggregate depth from multiple exchanges via SMART. |
 
 ---
@@ -3077,8 +3077,8 @@ One five-second bar of a live stream.
 | `high` | `float` | High price. |
 | `low` | `float` | Low price. |
 | `close` | `float` | Close price. |
-| `volume` | `float` | Volume. |
-| `wap` | `float` | Volume-weighted average price. |
+| `volume` | `Py<PyAny>` | Volume. |
+| `wap` | `Py<PyAny>` | Volume-weighted average price. |
 | `count` | `int` | Trade count. |
 
 ---
@@ -3221,7 +3221,7 @@ One position, for a request naming an account or a model.
 | `account` | `str` | Account ID. |
 | `model_code` | `str` | Model portfolio code (empty for default). |
 | `contract` | `Py<PyAny>` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `pos` | `float` | Position size (decimal shares). |
+| `pos` | `Py<PyAny>` | Position size (decimal shares). |
 | `avg_cost` | `float` | Average cost per share. |
 
 ---

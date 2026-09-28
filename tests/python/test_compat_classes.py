@@ -2,6 +2,7 @@
 
 import pytest
 from ibkr_dx import (
+    UNSET_DECIMAL,
     Contract, Order, BarData, ContractDetails, TagValue, OrderState,
     EWrapper, EClient,
     TickAttrib, TickAttribLast, TickAttribBidAsk, TickTypeEnum,
@@ -121,7 +122,10 @@ def test_bardata_defaults():
     b = BarData()
     assert b.date == ""
     assert b.open == 0.0
-    assert b.volume == 0
+    # The reference builds a bar with the unset Decimal in its volume and
+    # its wap; a bar nobody stated is not a bar that traded nothing.
+    assert b.volume == UNSET_DECIMAL
+    assert b.wap == UNSET_DECIMAL
 
 
 def test_bardata_kwargs():

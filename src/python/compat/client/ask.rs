@@ -405,7 +405,9 @@ impl EClient {
             .into_iter()
             .map(|b| {
                 BarData::new(
-                    b.time, b.open, b.high, b.low, b.close, b.volume, b.wap,
+                    b.time, b.open, b.high, b.low, b.close,
+                    super::super::contract::DecimalField::from_whole(b.volume),
+                    super::super::contract::DecimalField::from_float(b.wap),
                     b.count, zone.clone(), b.end,
                 )
             })

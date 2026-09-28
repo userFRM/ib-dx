@@ -17,7 +17,7 @@ use crate::types::model::{
     CommissionAndFeesReport as ApiCommissionAndFeesReport,
 };
 use super::{EClient, raised_now};
-use super::super::contract::{Contract, ContractDescription, ContractDetails, BarData, CommissionAndFeesReport, DepthMktDataDescriptionPy, Execution, Order, OrderState};
+use super::super::contract::{Contract, ContractDescription, ContractDetails, BarData, CommissionAndFeesReport, DecimalField, DepthMktDataDescriptionPy, Execution, Order, OrderState};
 use super::super::tick_types::*;
 use super::super::super::types::PRICE_SCALE_F;
 
@@ -499,7 +499,7 @@ impl EClient {
                 // As the caller numbered it, from the record itself.
                 let req_id = trade.req_id;
                 let price = trade.price as f64 / PRICE_SCALE_F;
-                let size = trade.size as f64 / crate::types::QTY_SCALE as f64;
+                let size = DecimalField::from_qty(trade.size);
                 // What the venue said about this print, not what a default says.
                 let attrib = super::super::tick_types::TickAttribLast {
                     past_limit: trade.past_limit,
@@ -520,8 +520,8 @@ impl EClient {
                 let attrib_obj = Py::new(py, attrib)?.into_any();
                 call_wrapper!(self, py, shared, "tick_by_tick_bid_ask", (quote.req_id, quote.timestamp as i64,
                      quote.bid as f64 / PRICE_SCALE_F, quote.ask as f64 / PRICE_SCALE_F,
-                     quote.bid_size as f64 / crate::types::QTY_SCALE as f64,
-                     quote.ask_size as f64 / crate::types::QTY_SCALE as f64, &attrib_obj));
+                     DecimalField::from_qty(quote.bid_size),
+                     DecimalField::from_qty(quote.ask_size), &attrib_obj));
             }
             // The point between the two, each time it moved.
             Record::TbtMid(mid) => {
@@ -537,10 +537,10 @@ impl EClient {
             }
             Record::DepthUpdate(du) => {
                 if du.market_maker.is_empty() {
-                    call_wrapper!(self, py, shared, "update_mkt_depth", (du.req_id as i64, du.position, du.operation, du.side, du.price, du.size));
+                    call_wrapper!(self, py, shared, "update_mkt_depth", (du.req_id as i64, du.position, du.operation, du.side, du.price, DecimalField::from_float(du.size)));
                 } else {
                     call_wrapper!(self, py, shared, "update_mkt_depth_l2", (du.req_id as i64, du.position, du.market_maker.as_str(),
-                         du.operation, du.side, du.price, du.size, du.is_smart_depth));
+                         du.operation, du.side, du.price, DecimalField::from_float(du.size), du.is_smart_depth));
                 }
             }
             // Once per caller watching the contract that held the slot.
@@ -656,7 +656,7 @@ impl EClient {
                     req_id as i64,
                     bar.timestamp as i64,
                     bar.open, bar.high, bar.low, bar.close,
-                    bar.volume, bar.wap, bar.count,
+                    DecimalField::from_float(bar.volume), DecimalField::from_float(bar.wap), bar.count,
                 ));
             }
             // The bar still forming of a request kept up to date, dated as the
@@ -667,7 +667,7 @@ impl EClient {
                         req_id as i64, i64::from(bar.timestamp), session,
                     ),
                     bar.open, bar.high, bar.low, bar.close,
-                    bar.volume as i64, bar.wap, bar.count,
+                    DecimalField::from_float(bar.volume), DecimalField::from_float(bar.wap), bar.count,
                     String::new(), // streaming bars carry no timezone
                     // A forming bar has not ended, and the stream states no
                     // end for one.
@@ -691,7 +691,7 @@ impl EClient {
                     let bar_obj = BarData::new(
                         self.core.historical_bar_time_for(req_id as i64, bar, &response.timezone),
                         bar.open, bar.high, bar.low, bar.close,
-                        bar.volume, bar.wap, bar.count,
+                        DecimalField::from_whole(bar.volume), DecimalField::from_float(bar.wap), bar.count,
                         response.timezone.clone(),
                         bar.end.clone(),
                     );
@@ -834,7 +834,7 @@ impl EClient {
                 for e in entries.iter() {
                     buckets.push(Py::new(py, crate::python::compat::class_reports::HistogramDataPy {
                         price: e.price,
-                        size: e.count as f64,
+                        size: DecimalField::from_whole(e.count),
                     })?);
                 }
                 let py_list = pyo3::types::PyList::new(py, buckets)?;
@@ -895,7 +895,7 @@ impl EClient {
                     price: t.price,
                     // A midpoint has no size, and the reference client states
                     // zero for it.
-                    size: 0.0,
+                    size: DecimalField::from_whole(0),
                 })).collect();
                 let list = pyo3::types::PyList::new(py, py_ticks)?;
                 call_wrapper!(self, py, shared, "historical_ticks", (req_id as i64, list, done));
@@ -908,7 +908,7 @@ impl EClient {
                         unreported: t.unreported,
                     },
                     price: t.price,
-                    size: t.size,
+                    size: DecimalField::from_float(t.size),
                     exchange: t.exchange.clone(),
                     special_conditions: t.special_conditions.clone(),
                 })).collect();
@@ -924,8 +924,8 @@ impl EClient {
                     },
                     price_bid: t.bid_price,
                     price_ask: t.ask_price,
-                    size_bid: t.bid_size,
-                    size_ask: t.ask_size,
+                    size_bid: DecimalField::from_float(t.bid_size),
+                    size_ask: DecimalField::from_float(t.ask_size),
                 })).collect();
                 let list = pyo3::types::PyList::new(py, py_ticks)?;
                 call_wrapper!(self, py, shared, "historical_ticks_bid_ask", (req_id as i64, list, done));
@@ -1047,7 +1047,7 @@ impl EClient {
         if own {
             // `filled` and `avgFillPrice` describe the order so far;
             // `lastFillPrice` describes this print.
-            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(fill.order_id), status, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
+            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(fill.order_id), status, DecimalField::from_qty(fill.cum_qty), DecimalField::from_qty(fill.remaining),
                  fill.avg_price as f64 / PRICE_SCALE_F, perm_id, parent_id, price,
                  i64::from(client), "", 0.0f64));
             call_wrapper!(self, py, shared, "exec_details", (req_id, &c_py, &exec_py));
@@ -1101,8 +1101,8 @@ impl EClient {
                 (self.core.api_order_id(update.order_id), &contract_py, &order_py, &state_py));
         }
         if own {
-            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, update.filled_qty,
-                 update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
+            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, DecimalField::from_float(update.filled_qty),
+                 DecimalField::from_float(update.remaining_qty), avg, update.perm_id, parent_id, last_fill,
                  i64::from(client), "", 0.0f64));
         }
         self.core.update_order_status(shared, update.order_id, update.status, update.filled_qty, update.remaining_qty, update.instrument);
@@ -1162,7 +1162,7 @@ impl EClient {
                 for pi in &shared.portfolio.position_infos() {
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
-                    owed!(out, py, "position", (account.as_str(), &c_py, pi.position, avg_cost));
+                    owed!(out, py, "position", (account.as_str(), &c_py, DecimalField::from_float(pi.position), avg_cost));
                 }
                 owed!(out, py, "position_end", ());
                 let watching = self.multi_position_watchers();
@@ -1172,7 +1172,7 @@ impl EClient {
                     for req_id in &watching {
                         if self.core.positions_account(shared, *req_id) != account { continue; }
                         owed!(out, py, "position_multi",
-                            (*req_id, account.as_str(), self.core.positions_model(*req_id), &c_py, pi.position, avg_cost));
+                            (*req_id, account.as_str(), self.core.positions_model(*req_id), &c_py, DecimalField::from_float(pi.position), avg_cost));
                     }
                 }
             }
@@ -1196,11 +1196,11 @@ impl EClient {
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     if on == self.account() && self.positions_requested.load(Ordering::Acquire) {
-                        owed!(out, py, "position", (on.as_str(), &c_py, pi.position, cost));
+                        owed!(out, py, "position", (on.as_str(), &c_py, DecimalField::from_float(pi.position), cost));
                     }
                     for old in self.multi_position_watchers() {
                         if old != req_id && self.core.positions_account(shared, old) == on {
-                            owed!(out, py, "position_multi", (old, on.as_str(), self.core.positions_model(old), &c_py, pi.position, cost));
+                            owed!(out, py, "position_multi", (old, on.as_str(), self.core.positions_model(old), &c_py, DecimalField::from_float(pi.position), cost));
                         }
                     }
                 }
@@ -1209,7 +1209,7 @@ impl EClient {
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     owed!(out, py, "position_multi",
-                        (req_id, on.as_str(), model_code.as_str(), &c_py, pi.position, avg_cost));
+                        (req_id, on.as_str(), model_code.as_str(), &c_py, DecimalField::from_float(pi.position), avg_cost));
                 }
                 owed!(out, py, "position_multi_end", (req_id,));
             }
@@ -1254,7 +1254,7 @@ impl EClient {
                     let state_py = Py::new(py, state)?.into_any();
                     owed!(out, py, "open_order", (self.core.api_order_id(*order_id), &c_py, &o_py, &state_py));
                     owed!(out, py, "order_status",
-                        (self.core.api_order_id(*order_id), tracked.status.as_str(), tracked.filled, tracked.remaining,
+                        (self.core.api_order_id(*order_id), tracked.status.as_str(), DecimalField::from_float(tracked.filled), DecimalField::from_float(tracked.remaining),
                          // What the venue said the fills went at.
                          tracked.avg_fill_price, tracked.order.perm_id, tracked.order.parent_id,
                          tracked.last_fill_price,
@@ -1352,7 +1352,7 @@ impl EClient {
             };
             let c_py = pyo3::Py::new(py, c).unwrap().into_any();
             call_wrapper!(self, py, shared, "update_portfolio",
-                (&c_py, entry.position, entry.market_price, entry.market_value,
+                (&c_py, DecimalField::from_float(entry.position), entry.market_price, entry.market_value,
                  entry.avg_cost, entry.unrealized_pnl, entry.realized_pnl, account_name.as_str()));
         }
         if batch.finished {
@@ -1383,12 +1383,12 @@ impl EClient {
                 let avg_cost = pi.avg_cost as f64 / crate::types::PRICE_SCALE as f64;
                 if on_position {
                     call_wrapper!(self, py, shared, "position",
-                        (account.as_str(), &c_py, pi.position, avg_cost));
+                        (account.as_str(), &c_py, DecimalField::from_float(pi.position), avg_cost));
                 }
                 for req_id in &per_request {
                     if self.core.positions_account(shared, *req_id) != account { continue; }
                     call_wrapper!(self, py, shared, "position_multi",
-                        (*req_id, account.as_str(), self.core.positions_model(*req_id), &c_py, pi.position, avg_cost));
+                        (*req_id, account.as_str(), self.core.positions_model(*req_id), &c_py, DecimalField::from_float(pi.position), avg_cost));
                 }
             }
         }
@@ -1398,7 +1398,7 @@ impl EClient {
             for req_id in self.multi_position_watchers() {
                 if self.core.positions_account(shared, req_id) == account {
                     call_wrapper!(self, py, shared, "position_multi",
-                        (req_id, account.as_str(), self.core.positions_model(req_id), &c_py, pi.position, pi.avg_cost as f64 / PRICE_SCALE_F));
+                        (req_id, account.as_str(), self.core.positions_model(req_id), &c_py, DecimalField::from_float(pi.position), pi.avg_cost as f64 / PRICE_SCALE_F));
                 }
             }
         }
@@ -1530,12 +1530,12 @@ impl EClient {
                         };
                         call_wrapper!(self, py, shared, "tick_price", (id, tick.tick_type, tick.value, attrib_obj));
                     } else {
-                        call_wrapper!(self, py, shared, "tick_size", (id, tick.tick_type, tick.value));
+                        call_wrapper!(self, py, shared, "tick_size", (id, tick.tick_type, DecimalField::from_float(tick.value)));
                     }
                     if let (Some(true), Some((size_tick, size))) =
                         (snapshot, result.size_beside(tick.tick_type))
                     {
-                        call_wrapper!(self, py, shared, "tick_size", (id, size_tick, size));
+                        call_wrapper!(self, py, shared, "tick_size", (id, size_tick, DecimalField::from_float(size)));
                     }
                 }
             }
@@ -1577,7 +1577,7 @@ impl EClient {
                     };
                     call_wrapper!(self, py, shared, "tick_price", (tick.req_id, tick.tick_type, tick.value, attrib_obj));
                 } else {
-                    call_wrapper!(self, py, shared, "tick_size", (tick.req_id, tick.tick_type, tick.value));
+                    call_wrapper!(self, py, shared, "tick_size", (tick.req_id, tick.tick_type, DecimalField::from_float(tick.value)));
                 }
             }
             for st in &result.snapshot_strings {

@@ -2925,7 +2925,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
             client.borrow(py).dispatch_once(py, &shared).unwrap();
             let contract = Py::new(py, Contract { con_id: 756733, ..Default::default() }).unwrap();
             client.call_method1(py, "req_real_time_bars", (1i64, &contract)).unwrap();
-            shared.market.push_real_time_bar(1, RealTimeBar { timestamp: 1_700_000_000, ..Default::default() });
+            shared.market.push_real_time_bar(1, RealTimeBar { timestamp: 1_700_000_000, volume: 5.0, wap: 100.25, ..Default::default() });
             client.borrow(py).dispatch_once(py, &shared).unwrap();
 
             let g = pyo3::types::PyDict::new(py);
@@ -2934,6 +2934,15 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .eval(c"[c[0] for c in w.calls if c[0] not in ('historicalDataEnd', 'historical_data_end')]", Some(&g), None)
                 .unwrap().extract().unwrap();
             assert_eq!(names, ["realtimeBar"], "the stream's bar went somewhere else");
+            // The reference states a bar's volume and its wap as Decimal.
+            let stated: bool = py
+                .eval(
+                    c"all(type(v) is __import__('decimal').Decimal for v in [c for c in w.calls if c[0] == 'realtimeBar'][-1][7:9])",
+                    Some(&g),
+                    None,
+                )
+                .unwrap().extract().unwrap();
+            assert!(stated, "the bar's volume and wap crossed as something else");
         });
     }
 

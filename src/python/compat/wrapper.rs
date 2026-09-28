@@ -134,7 +134,7 @@ impl EWrapper {
 
     /// One size of a quote, and which size it is: 0 bid, 3 ask, 5 last, 8
     /// the day's volume.
-    fn tick_size(&self, _req_id: i64, _tick_type: i32, _size: f64) {}
+    fn tick_size(&self, _req_id: i64, _tick_type: i32, _size: Py<PyAny>) {}
 
     /// A quote's value that is not a number — a timestamp, an exchange
     /// map, a set of ids.
@@ -161,7 +161,7 @@ impl EWrapper {
     /// venue's next report on it states it so. `filled` and `remaining` are
     /// shares, `avg_fill_price` the average of what has filled so far.
     fn order_status(
-        &self, _order_id: i64, _status: &str, _filled: f64, _remaining: f64,
+        &self, _order_id: i64, _status: &str, _filled: Py<PyAny>, _remaining: Py<PyAny>,
         _avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
         _last_fill_price: f64, _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
     ) {}
@@ -194,7 +194,7 @@ impl EWrapper {
 
     /// One position, as the venue values it now.
     fn update_portfolio(
-        &self, _contract: Py<PyAny>, _position: f64, _market_price: f64,
+        &self, _contract: Py<PyAny>, _position: Py<PyAny>, _market_price: f64,
         _market_value: f64, _average_cost: f64, _unrealized_pnl: f64,
         _realized_pnl: f64, _account_name: &str,
     ) {}
@@ -214,7 +214,7 @@ impl EWrapper {
     fn account_summary_end(&self, _req_id: i64) {}
 
     /// One position held, on any account this login may act for.
-    fn position(&self, _account: &str, _contract: Py<PyAny>, _pos: f64, _avg_cost: f64) {}
+    fn position(&self, _account: &str, _contract: Py<PyAny>, _pos: Py<PyAny>, _avg_cost: f64) {}
 
     /// Every position has been stated.
     fn position_end(&self) {}
@@ -264,13 +264,13 @@ impl EWrapper {
     /// past a limit and whether it goes unreported to the tape.
     fn tick_by_tick_all_last(
         &self, _req_id: i64, _tick_type: i32, _time: i64, _price: f64,
-        _size: f64, _tick_attrib_last: Py<PyAny>, _exchange: &str, _special_conditions: &str,
+        _size: Py<PyAny>, _tick_attrib_last: Py<PyAny>, _exchange: &str, _special_conditions: &str,
     ) {}
 
     /// One change to the top of the book, as it happens.
     fn tick_by_tick_bid_ask(
         &self, _req_id: i64, _time: i64, _bid_price: f64, _ask_price: f64,
-        _bid_size: f64, _ask_size: f64, _tick_attrib_bid_ask: Py<PyAny>,
+        _bid_size: Py<PyAny>, _ask_size: Py<PyAny>, _tick_attrib_bid_ask: Py<PyAny>,
     ) {}
 
     /// One change to the midpoint, as it happens.
@@ -322,14 +322,14 @@ impl EWrapper {
     /// insert, 1 to update, 2 to delete; `side` is 0 ask, 1 bid.
     fn update_mkt_depth(
         &self, _req_id: i64, _position: i32, _operation: i32,
-        _side: i32, _price: f64, _size: f64,
+        _side: i32, _price: f64, _size: Py<PyAny>,
     ) {}
 
     /// One level of a book that names the venue it stands on. Every
     /// level from this client names one.
     fn update_mkt_depth_l2(
         &self, _req_id: i64, _position: i32, _market_maker: &str,
-        _operation: i32, _side: i32, _price: f64, _size: f64, _is_smart_depth: bool,
+        _operation: i32, _side: i32, _price: f64, _size: Py<PyAny>, _is_smart_depth: bool,
     ) {}
 
     // ── Market Depth (additional) ──
@@ -343,7 +343,7 @@ impl EWrapper {
     /// One five-second bar of a live stream.
     fn real_time_bar(
         &self, _req_id: i64, _date: i64, _open: f64, _high: f64,
-        _low: f64, _close: f64, _volume: f64, _wap: f64, _count: i32,
+        _low: f64, _close: f64, _volume: Py<PyAny>, _wap: Py<PyAny>, _count: i32,
     ) {}
 
     // ── Historical Ticks ──
@@ -408,7 +408,7 @@ impl EWrapper {
     // ── Multi-Account / Multi-Model ──
 
     /// One position, for a request naming an account or a model.
-    fn position_multi(&self, _req_id: i64, _account: &str, _model_code: &str, _contract: Py<PyAny>, _pos: f64, _avg_cost: f64) {}
+    fn position_multi(&self, _req_id: i64, _account: &str, _model_code: &str, _contract: Py<PyAny>, _pos: Py<PyAny>, _avg_cost: f64) {}
 
     /// Every position answering this request has been stated.
     fn position_multi_end(&self, _req_id: i64) {}

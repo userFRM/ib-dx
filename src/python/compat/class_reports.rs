@@ -1,7 +1,7 @@
 //! What the venue reports back: fills, their cost, bars, and news.
 
 // The other families, and the two helpers every class here uses.
-use super::contract::{by_reference_name, reference_dir, enum_code, enum_member, set_by_reference_name};
+use super::contract::{by_reference_name, reference_dir, enum_code, enum_member, set_by_reference_name, DecimalField};
 use pyo3::prelude::*;
 
 use super::camel_aliases_copy;
@@ -21,9 +21,9 @@ pub struct BarData {
     #[pyo3(get, set)]
     pub close: f64,
     #[pyo3(get, set)]
-    pub volume: i64,
+    pub volume: DecimalField,
     #[pyo3(get, set)]
-    pub wap: f64,
+    pub wap: DecimalField,
     #[pyo3(get, set)]
     pub bar_count: i32,
     /// Which timezone `date` is stated in, as the reply states it. Without
@@ -71,8 +71,8 @@ impl BarData {
     }
 
     #[new]
-    #[pyo3(signature = (date="".to_string(), open=0.0, high=0.0, low=0.0, close=0.0, volume=0, wap=0.0, bar_count=0, timezone="".to_string(), end="".to_string()))]
-    pub fn new(date: String, open: f64, high: f64, low: f64, close: f64, volume: i64, wap: f64, bar_count: i32, timezone: String, end: String) -> Self {
+    #[pyo3(signature = (date="".to_string(), open=0.0, high=0.0, low=0.0, close=0.0, volume=DecimalField::unset(), wap=DecimalField::unset(), bar_count=0, timezone="".to_string(), end="".to_string()))]
+    pub fn new(date: String, open: f64, high: f64, low: f64, close: f64, volume: DecimalField, wap: DecimalField, bar_count: i32, timezone: String, end: String) -> Self {
         Self { date, open, high, low, close, volume, wap, bar_count, timezone, end }
     }
 
@@ -101,7 +101,7 @@ pub struct Execution {
     #[pyo3(get, set)]
     pub side: String,
     #[pyo3(get, set)]
-    pub shares: f64,
+    pub shares: DecimalField,
     #[pyo3(get, set)]
     pub price: f64,
     #[pyo3(get, set)]
@@ -113,7 +113,7 @@ pub struct Execution {
     #[pyo3(get, set)]
     pub liquidation: i32,
     #[pyo3(get, set)]
-    pub cum_qty: f64,
+    pub cum_qty: DecimalField,
     #[pyo3(get, set)]
     pub avg_price: f64,
     #[pyo3(get, set)]
@@ -152,13 +152,13 @@ impl Execution {
             acct_number: e.acct_number.clone(),
             exchange: e.exchange.clone(),
             side: e.side.clone(),
-            shares: e.shares,
+            shares: DecimalField::from_float(e.shares),
             price: e.price,
             perm_id: e.perm_id,
             client_id: e.client_id,
             order_id: e.order_id,
             liquidation: e.liquidation,
-            cum_qty: e.cum_qty,
+            cum_qty: DecimalField::from_float(e.cum_qty),
             avg_price: e.avg_price,
             order_ref: e.order_ref.clone(),
             ev_rule: e.ev_rule.clone(),
@@ -244,7 +244,7 @@ pub struct HistogramDataPy {
     #[pyo3(get, set)]
     pub price: f64,
     #[pyo3(get, set)]
-    pub size: f64,
+    pub size: DecimalField,
 }
 
 #[pymethods]

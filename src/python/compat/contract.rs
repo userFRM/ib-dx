@@ -282,6 +282,100 @@ pub(super) fn set_by_reference_name(
     Ok(())
 }
 
+/// The digits an unset quantity reads as: `Decimal(2**127 - 1)`, the
+/// reference client's `UNSET_DECIMAL`.
+const UNSET_DECIMAL_DIGITS: &str = "170141183460469231731687303715884105727";
+
+/// A quantity the reference client states as a `Decimal`.
+///
+/// Held as its digits, so a value already fixed-point here crosses the
+/// boundary exactly instead of as the binary float nearest it, and an empty
+/// hold — nothing stated — reads as `UNSET_DECIMAL`, the default every one of
+/// these fields carries in the reference's own record classes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DecimalField(pub String);
+
+impl DecimalField {
+    /// Nothing stated yet; reads as `UNSET_DECIMAL`.
+    pub fn unset() -> Self {
+        Self::default()
+    }
+
+    /// The digits of a quantity held fixed-point, as every size here is.
+    pub fn from_qty(qty: i64) -> Self {
+        const SCALE: i64 = crate::types::QTY_SCALE;
+        let sign = if qty < 0 { "-" } else { "" };
+        let (whole, frac) = (qty.abs() / SCALE, qty.abs() % SCALE);
+        if frac == 0 {
+            Self(format!("{sign}{whole}"))
+        } else {
+            Self(format!("{sign}{whole}.{:08}", frac).trim_end_matches('0').to_string())
+        }
+    }
+
+    /// The digits of a whole count.
+    pub fn from_whole(value: i64) -> Self {
+        Self(value.to_string())
+    }
+
+    /// The digits of a value held as an f64: Rust writes one back through the
+    /// shortest string that reads back as it, and `Decimal` takes that string
+    /// (its infinities and its NaN included).
+    pub fn from_float(value: f64) -> Self {
+        Self(format!("{value}"))
+    }
+
+    fn digits(&self) -> &str {
+        if self.0.is_empty() { UNSET_DECIMAL_DIGITS } else { &self.0 }
+    }
+}
+
+impl std::fmt::Display for DecimalField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.digits())
+    }
+}
+
+impl<'py> IntoPyObject<'py> for DecimalField {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> PyResult<Self::Output> {
+        py.import("decimal")?.getattr("Decimal")?.call1((self.digits(),))
+    }
+}
+
+impl<'py> IntoPyObject<'py> for &DecimalField {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> PyResult<Self::Output> {
+        py.import("decimal")?.getattr("Decimal")?.call1((self.digits(),))
+    }
+}
+
+impl FromPyObject<'_, '_> for DecimalField {
+    type Error = PyErr;
+
+    /// A quantity assigned, kept as its digits. A float goes through
+    /// `Decimal(str(v))`, the coercion the reference itself applies before
+    /// writing one of these; anything else — a `Decimal`, an int, a string of
+    /// digits — goes to `Decimal(...)` as the reference's decoder does, and
+    /// what `Decimal` refuses is refused.
+    fn extract(obj: Borrowed<'_, '_, PyAny>) -> PyResult<Self> {
+        let py = obj.py();
+        let value = if obj.is_instance_of::<pyo3::types::PyFloat>() {
+            obj.str()?.into_any()
+        } else {
+            obj.to_owned()
+        };
+        let made = py.import("decimal")?.getattr("Decimal")?.call1((value,))?;
+        Ok(Self(made.str()?.extract()?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
