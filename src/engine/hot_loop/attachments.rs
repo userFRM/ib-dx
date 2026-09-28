@@ -293,6 +293,70 @@ mod tests {
         assert!(shared.drain_refused().is_empty());
     }
 
+    /// A family withdrawn before it was sent leaves nothing standing: the
+    /// links that tied its generated members to the placement go with the
+    /// family, and the withdrawal reads exactly as before — each member
+    /// cancelled-for-held, and the discard said under 202.
+    #[test]
+    fn a_family_withdrawn_before_it_was_sent_leaves_no_generated_link_behind() {
+        let (mut engine, shared, send, mut peer) = engine();
+        shared.admit(&send, placement(false, false)).unwrap();
+        engine.poll_once();
+        answer(&shared, "OPR.3");
+        engine.poll_once();
+        engine.poll_once();
+        assert_eq!(engine.built_order_commands_held(), 1);
+        assert_eq!(engine.intake.generated_held(), 2, "the two generated children");
+        shared
+            .admit(&send, ControlCommand::CancelOrder { order_id: 10, stated: Default::default() })
+            .unwrap();
+        engine.poll_once();
+        assert_eq!(
+            engine.intake.generated_held(), 0,
+            "the family is gone and its links went with it",
+        );
+        assert!(submissions(&wire(&mut peer)).is_empty());
+        let updates = shared.orders.drain_order_updates();
+        assert_eq!(
+            updates.iter().map(|update| update.order_id).collect::<Vec<_>>(), [10, 12, 11],
+            "the parent, then the children as they were kept",
+        );
+        assert!(updates.iter().all(|update| update.status == crate::types::OrderStatus::ApiCancelled));
+        assert_eq!(
+            shared.orders.drain_order_notices(),
+            vec![
+                (10, 202, "Order Canceled - reason:Order was discarded".into()),
+                (12, 202, "Order Canceled - reason:Order was discarded".into()),
+                (11, 202, "Order Canceled - reason:Order was discarded".into()),
+            ]
+        );
+        assert_eq!(shared.backlog(), 0);
+        assert!(shared.drain_refused().is_empty());
+    }
+
+    /// A member cancelled while its family waits for a quote takes its link
+    /// with it; what is left of the family keeps its own.
+    #[test]
+    fn a_member_cancelled_during_a_quote_wait_takes_its_generated_link_with_it() {
+        let (mut engine, shared, send, mut peer) = engine();
+        shared.admit(&send, placement(true, true)).unwrap();
+        engine.poll_once();
+        answer(&shared, "OPR.3");
+        engine.poll_once();
+        assert_eq!(engine.attached_quote_orders.len(), 1);
+        assert_eq!(engine.intake.generated_held(), 2, "the two generated children");
+        shared
+            .admit(&send, ControlCommand::CancelOrder { order_id: 11, stated: Default::default() })
+            .unwrap();
+        engine.poll_once();
+        assert_eq!(
+            engine.intake.generated_held(), 1,
+            "the cancelled child's link went with it, its sibling keeps its own",
+        );
+        assert!(submissions(&wire(&mut peer)).is_empty());
+        assert!(shared.drain_refused().is_empty());
+    }
+
     #[test]
     fn a_nontransmitting_attached_family_stays_unsent_at_shutdown() {
         let (mut engine, shared, send, mut peer) = engine();

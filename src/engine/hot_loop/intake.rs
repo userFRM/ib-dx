@@ -288,6 +288,12 @@ impl Intake {
         self.kept.iter().any(|k| k.order_id == order_id)
     }
 
+    /// How many generated members are still tied to the placement that
+    /// admitted their parent.
+    pub(crate) fn generated_held(&self) -> usize {
+        self.generated.len()
+    }
+
     /// Remember what the venue named a description as, as a test states it.
     pub(crate) fn remember_named(&mut self, key: String, contract: api::Contract) {
         self.named.insert(key, contract);
@@ -318,6 +324,7 @@ impl HotLoop {
 
     pub(super) fn forget_waiting_attachment(&mut self, order_id: u64) {
         self.intake.placed.remove(&order_id);
+        self.intake.generated.remove(&order_id);
         self.intake.attached.discard_local_order(order_id);
         self.shared.orders.forget_local_api_order(order_id);
     }
@@ -1684,6 +1691,12 @@ impl HotLoop {
                 })
                 .collect();
             self.intake.waiting.retain(|w| !places(w, parent));
+            // The link between a generated member and the placement that
+            // admitted its parent goes with the family — but only where the
+            // family is discarded: a member still kept is still tied to it.
+            if !self.intake.keeps_a_placement(parent) {
+                self.intake.generated.remove(&parent);
+            }
             gone.extend(children);
         }
         true
@@ -1727,6 +1740,7 @@ impl HotLoop {
                 parent, OrderOp::Cancel, 202, "Order Canceled - reason:Order was discarded".into(),
             );
             self.intake.placed.remove(&parent);
+            self.intake.generated.remove(&parent);
             self.intake.attached.discard_local_order(parent);
             self.shared.orders.forget_local_api_order(parent);
             self.shared.push_call_record(Record::OrderBook(OrderBook::Forgotten(parent)));
