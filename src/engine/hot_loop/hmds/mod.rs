@@ -3252,7 +3252,23 @@ fn build_tbt_query(
         log::info!("Sent scanner params request");
     }
 
-    pub(crate) fn send_scanner_subscribe(&mut self, req_id: u32, instrument: &str, location_code: &str, scan_code: &str, max_items: u32, filters: Vec<(String, String)>, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
+    pub(crate) fn send_scanner_subscribe(&mut self, req_id: u32, instrument: &str, location_code: &str, scan_code: &str, max_items: u32, filters: Vec<(String, String)>, max_message_rate: usize, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
+        // A gateway counts the scans a login holds against a tenth of the
+        // maximum its logon states, and refuses the next one where the
+        // request is taken — before the number is even read for duplication.
+        // The count is of the scans the venue holds, not of anything waiting
+        // locally.
+        let limit = max_message_rate / 10;
+        if self.pending_scanner.len() >= limit {
+            super::push_hmds_refusal(
+                shared,
+                req_id,
+                REQUEST_NOT_PROCESSED,
+                format!("Only {limit} simultaneous API scanner subscriptions are allowed."),
+                false,
+            );
+            return;
+        }
         // A number already running a scan does not take a second.
         //
         // Both scans run at the venue and both resolve to this number, so the

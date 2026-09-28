@@ -3337,7 +3337,7 @@ fn a_drop_ends_a_kept_bar_request_and_asks_the_others_again() {
     // And a trading schedule, which is a bar request of its own kind, and a
     // scan.
     hmds.send_schedule_request(12, 265598, "STK", "SMART", "", "1 W", true, &mut conn, &mut hb);
-    hmds.send_scanner_subscribe(13, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 10, Vec::new(), &mut conn, &mut hb, &shared);
+    hmds.send_scanner_subscribe(13, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 10, Vec::new(), 40, &mut conn, &mut hb, &shared);
     let scan_id = hmds.pending_scanner[0].0.clone();
     // The one-shot queries.
     hmds.pending_head_ts.push(("hts".to_string(), 14, 1, std::time::Instant::now()));
@@ -3567,12 +3567,12 @@ fn a_number_already_running_a_scan_is_not_given_another() {
     let mut conn = Some(conn);
 
     hmds.send_scanner_subscribe(9, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50,
-        Vec::new(), &mut conn, &mut hb, &shared);
+        Vec::new(), 40, &mut conn, &mut hb, &shared);
     assert_eq!(hmds.pending_scanner.len(), 1, "the first scan is running");
     let first = hmds.pending_scanner[0].0.clone();
 
     hmds.send_scanner_subscribe(9, "STK", "STK.US.MAJOR", "TOP_PERC_LOSE", 50,
-        Vec::new(), &mut conn, &mut hb, &shared);
+        Vec::new(), 40, &mut conn, &mut hb, &shared);
 
     assert_eq!(hmds.pending_scanner.len(), 1, "the second scan does not join it");
     assert_eq!(hmds.pending_scanner[0].0, first, "and the running scan is the one asked for");
@@ -3627,7 +3627,7 @@ fn a_scan_that_did_not_go_out_is_refused_and_not_recorded() {
     let mut hmds = HmdsState::new();
     let shared = SharedState::new();
     let mut hb = HeartbeatState::new();
-    hmds.send_scanner_subscribe(9, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50, Vec::new(), &mut None, &mut hb, &shared);
+    hmds.send_scanner_subscribe(9, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50, Vec::new(), 40, &mut None, &mut hb, &shared);
     assert!(hmds.pending_scanner.is_empty(), "nothing is running");
     let told = shared.reference.drain_historical_errors();
     assert!(told.iter().any(|e| e.0 == 9 && e.1 == crate::error_codes::Refusal::NOT_CONNECTED), "{told:?}");

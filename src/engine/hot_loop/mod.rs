@@ -1813,7 +1813,13 @@ impl HotLoop {
                     if self.hmds_conn.is_none() {
                         self.emit_hmds_unavailable(req_id, false);
                     } else {
-                        self.hmds.send_scanner_subscribe(req_id, &instrument, &location_code, &scan_code, max_items, filters, &mut self.hmds_conn, &mut self.hb, &self.shared);
+                        // The maximum the logon states, which the venue states
+                        // once and a gateway reads for more than one cap: the
+                        // quote lines it allows, and a tenth of it for the
+                        // scans. A session that has not read one is held to a
+                        // gateway's default.
+                        let max_message_rate = self.ccp_conn.as_ref().map_or(40, |c| c.market_data_allowance);
+                        self.hmds.send_scanner_subscribe(req_id, &instrument, &location_code, &scan_code, max_items, filters, max_message_rate, &mut self.hmds_conn, &mut self.hb, &self.shared);
                     }
                 }
                 ControlCommand::CancelScanner { req_id } => {
@@ -8688,6 +8694,69 @@ mod tests {
         );
         assert_eq!(hmds::tests::over(&shared), [51], "and the bar request is over");
         assert!(hl.hmds.hist_queue.is_empty(), "and the queue is empty");
+    }
+
+    /// A gateway counts the scans a login holds against a tenth of the
+    /// maximum its logon states — forty, and so four scans, where the logon
+    /// states none — and refuses the next scan where the taking is, under the
+    /// number a refusal of the taking carries, in its standing words. The
+    /// count is of the scans the venue holds, not of anything waiting locally.
+    #[test]
+    fn a_scan_past_a_tenth_of_the_logon_rate_is_refused_where_the_taking_is() {
+        for (rate, limit, logon_up) in [(40usize, 4usize, false), (100, 10, true), (20, 2, true)] {
+            let shared = Arc::new(SharedState::new());
+            let mut hl = HotLoop::new(shared.clone(), None, None);
+            let (conn, _peer) = Connection::for_test();
+            hl.hmds_conn = Some(conn);
+            if logon_up {
+                let (mut ccp, _ccp_peer) = Connection::for_test();
+                ccp.market_data_allowance = rate;
+                hl.ccp_conn = Some(ccp);
+            }
+            let (tx, rx) = std::sync::mpsc::sync_channel(4);
+            hl.set_control_rx(rx);
+            for rid in 1..=limit {
+                hl.hmds.pending_scanner.push((format!("APISCAN1:{rid}"), rid as u32, String::new()));
+            }
+            tx.send(ControlCommand::SubscribeScanner {
+                req_id: limit as u32 + 1, instrument: "STK".into(),
+                location_code: "STK.US.MAJOR".into(), scan_code: "TOP_PERC_GAIN".into(),
+                max_items: 50, filters: Vec::new(),
+            }).unwrap();
+            hl.poll_control_commands();
+            assert_eq!(
+                hl.hmds.pending_scanner.len(), limit,
+                "({rate}) the scan past the cap does not run",
+            );
+            assert_eq!(
+                shared.reference.drain_historical_errors(),
+                [(
+                    limit as u32 + 1, 322,
+                    format!("Error processing request:-'' : cause - \
+                             Only {limit} simultaneous API scanner subscriptions are allowed."),
+                )],
+                "({rate}) the caller is refused in a gateway's words",
+            );
+            assert!(hmds::tests::over(&shared).is_empty(), "({rate}) and the refusal ends nothing");
+            // A second taking of a number already running is refused at the
+            // cap in the cap's words, as a gateway reads the count before it
+            // reads the number.
+            tx.send(ControlCommand::SubscribeScanner {
+                req_id: 1, instrument: "STK".into(),
+                location_code: "STK.US.MAJOR".into(), scan_code: "TOP_PERC_GAIN".into(),
+                max_items: 50, filters: Vec::new(),
+            }).unwrap();
+            hl.poll_control_commands();
+            assert_eq!(
+                shared.reference.drain_historical_errors(),
+                [(
+                    1, 322,
+                    format!("Error processing request:-'' : cause - \
+                             Only {limit} simultaneous API scanner subscriptions are allowed."),
+                )],
+                "({rate}) at the cap, the count is read before the number",
+            );
+        }
     }
 
     /// A calendar withdrawal that throws away an answer already queued acted,
