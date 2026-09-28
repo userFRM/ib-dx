@@ -6314,13 +6314,6 @@ impl ClientCore {
         if !KEPT_CURRENT.iter().any(|kept| what_to_show.eq_ignore_ascii_case(kept)) {
             return Err("Source price not supported with live updates".to_string());
         }
-        if !bs.supports_keep_up_to_date() {
-            return Err(format!(
-                "bar_size '{bar_size}' cannot be kept up to date: what the venue \
-                 keeps sending is five-second bars and a bar still forming is folded \
-                 from those, so a size shorter than five seconds cannot be formed",
-            ));
-        }
         Ok(())
     }
 

@@ -4332,22 +4332,21 @@ fn req_historical_data_rejects_unknown_what_to_show() {
     assert!(rx.try_recv().is_err());
 }
 
+/// A request kept up to date is run at whatever size was asked: a gateway
+/// validates only the end date, the combination and the series for live
+/// updates, and then runs the request.
 #[test]
-fn req_historical_data_rejects_unsupported_keep_up_to_date_size() {
+fn req_historical_data_kept_up_to_date_runs_at_the_size_asked() {
     let (client, rx, _shared) = test_client();
-    // A second is shorter than the five-second bars a forming bar is folded
-    // from, so nothing can form it. Refused here rather than answered with
-    // five-second bars relabelled as one-second ones.
-    let err = client.try_req_historical_data(5, &spy(), "", "1 D", "1 secs", "TRADES", true, 1, true).unwrap_err();
-    assert!(err.message.contains("kept up to date"), "got: {err}");
-    assert!(rx.try_recv().is_err());
-}
-
-#[test]
-fn req_historical_data_accepts_streamable_keep_up_to_date_size() {
-    let (client, rx, _shared) = test_client();
-    client.try_req_historical_data(5, &spy(), "", "1 D", "5 mins", "TRADES", true, 1, true).unwrap();
-    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::FetchHistorical { keep_up_to_date: true, .. }));
+    for size in ["5 mins", "1 secs"] {
+        client
+            .try_req_historical_data(5, &spy(), "", "1 D", size, "TRADES", true, 1, true)
+            .unwrap_or_else(|e| panic!("{size}: {e}"));
+        assert!(
+            matches!(rx.try_recv().unwrap(), ControlCommand::FetchHistorical { keep_up_to_date: true, .. }),
+            "{size} is sent",
+        );
+    }
 }
 
 /// ADJUSTED_LAST is served on the callback path now, not refused: the request

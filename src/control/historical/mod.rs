@@ -315,32 +315,6 @@ impl BarSize {
 
     /// Whether a bar this long can be kept up to date.
     ///
-    /// What the venue keeps sending after the batch is five-second bars, and
-    /// the bar still forming is folded from those. So a size that is a whole
-    /// number of them can be formed and one that is not cannot: a second is
-    /// shorter than what arrives, and folding into it relabelled each
-    /// five-second bar as a one-second one and handed the caller five times
-    /// the volume under a size it never traded in.
-    ///
-    /// A week and a month are formed on the calendar rather than on a multiple
-    /// of their length: a week opens on its Monday and a month on its first
-    /// day, both at midnight UTC, which is where a gateway folds them. The
-    /// venue states the bounds of the bars it aggregated — `date` and
-    /// `endDate` — and they run from a week's first trading day to the
-    /// Saturday after it, and from a month's to the first of the next. A day
-    /// opens at midnight, which is a boundary, and is documented as the one
-    /// it is.
-    ///
-    /// This is what this client can form, not what the venue accepts — nothing
-    /// on the wire says a size may not be kept up to date. The list it replaces
-    /// named five sizes, refusing sixteen that fold exactly and admitting the
-    /// one that cannot.
-    pub fn supports_keep_up_to_date(&self) -> bool {
-        let seconds = self.seconds();
-        matches!(self, Self::Week1 | Self::Month1)
-            || (seconds >= 5 && seconds.is_multiple_of(5) && seconds <= 86_400)
-    }
-
     /// How long one of these lasts.
     ///
     /// What a bar covers, so a bar still forming can be folded from the

@@ -1497,36 +1497,6 @@ fn a_pair_name_goes_out_as_both_series() {
     assert_eq!(single.matches("<Query>").count(), 1, "{single}");
 }
 
-/// A bar can be kept up to date if it folds from what the venue keeps sending.
-///
-/// Five-second bars are what arrive, and the bar still forming is made of
-/// them. A size that is a whole number of them can be formed; one shorter
-/// cannot. The list this replaced named five sizes: it refused sixteen that
-/// fold exactly, and admitted the one that does not — a one-second bar, which
-/// was formed by relabelling each five-second bar and handing the caller five
-/// times the volume under a size nothing traded in.
-#[test]
-fn a_bar_is_kept_up_to_date_when_it_folds_from_the_five_second_stream() {
-    for asked in ["5 secs", "10 secs", "1 min", "5 mins", "1 hour", "1 day"] {
-        let size = BarSize::from_api_str(asked).expect("a size this client reads");
-        assert!(
-            size.supports_keep_up_to_date(),
-            "{asked} is {} seconds, a whole number of five-second bars",
-            size.seconds(),
-        );
-    }
-    let second = BarSize::from_api_str("1 secs").expect("a size this client reads");
-    assert!(
-        !second.supports_keep_up_to_date(),
-        "a second is shorter than what arrives, so nothing can form it",
-    );
-    // A week and a month are formed on the calendar, as a gateway forms them.
-    for asked in ["1W", "1M"] {
-        let size = BarSize::from_api_str(asked).expect("a size this client reads");
-        assert!(size.supports_keep_up_to_date(), "{asked} is kept up to date");
-    }
-}
-
 /// The adjusted series begins where the trades it is folded from begin, and a
 /// gateway asks for the earliest trade to answer it.
 #[test]

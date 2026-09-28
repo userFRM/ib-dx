@@ -1491,14 +1491,10 @@ impl HotLoop {
                         duration: duration.clone(), bar_size: bar_size.clone(), keep_up_to_date,
                     };
                     // What the surfaces refuse of a request kept up to date,
-                    // or of the adjusted series, before the command is sent: a
-                    // size the fold cannot build out of five-second bars —
-                    // folded anyway, each would be relabelled as the shorter
-                    // one and the caller handed five times the volume under a
-                    // size nothing traded in — and what a gateway refuses
-                    // before asking the venue. A caller reaching this loop by
-                    // the control channel goes past the surfaces, so it is
-                    // refused here in the same words.
+                    // or of the adjusted series, before the command is sent:
+                    // what a gateway refuses before asking the venue. A caller
+                    // reaching this loop by the control channel goes past the
+                    // surfaces, so it is refused here in the same words.
                     let refused = if keep_up_to_date
                         || crate::control::historical::what_to_show_is_adjusted(&what_to_show)
                     {
@@ -5431,45 +5427,6 @@ mod tests {
             shared.reference.drain_historical_data().is_empty(),
             "and nothing was ended under that number: a request answering there \
              would have its end fired before its bars arrived",
-        );
-    }
-
-    /// A bar the fold cannot build is refused, not folded anyway.
-    ///
-    /// What keeps a bar current arrives as five-second bars, so a size that is
-    /// not made of those cannot be kept up to date: folding into it relabels
-    /// each five-second bar as the shorter one and hands the caller five times
-    /// the volume under a size nothing traded in. The surface refuses these
-    /// before the command is sent, and a caller reaching this loop by the
-    /// control channel goes past it.
-    #[test]
-    fn a_bar_that_cannot_be_kept_up_to_date_is_refused_on_the_control_channel() {
-        let shared = Arc::new(SharedState::new());
-        let mut hl = HotLoop::new(shared.clone(), None, None);
-        let (tx, rx) = std::sync::mpsc::sync_channel(4);
-        hl.set_control_rx(rx);
-
-        tx.send(ControlCommand::FetchHistorical {
-            contract: ContractRef { con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(), ..Default::default() },
-            req_id: 63,
-            end_date_time: String::new(),
-            duration: "1 D".into(),
-            bar_size: "1 secs".into(),
-            what_to_show: "TRADES".into(),
-            use_rth: true,
-            keep_up_to_date: true,
-            format_date: 1,
-            include_expired: false,
-            filters: Default::default(),
-        })
-        .expect("the engine holds the other end");
-        hl.poll_once();
-
-        let told = shared.reference.drain_historical_errors();
-        assert!(
-            told.iter().any(|(_, _, said)| said.contains("cannot be kept up to date")),
-            "each five-second bar is relabelled as a one-second one and handed \
-             back with five times the volume: {told:?}",
         );
     }
 

@@ -2188,6 +2188,23 @@ mod forming_bar_tests {
         let next = forming.fold(&five(1_786_456_800, 9.4, 9.6, 9.3, 9.5, 10.0)).unwrap();
         assert_eq!(next.timestamp, 1_786_456_800);
         assert_eq!(next.volume, 10.0, "nothing carried over");
+
+        // At a one-second size the request runs as it was asked, and every
+        // arriving five-second bar opens an update of its own at its own
+        // stamp: the bar is served under the size asked, carrying what the
+        // five seconds traded.
+        let mut second = FormingBar {
+            req_id: 1, seconds: 1, opened_at: 0,
+            daily_session: None, closed_at: None,
+            bar: Default::default(), weighted: 0.0, queued: Vec::new(),
+        };
+        let one = second.fold(&five(1_786_456_500, 10.0, 10.5, 9.5, 10.2, 100.0)).unwrap();
+        assert_eq!((one.timestamp, one.volume), (1_786_456_500, 100.0));
+        let two = second.fold(&five(1_786_456_505, 10.2, 11.0, 10.1, 10.8, 50.0)).unwrap();
+        assert_eq!(
+            (two.timestamp, two.volume), (1_786_456_505, 50.0),
+            "the next five seconds open an update of their own",
+        );
     }
 
     /// A week is folded from its Monday and a month from its first day, both
