@@ -3052,6 +3052,13 @@ mod news_tests {
     /// It arrives as a record of the venue's own fields — no length of its
     /// own, the record saying where it ends — and this client abandoned the
     /// message rather than read one, so the mark arrived and reached nobody.
+    ///
+    /// It reaches the caller under the number a gateway delivers it under:
+    /// the credit mark — the venue's series 221 — as 78, and the slow one as
+    /// 79. The plain mark price 37 is the pl-price series', read where that
+    /// series is. Series 220 is no series of the venue: 220 is only the older
+    /// number a request names the credit mark by, which a gateway resolves to
+    /// the series 221 before it subscribes.
     #[test]
     fn the_mark_the_venue_keeps_reaches_the_caller() {
         use crate::types::SeriesValue;
@@ -3086,23 +3093,23 @@ mod news_tests {
             bytes
         };
 
-        farm.generic_tick_tags.push((70, 220, instrument));
+        farm.generic_tick_tags.push((70, 221, instrument));
         farm.handle_generic_tick(
-            &framed_generic_ticks(&[(70, 220, &record(101_250, 0))]),
+            &framed_generic_ticks(&[(70, 221, &record(101_250, 0))]),
             &mut context, &shared, &None,
         );
         let said = shared.market.drain_series_ticks(instrument);
         assert_eq!(said.len(), 1, "{said:?}");
-        assert_eq!(said[0].tick_type, 78);
+        assert_eq!(said[0].tick_type, 78, "the credit mark, on the number a gateway delivers it under");
         assert!(
             matches!(said[0].value, SeriesValue::Price(p) if (p - 101.25).abs() < 1e-9),
             "a hundred and one and a quarter: {:?}", said[0].value,
         );
 
         // The venue saying the mark does not stand.
-        farm.generic_tick_tags.push((71, 220, instrument));
+        farm.generic_tick_tags.push((71, 221, instrument));
         farm.handle_generic_tick(
-            &framed_generic_ticks(&[(71, 220, &record(101_250, 16))]),
+            &framed_generic_ticks(&[(71, 221, &record(101_250, 16))]),
             &mut context, &shared, &None,
         );
         assert!(
@@ -3124,19 +3131,18 @@ mod news_tests {
             "a hundred and one on the tenths the venue counts in: {:?}", said[0].value,
         );
 
-        // And the number the mark is also asked for under, which states the
-        // same record and reaches the caller on the number the plain one does.
-        farm.generic_tick_tags.push((73, 221, instrument));
+        // And the older number a request names the credit mark by, which is
+        // no series of the venue: a gateway resolves it to the series 221
+        // before it subscribes, so nothing ever arrives under it and a stray
+        // record on it reads as nothing.
+        farm.generic_tick_tags.push((73, 220, instrument));
         farm.handle_generic_tick(
-            &framed_generic_ticks(&[(73, 221, &record(101_250, 0))]),
+            &framed_generic_ticks(&[(73, 220, &record(101_250, 0))]),
             &mut context, &shared, &None,
         );
-        let said = shared.market.drain_series_ticks(instrument);
-        assert_eq!(said.len(), 1, "{said:?}");
-        assert_eq!(said[0].tick_type, 37);
         assert!(
-            matches!(said[0].value, SeriesValue::Price(p) if (p - 101.25).abs() < 1e-9),
-            "the mark, on its other number: {:?}", said[0].value,
+            shared.market.drain_series_ticks(instrument).is_empty(),
+            "series 220 is no series of the venue",
         );
     }
 
@@ -3186,7 +3192,7 @@ mod news_tests {
         );
         let said = shared.market.drain_series_ticks(instrument);
         assert_eq!(said.len(), 1, "the mark: {said:?}");
-        assert_eq!(said[0].tick_type, 37);
+        assert_eq!(said[0].tick_type, 78, "the credit mark, on the number a gateway delivers it under");
         assert!(
             matches!(said[0].value, SeriesValue::Price(p) if (p - 101.25).abs() < 1e-9),
             "{:?}", said[0].value,

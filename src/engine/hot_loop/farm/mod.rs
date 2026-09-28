@@ -5848,16 +5848,20 @@ impl FarmState {
                 // trade report is another; the venue states both as totals in
                 // the same shape and the reference client publishes each under
                 // its own number.
-                // The mark the venue keeps for a contract, and the slow one
-                // beside it. Both arrive as a record of the venue's own
-                // fields rather than as a struct: the price is the field
+                // The credit mark the venue keeps for a contract, and the
+                // slow one beside it. Both arrive as a record of the venue's
+                // own fields rather than as a struct: the price is the field
                 // numbered two, and a word of flags numbered thirteen says
-                // whether it stands.
+                // whether it stands. The credit mark is delivered under 78,
+                // the number a gateway places it under; the plain mark price
+                // 37 is the pl-price series', read where that series is. The
+                // older number a request names the credit mark by, 220, is no
+                // series of the venue: a gateway resolves it to the series
+                // 221 before it subscribes, so nothing arrives under it.
                 // The odd lot: the two prices nobody has to deal in round
                 // lots at, their sizes, and where each is quoted.
                 787 => self.deliver_odd_lot(instrument, payload, context, shared),
-                221 => self.deliver_mark(instrument, 37, payload, context, shared),
-                220 => self.deliver_mark(instrument, 78, payload, context, shared),
+                221 => self.deliver_mark(instrument, 78, payload, context, shared),
                 619 => self.deliver_mark(instrument, 79, payload, context, shared),
                 225 => {
                     self.deliver_pricing_auction(instrument, payload, shared);
