@@ -235,17 +235,19 @@ fn an_execution_is_recognised_however_many_came_after_it() {
     assert!(!ccp.record_exec_id("exec-first"), "the first of the day is still seen");
 }
 
-// Build a what-if (6091=1) ExecReport map for order 42. `margin_fields`
-// holds (tag, literal wire value) pairs exactly as the gateway puts them
-// on the wire.
-fn what_if_frame(margin_fields: &[(u32, &str)]) -> std::collections::HashMap<u32, String> {
+// Build a what-if (6091=1) ExecReport for order 42: the parsed map and the
+// bytes it was read from. `margin_fields` holds (tag, literal wire value)
+// pairs exactly as the gateway puts them on the wire.
+fn what_if_frame(margin_fields: &[(u32, &str)]) -> (std::collections::HashMap<u32, String>, Vec<u8>) {
     let mut m = std::collections::HashMap::new();
     m.insert(11u32, "42".to_string()); // ClOrdID
     m.insert(6091u32, "1".to_string()); // what-if marker
+    let mut raw: Vec<u8> = b"11=42\x016091=1\x01".to_vec();
     for (tag, val) in margin_fields {
         m.insert(*tag, val.to_string());
+        raw.extend_from_slice(format!("{tag}={val}\x01").as_bytes());
     }
-    m
+    (m, raw)
 }
 
 // The full six margin fields of the captured true-zero close preview
@@ -1042,8 +1044,8 @@ fn a_position_feed_entry_with_an_explicit_zero_still_flattens() {
 #[test]
 fn what_if_zero_init_margin_is_delivered() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let frame = what_if_frame(&ZERO_CLOSE_FIELDS);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    let (frame, raw) = what_if_frame(&ZERO_CLOSE_FIELDS);
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     let responses = shared.orders.drain_what_if_responses();
     assert_eq!(responses.len(), 1, "zero-margin preview must be delivered");
     assert_eq!(responses[0].init_margin_after, 0);
@@ -1056,11 +1058,11 @@ fn what_if_zero_init_margin_is_delivered() {
 #[test]
 fn what_if_not_ready_ack_is_skipped() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let frame = what_if_frame(&[
+    let (frame, raw) = what_if_frame(&[
         (6826, "n/a"), (6827, "n/a"), (6828, "n/a"),
         (6092, "n/a"), (6093, "n/a"), (6094, "n/a"),
     ]);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     assert!(shared.orders.drain_what_if_responses().is_empty(),
         "n/a ack must not surface as a response");
     // The order stays pending for the subsequent data frame.
@@ -1073,8 +1075,8 @@ fn what_if_not_ready_ack_is_skipped() {
 #[test]
 fn what_if_without_6092_but_numeric_siblings_is_delivered() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let frame = what_if_frame(&[(6093, "0"), (6094, "945923.47")]);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    let (frame, raw) = what_if_frame(&[(6093, "0"), (6094, "945923.47")]);
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     let responses = shared.orders.drain_what_if_responses();
     assert_eq!(responses.len(), 1, "sibling-only preview must be delivered");
     assert_eq!(responses[0].init_margin_after, 0);
@@ -1089,11 +1091,11 @@ fn what_if_without_6092_but_numeric_siblings_is_delivered() {
 #[test]
 fn what_if_nan_sentinels_are_skipped() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let frame = what_if_frame(&[
+    let (frame, raw) = what_if_frame(&[
         (6826, "nan"), (6827, "nan"), (6828, "nan"),
         (6092, "nan"), (6093, "nan"), (6094, "nan"),
     ]);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     assert!(shared.orders.drain_what_if_responses().is_empty(),
         "all-nan frame must not surface as a response");
     assert!(context.order(42).is_some());
@@ -1104,13 +1106,72 @@ fn what_if_nan_sentinels_are_skipped() {
 #[test]
 fn what_if_nan_field_with_finite_sibling_is_delivered() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let frame = what_if_frame(&[(6092, "nan"), (6094, "945923.47")]);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    let (frame, raw) = what_if_frame(&[(6092, "nan"), (6094, "945923.47")]);
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     let responses = shared.orders.drain_what_if_responses();
     assert_eq!(responses.len(), 1);
     assert_eq!(responses[0].init_margin_after, 0, "nan field reads as unset/0");
     assert_eq!(responses[0].equity_with_loan_after,
         (945923.47 * PRICE_SCALE as f64) as Price);
+}
+
+/// A preview the venue priced for more than one impact group publishes the
+/// Regular group.
+///
+/// The venue repeats the margin fields once per group and names each on
+/// 8138. Read off the last occurrence of each tag, a group named after the
+/// Regular one published its figures as the preview's; a group the venue
+/// did not name Regular prices nothing here.
+#[test]
+fn a_preview_publishes_the_regular_impact_group() {
+    let regular = ["100", "90", "945924.53", "110", "95", "945923.47"];
+    let after_hours = ["10", "9", "8", "7", "6", "5"];
+    let group = |name: Option<&str>, values: [&str; 6]| -> Vec<(u32, String)> {
+        let mut fields = name.map(|n| (8138u32, n.to_string())).into_iter().collect::<Vec<_>>();
+        for (tag, value) in [6826u32, 6827, 6828, 6092, 6093, 6094].iter().zip(values) {
+            fields.push((*tag, value.to_string()));
+        }
+        fields
+    };
+    for (what, groups, published) in [
+        ("the Regular group first", vec![group(Some("Regular"), regular), group(Some("AfterHours"), after_hours)], true),
+        ("the Regular group second", vec![group(Some("AfterHours"), after_hours), group(Some("Regular"), regular)], true),
+        ("no group named", vec![group(None, regular)], true),
+        ("no Regular group", vec![group(Some("AfterHours"), after_hours)], false),
+    ] {
+        let (mut ccp, mut context, shared) = what_if_test_state();
+        let mut wire: Vec<(u32, String)> = vec![
+            (11, "42".into()), (6091, "1".into()),
+            (58, "margin exceeds the account".into()), (103, "3".into()),
+        ];
+        for fields in &groups {
+            wire.extend(fields.iter().cloned());
+        }
+        let raw: Vec<u8> = wire.iter()
+            .flat_map(|(tag, value)| format!("{tag}={value}\u{1}").into_bytes())
+            .collect();
+        // The wire reader keeps the last occurrence of a repeated tag.
+        let mut parsed = std::collections::HashMap::new();
+        for (tag, value) in &wire {
+            parsed.insert(*tag, value.clone());
+        }
+        ccp.handle_exec_report(&parsed, &raw, &mut context, &shared, &None, "");
+        let responses = shared.orders.drain_what_if_responses();
+        if published {
+            assert_eq!(responses.len(), 1, "{what}: the preview is delivered");
+            let r = &responses[0];
+            let scale = PRICE_SCALE as f64;
+            assert_eq!(r.init_margin_before, (100.0 * scale) as Price, "{what}");
+            assert_eq!(r.maint_margin_before, (90.0 * scale) as Price, "{what}");
+            assert_eq!(r.equity_with_loan_before, (945924.53 * scale) as Price, "{what}");
+            assert_eq!(r.init_margin_after, (110.0 * scale) as Price, "{what}");
+            assert_eq!(r.maint_margin_after, (95.0 * scale) as Price, "{what}");
+            assert_eq!(r.equity_with_loan_after, (945923.47 * scale) as Price, "{what}");
+            assert_eq!(r.warning_text, "margin exceeds the account (reason code 3)", "{what}");
+        } else {
+            assert!(responses.is_empty(), "{what}: a group that is not Regular prices nothing");
+        }
+    }
 }
 
 // A working order carries wire 39=0 whether it is routed or not.
@@ -10644,7 +10705,8 @@ fn a_previews_answer_spends_no_order_id() {
     for frames in [vec![&not_ready[..], &ZERO_CLOSE_FIELDS[..]], vec![&refused[..]]] {
         let (mut ccp, mut context, shared) = what_if_test_state();
         for fields in frames {
-            ccp.handle_exec_report(&what_if_frame(fields), b"", &mut context, &shared, &None, "");
+            let (frame, raw) = what_if_frame(fields);
+            ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
         }
         assert_eq!(shared.orders.working_id_watermark(), 0, "a preview names no order");
     }
@@ -10659,11 +10721,11 @@ fn a_previews_answer_spends_no_order_id() {
 #[test]
 fn a_refused_preview_is_a_refusal_and_not_a_rejected_order() {
     let (mut ccp, mut context, shared) = what_if_test_state();
-    let mut frame = what_if_frame(&[]);
+    let (mut frame, raw) = what_if_frame(&[]);
     frame.insert(39, "8".to_string());
     frame.insert(150, "8".to_string());
     frame.insert(58, "no margin for a preview of this size".to_string());
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    ccp.handle_exec_report(&frame, &raw, &mut context, &shared, &None, "");
     let refused = shared.orders.drain_order_inactive();
     assert!(refused.iter().any(|(id, code, why)| *id == 42 && *code == 201 && why.contains("no margin")), "{refused:?}");
     assert!(

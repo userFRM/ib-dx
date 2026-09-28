@@ -690,6 +690,45 @@ fn stated_price(val: Option<&String>) -> Option<crate::types::Price> {
         .map(crate::types::price_from_f64)
 }
 
+/// The value the nth occurrence of a tag carries on raw report bytes, where
+/// a report states a tag once per impact group and a parsed map holds one
+/// value for all of them.
+fn nth_stated(raw: &[u8], tag: u32, nth: usize) -> Option<String> {
+    let mut seen = 0;
+    for part in raw.split(|&b| b == crate::protocol::fix::SOH) {
+        let text = String::from_utf8_lossy(part);
+        let Some((tag_str, value)) = text.split_once('=') else { continue };
+        if tag_str.parse::<u32>().ok() != Some(tag) {
+            continue;
+        }
+        if seen == nth {
+            return Some(value.to_string());
+        }
+        seen += 1;
+    }
+    None
+}
+
+/// The occurrence of each repeated field that carries the Regular impact
+/// group: its position among the group names on 8138. A report that names no
+/// group states its fields once, at the only occurrence there is; a report
+/// that names groups and none of them Regular prices nothing here.
+fn regular_group_index(raw: &[u8]) -> Option<usize> {
+    let mut named = 0;
+    for part in raw.split(|&b| b == crate::protocol::fix::SOH) {
+        let text = String::from_utf8_lossy(part);
+        let Some((tag_str, value)) = text.split_once('=') else { continue };
+        if tag_str != "8138" {
+            continue;
+        }
+        if value == "Regular" {
+            return Some(named);
+        }
+        named += 1;
+    }
+    (named == 0).then_some(0)
+}
+
 /// Answer a preview, and say whether it was the whole of this report.
 ///
 /// The venue prices an order it has not placed on the same message as one it
@@ -699,6 +738,7 @@ fn stated_price(val: Option<&String>) -> Option<crate::types::Price> {
 /// like any other report rather than read as a preview with nothing in it.
 fn take_what_if(
     parsed: &std::collections::HashMap<u32, String>,
+    raw: &[u8],
     clord_id: u64,
     context: &mut Context,
     shared: &SharedState,
@@ -718,9 +758,16 @@ fn take_what_if(
             context.retire_order(clord_id);
             return true;
         }
-        const MARGIN_TAGS: [u32; 6] = [6826, 6827, 6828, 6092, 6093, 6094];
-        let is_data_frame = MARGIN_TAGS.iter().any(|tag| {
-            parsed.get(tag)
+        // The venue prices a preview once per impact group, names each group
+        // on 8138, and repeats the margin fields within the group. A parsed
+        // map holds one value per tag — the last the report stated — so the
+        // figures are read off the bytes at the Regular group's occurrence,
+        // which is what a gateway publishes.
+        let regular = regular_group_index(raw);
+        let margin = |tag: u32| regular.and_then(|nth| nth_stated(raw, tag, nth));
+        let margins = [margin(6826), margin(6827), margin(6828), margin(6092), margin(6093), margin(6094)];
+        let is_data_frame = margins.iter().any(|value| {
+            value.as_deref()
                 .and_then(|s| s.parse::<f64>().ok())
                 .is_some_and(|f| f.is_finite())
         });
@@ -729,20 +776,23 @@ fn take_what_if(
                 let response = crate::types::WhatIfResponse {
                     order_id: clord_id,
                     instrument: order.instrument,
-                    init_margin_before: parse_price_tag(parsed.get(&6826)),
-                    maint_margin_before: parse_price_tag(parsed.get(&6827)),
-                    equity_with_loan_before: parse_price_tag(parsed.get(&6828)),
-                    init_margin_after: parse_price_tag(parsed.get(&6092)),
-                    maint_margin_after: parse_price_tag(parsed.get(&6093)),
-                    equity_with_loan_after: parse_price_tag(parsed.get(&6094)),
+                    init_margin_before: parse_price_tag(margins[0].as_ref()),
+                    maint_margin_before: parse_price_tag(margins[1].as_ref()),
+                    equity_with_loan_before: parse_price_tag(margins[2].as_ref()),
+                    init_margin_after: parse_price_tag(margins[3].as_ref()),
+                    maint_margin_after: parse_price_tag(margins[4].as_ref()),
+                    equity_with_loan_after: parse_price_tag(margins[5].as_ref()),
                     commission: stated_price(parsed.get(&6378)),
                     // Stated or not: a bound the venue did not state is not a
                     // bound of nought.
                     min_commission: stated_price(parsed.get(&6379)),
                     max_commission: stated_price(parsed.get(&6380)),
                     commission_currency: parsed.get(&6381).cloned().unwrap_or_default(),
-                    // Tag 6361 carries the warning, not the order's text.
-                    warning_text: parsed.get(&6361).cloned().unwrap_or_default(),
+                    // The warning beside a preview is the venue's own text
+                    // with its reason code, as a refusal states them: the
+                    // order's message (6361) is the order's, not the
+                    // preview's, and a preview's parser never reads it.
+                    warning_text: stated_reason(parsed),
                 };
                 log::info!("WhatIf response: clord={} initMargin={:.2}->{:.2} commission={:.2}",
                     clord_id,
@@ -2544,7 +2594,7 @@ impl CcpState {
         // ack carries "n/a" in all six, so it never matches. Captured
         // byte-level in.
         if parsed.get(&6091).map(|s| s.as_str()) == Some("1")
-            && take_what_if(parsed, clord_id, context, shared, event_tx)
+            && take_what_if(parsed, raw, clord_id, context, shared, event_tx)
         {
             return;
         }
