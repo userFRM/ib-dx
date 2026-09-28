@@ -352,6 +352,14 @@ pub(crate) fn spy() -> Contract {
     }
 }
 
+/// Helper: a session the venue has said may read news. A tick list asking
+/// for the headlines is legal only on one, as a gateway holds it.
+pub(crate) fn session_may_read_news(shared: &SharedState) {
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Algo parsing
 // ═══════════════════════════════════════════════════════════════════
@@ -1698,7 +1706,8 @@ fn a_stream_outlives_the_snapshot_it_was_watching() {
 /// subscription the one withdrawal cannot match.
 #[test]
 fn two_requests_for_one_contracts_headlines_ask_once() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
     client.try_req_mkt_data(1, &spy(), "292", false, false).expect("taken");
     client.try_req_mkt_data(2, &spy(), "292", false, false).expect("taken");
     rx.pump();
@@ -2127,7 +2136,8 @@ fn a_price_calculation_waits_and_is_withdrawn_the_same_way() {
 /// and the news it asked for was never withdrawn on that one.
 #[test]
 fn the_headlines_stop_with_the_last_caller_that_asked_for_them() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
     // Someone already watches the quotes, and asked for no headlines; a
     // second request watches the same contract and does want them.
     client.try_req_mkt_data(1, &spy(), "", false, false).expect("taken");
@@ -11844,10 +11854,13 @@ fn a_corporate_actions_request_given_up_on_holds_nothing() {
 /// for them bare does.
 ///
 /// Only a bare `292` was read as asking for them: `292:BRFG+DJNL`, the form
-/// that names the providers, asked for no headlines at all.
+/// that names the providers, asked for no headlines at all. And a number no
+/// series is behind refuses the whole list, as a gateway refuses one, rather
+/// than riding along beside the headlines.
 #[test]
 fn a_request_asking_for_headlines_by_provider_asks_for_them() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
     let aapl = Contract {
         symbol: "AAPL".into(), sec_type: "STK".into(), exchange: "SMART".into(),
         currency: "USD".into(), ..Default::default()
@@ -11857,8 +11870,10 @@ fn a_request_asking_for_headlines_by_provider_asks_for_them() {
         _ => None,
     });
 
-    client.try_req_mkt_data(1, &aapl, "1292", false, false).expect("taken");
-    assert_eq!(headlines(1), Some(None), "1292 asks for no headlines");
+    let why = client.try_req_mkt_data(1, &aapl, "1292", false, false)
+        .expect_err("1292 is no number the venue knows a series by");
+    assert_eq!(why.code, 321, "{why}");
+    assert_eq!(headlines(1), None, "and nothing was asked");
 
     client.try_req_mkt_data(2, &aapl, "mdoff,292:BRFG+DJNL", false, false).expect("taken");
     assert_eq!(
@@ -12384,11 +12399,13 @@ fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
 /// anything is subscribed, as a gateway refuses it: one burst has no series
 /// beside it. The regulatory snapshot is not covered by the refusal — its
 /// series are dropped at the engine as they were. An "mdoff" token counts as
-/// no entry, and a token that reads as no number leaves nothing the refusal
-/// covers, so a list of either beside a snapshot goes as it stands.
+/// no entry, and a list a gateway cannot read whole resolves to nothing, so
+/// there is nothing beside the burst for the refusal to cover and a list of
+/// either beside a snapshot goes as it stands.
 #[test]
 fn a_snapshot_beside_a_generic_list_is_refused() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
     for list in ["100,101", "100", "292", "292:BRFG+DJNL", "mdoff,100"] {
         let why = reported(&client, || client.req_mkt_data(71, &spy(), list, true, false))
             .expect_err(list);
@@ -12417,6 +12434,142 @@ fn a_snapshot_beside_a_generic_list_is_refused() {
             "{list} was not taken",
         );
     }
+}
+
+/// A quote request whose generic tick list holds an entry that is not a
+/// number the venue knows a legal series by — for the request's type — is
+/// refused whole before anything is subscribed, as a gateway refuses it: in
+/// its standing text, with the legal series for the type listed, and nothing
+/// sent. A list of "mdoff" alone resolves to nothing and is refused the same
+/// way; an entry that is a number the venue knows but no quote request may
+/// ask for is refused too.
+#[test]
+fn an_incorrect_generic_tick_list_is_refused_whole() {
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
+    // The legal series for a share, as a gateway renders them: ascending,
+    // each under its number — with the older number beside it where the
+    // series answers one — and its name.
+    let legal = concat!(
+        "100(Option Volume),101(Option Open Interest),105(Average Opt Volume),",
+        "106(impvolat),165(Misc. Stats),221/220(Creditman Mark Price),225(Auction),",
+        "232/221(Pl Price),233(RTVolume),236(inventory),258/47(Fundamentals),",
+        "292(Wide_news),293(TradeCount),294(TradeRate),295(VolumeRate),318(LastRTHTrade),",
+        "375(RTTrdVolume),411(rthistvol),456/59(IBDividends),460(Bond Factor Multiplier),",
+        "577(EtfNavLast(navlast)),586(IPOHLMPRC),587(Pl Price Delayed),",
+        "588(Futures Open Interest),595(Short-Term Volume X Mins),614(EtfNavMisc(high/low)),",
+        "619(Creditman Slow Mark Price),623(EtfFrozenNavLast(fznavlast)),",
+        "787(OddLotBidAskQuotesTickTag(mdbaodd))",
+    );
+    for list in [
+        // A word no number is behind, a number no series is behind, a list of
+        // the token that is no entry alone, one bad entry beside a good one,
+        // numbers the venue knows that no quote request may ask for, a series
+        // legal for another type, a number cut from its suffix, and lists that
+        // trim or tokenize to nothing.
+        "abc", "999999", "mdoff", "100,abc", "393", "247", "499", "162", "595x",
+        "292:", " ", ",",
+    ] {
+        let why = reported(&client, || client.req_mkt_data(71, &spy(), list, false, false))
+            .expect_err(list);
+        assert_eq!(
+            (why.code, why.message.as_str()),
+            (321, format!(
+                "Error validating request:-'' : cause - Incorrect generic tick list of \
+                 {list}.  Legal ones for (STK) are: {legal}",
+            ).as_str()),
+            "{list}",
+        );
+        assert!(next_command(&rx).is_none(), "{list} subscribed something");
+        assert!(client.core.req_to_instrument.lock().unwrap().is_empty(), "and kept a subscription");
+    }
+}
+
+/// The series a type takes are the ones a gateway takes for it: a series
+/// legal only for some types is refused for the rest, the numbers that alias
+/// a series are read as the series they name, and the headlines are legal
+/// only on a session the venue has said may read news — and are left out of
+/// the legal list a session that may not is told.
+#[test]
+fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
+    let (client, rx, shared) = test_client();
+    session_may_read_news(&shared);
+    let cash = Contract {
+        symbol: "EUR".into(), sec_type: "CASH".into(), exchange: "IDEALPRO".into(),
+        currency: "USD".into(), ..Default::default()
+    };
+    let index = Contract { sec_type: "IND".into(), exchange: "SMART".into(), ..spy() };
+    let stated_lower = Contract { sec_type: "stk".into(), ..spy() };
+    let stated_cs = Contract { sec_type: "CS".into(), ..spy() };
+    for (req_id, (contract, list)) in [
+        // Numbers, and beside them the token that is no entry and an empty
+        // slot the tokenizer never yields.
+        (&spy(), "100,101"),
+        (&spy(), "mdoff,100"),
+        (&spy(), "100,,101"),
+        // The older numbers that name a series: the credit mark, the pl
+        // price, the company ratios, the dividends, the historical
+        // volatility, and the fundamentals.
+        (&spy(), "220"),
+        (&spy(), "221"),
+        (&spy(), "104"),
+        (&spy(), "47"),
+        (&spy(), "59"),
+        // The headlines, bare and naming their providers.
+        (&spy(), "292"),
+        (&spy(), "292:BRFG+DJNL"),
+        // A series of one type on that type, and a type stated in a spelling
+        // the venue reads case-blind.
+        (&index, "162"),
+        (&spy(), "595"),
+        (&cash, "292"),
+        (&stated_lower, "456"),
+        (&stated_cs, "456"),
+    ].into_iter().enumerate() {
+        let req_id = 80 + req_id as i64;
+        if let Err(why) = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false)) {
+            panic!("{list} on {}: {why:?}", contract.sec_type);
+        }
+        assert!(
+            matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })),
+            "{list} was not taken",
+        );
+    }
+    // A series legal for some types is refused for the rest, under the list
+    // the type it was asked for does have.
+    for (req_id, (contract, list, kind, absent)) in [
+        (&cash, "456", "CASH", "456/59(IBDividends)"),
+        (&index, "595", "IND", "595(Short-Term Volume X Mins)"),
+    ].into_iter().enumerate() {
+        let req_id = 95 + req_id as i64;
+        let why = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false))
+            .expect_err(&format!("{list} on {kind}"));
+        assert_eq!(why.code, 321, "{list} on {kind}");
+        assert!(why.message.contains(&format!("Legal ones for ({kind}) are: ")), "{list}: {}", why.message);
+        assert!(!why.message.contains(absent), "{list} on {kind}: {}", why.message);
+        assert!(next_command(&rx).is_none(), "{list} subscribed something");
+    }
+    // The suffix a series takes is not read as part of its number: a
+    // dividends entry naming a suffix is the dividends series all the same.
+    reported(&client, || client.req_mkt_data(98, &spy(), "456:x", false, false)).expect("taken");
+    assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
+    // A session the venue has not said may read news is refused the
+    // headlines, and the list it is told names every other series it has.
+    let (bare, bare_rx, _bare_shared) = test_client();
+    let why = reported(&bare, || bare.req_mkt_data(99, &spy(), "292", false, false))
+        .expect_err("headlines on a session that may not read them");
+    assert_eq!(why.code, 321);
+    assert!(why.message.contains("Incorrect generic tick list of 292."), "{why}");
+    assert!(why.message.contains("100(Option Volume)"), "{why}");
+    assert!(!why.message.contains("292(Wide_news)"), "the list names what the session has: {why}");
+    assert!(next_command(&bare_rx).is_none());
+    // A type the venue knows no name for is stated as the empty spelling, and
+    // takes the series every type takes.
+    let unknown = Contract { sec_type: "XYZ".into(), exchange: "SMART".into(), ..spy() };
+    let why = reported(&bare, || bare.req_mkt_data(100, &unknown, "456", false, false))
+        .expect_err("a series no type of its own takes");
+    assert!(why.message.contains("Legal ones for () are: 100(Option Volume)"), "{why}");
+    assert!(next_command(&bare_rx).is_none());
 }
 
 /// A combination stating no legs describes nothing: a gateway refuses a quote

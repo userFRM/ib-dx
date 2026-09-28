@@ -103,7 +103,6 @@ impl EClient {
     /// * `318` — what last traded in the regular session.
     /// * `456` (or `59`) — what it pays out.
     /// * `460` — the factor a redemption changes.
-    /// * `499` — what it costs to borrow.
     /// * `577`, `614`, `623` — a fund's value per share: last, the day's
     ///   extremes, and the frozen one.
     /// * `586` — what a share is expected to open at, and what it did.
@@ -112,10 +111,20 @@ impl EClient {
     /// * `787` — the odd lot: the two prices nobody has to deal in round lots
     ///   at, their sizes, and where each is quoted.
     ///
-    /// A code outside that list still goes to the venue, and a reading of it
-    /// arrives and is recorded rather than delivered: the shape it is written
-    /// in is the series' own, and nothing here can read one it has not been
-    /// taught.
+    /// The list is read whole before anything is subscribed, as a gateway
+    /// reads one: an entry that is not a number the venue knows a series by,
+    /// or one no series of the request's type is legal under, refuses the
+    /// whole request under 321, in a standing text that names every series
+    /// legal for the type. A list of `mdoff` alone resolves to nothing and is
+    /// refused with the rest; a number the venue also answers an older number
+    /// by is read as the series it names. Some numbers the venue knows are
+    /// legal for no quote request at all — the borrow cost among them — and
+    /// are refused under that reading whatever the type.
+    ///
+    /// A code legal for the type but not among those read here still goes to
+    /// the venue, and a reading of it arrives and is recorded rather than
+    /// delivered: the shape it is written in is the series' own, and nothing
+    /// here can read one it has not been taught.
     ///
     /// `tick_generic` also fires for the halt the venue states on its own tick:
     /// tick 49, 0 while a contract is trading and 1 once it has stopped.

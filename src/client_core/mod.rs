@@ -7,6 +7,7 @@
 
 pub(crate) mod attached_checks;
 pub(crate) mod cash_quantity;
+pub(crate) mod tick_catalogue;
 pub(crate) mod attached_orders;
 pub(crate) mod attached_loading;
 pub(crate) mod attached_prices;
@@ -2412,14 +2413,35 @@ impl ClientCore {
         // "1292" is not 292, and matching on a suffix subscribes to news the
         // caller did not ask for.
         let asked = parse_generic_tick_list(generic_tick_list);
+        // A gateway reads the list whole: an entry that is not a number the
+        // venue knows a series by, or one no series of this type is legal
+        // under, refuses the whole request in its standing text, with the
+        // legal series for the type listed. An empty list asks for nothing
+        // and is never refused; a list of "mdoff" tokens alone resolves to
+        // nothing and is refused as one a gateway cannot read. A scan
+        // states the series this client asks for on its own, not one the
+        // caller listed, so it is not read against the catalogue. Whether
+        // the session may read news decides the headlines series: the venue
+        // named the providers at logon and the session is not told it may
+        // not ask.
+        let news_capable = !shared.reference.enables("DENYAPI")
+            && !shared.reference.news_providers().is_empty();
+        let list_read = !generic_tick_list.is_empty() && spread_scan.is_none();
+        let resolved = list_read
+            .then(|| tick_catalogue::resolve(generic_tick_list, sec_type, news_capable))
+            .flatten();
+        if !snapshot && list_read && resolved.is_none() {
+            return Err(Refusal::validation(tick_catalogue::incorrect_list(
+                generic_tick_list, sec_type, news_capable,
+            )));
+        }
         // An ordinary snapshot is one burst, and a gateway refuses a generic
         // entry listed beside it before anything is subscribed. The
         // regulatory snapshot is not covered: its series are dropped at the
-        // engine, as they were. An "mdoff" token is no entry, and a token
-        // that reads as no number is no entry the refusal covers either — a
-        // list a gateway cannot read whole reaches it as no list at all — so
-        // both go as they stand, the unreadable warned below as before.
-        if snapshot && asked.unread.is_empty() && (asked.news || !asked.series.is_empty()) {
+        // engine, as they were. A list a gateway cannot read whole resolves
+        // to nothing, so there is nothing beside the burst to refuse, and it
+        // goes as it stands, the unreadable warned below as before.
+        if snapshot && resolved.is_some() {
             return Err(Refusal::validation(
                 "Snapshot market data subscription is not applicable to generic ticks",
             ));

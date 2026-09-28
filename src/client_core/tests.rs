@@ -2236,7 +2236,9 @@ fn news_is_asked_for_from_the_providers_the_logon_named() {
     assert_eq!(asked("mdoff,292:BRFG+DJNL").as_deref(), Some("BRFG*DJNL"));
     core.set_news_providers("DJNL");
     assert_eq!(asked("292:BRFUPDN").as_deref(), Some("BRFUPDN"));
-    assert_eq!(asked("292:").as_deref(), Some("DJNL"), "an entry naming none takes the session's");
+    // An entry ending in the separator with no suffix behind it is a list a
+    // gateway cannot read whole: the request is refused and nothing is asked.
+    assert_eq!(asked("292:"), None, "an entry cut from its suffix is no entry the venue reads");
 }
 
 /// A generic tick list read one whole entry at a time.
