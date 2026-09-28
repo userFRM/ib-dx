@@ -6053,10 +6053,14 @@ fn cancel_histogram_data_sends_cancel() {
 #[test]
 fn req_historical_ticks_sends_fetch() {
     let (client, rx, _shared) = test_client();
-    // Either end, and the count says how far it reaches. Naming neither, or
-    // both, is what the venue refuses.
-    assert!(crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "", "", 1000, "TRADES", true, false)).is_err());
-    assert!(crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "20260101 09:30:00", "20260101 16:00:00", 1000, "TRADES", true, false)).is_err());
+    // Either end, and the count says how far it reaches. Both ends: a
+    // gateway navigates forward from the start and ignores the end. Neither:
+    // it sends its epoch-anchored query and relays what the venue says. No
+    // shape is refused locally.
+    crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "", "", 1000, "TRADES", true, false)).unwrap();
+    let _ = rx.try_recv();
+    crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "20260101 09:30:00", "20260101 16:00:00", 1000, "TRADES", true, false)).unwrap();
+    let _ = rx.try_recv();
     crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "20260101 09:30:00", "", 1000, "TRADES", true, false)).unwrap();
     let _ = rx.try_recv();
     crate::api::client::tests::reported(&client, || client.req_historical_ticks(8, &spy(), "", "20260101 16:00:00", 1000, "TRADES", true, false)).unwrap();

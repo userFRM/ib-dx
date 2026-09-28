@@ -630,12 +630,13 @@ fn a_tick_query_carries_the_size_filter_where_a_gateway_writes_it() {
     }
 }
 
-/// The query counts back from its end. A start written into that same field
-/// asked for the ticks before the moment the caller wanted the ticks after, and
-/// the answer looked right and covered the wrong side of the clock.
+/// The query counts from the end it names. A start written into the end's
+/// field asked for the ticks before the moment the caller wanted the ticks
+/// after, and the answer looked right and covered the wrong side of the
+/// clock.
 #[test]
 fn a_tick_request_names_one_end_and_counts_from_it() {
-    use crate::control::historical::{build_tick_query_xml, validate_tick_window};
+    use crate::control::historical::build_tick_query_xml;
     let q = |start: &str, end: &str| build_tick_query_xml(
         "tk", 265598, start, end, 100, "TRADES", true, "CS", "BEST", false, false,
     );
@@ -652,13 +653,20 @@ fn a_tick_request_names_one_end_and_counts_from_it() {
     assert!(!to_an_end.contains("<startTime>"));
     assert!(to_an_end.contains("<timeLength>100 t</timeLength>"));
 
-    // The two shapes the venue refuses, refused before they are sent, in its
-    // own words: neither end leaves it a parameter short, and both without a
-    // count is not served to an API client at all.
-    assert!(validate_tick_window("", "").is_err());
-    assert!(validate_tick_window("20260312-09:30:00", "20260312-15:00:00").is_err());
-    assert!(validate_tick_window("20260312-09:30:00", "").is_ok());
-    assert!(validate_tick_window("", "20260312-15:00:00").is_ok());
+    // Both named: a gateway navigates forward from the start and reads the
+    // end only where the start is absent — the start wins, the end is
+    // ignored, the count stands.
+    let both = q("20260312-09:30:00", "20260312-15:00:00");
+    assert!(both.contains("<startTime>20260312-09:30:00</startTime>"), "{both}");
+    assert!(!both.contains("<endTime>"), "{both}");
+    assert!(both.contains("<timeLength>100 t</timeLength>"), "{both}");
+
+    // Neither named: the gateway still sends — its epoch-anchored forward
+    // query — and relays the venue's own answer or refusal rather than
+    // inventing a local one.
+    let neither = q("", "");
+    assert!(neither.contains("<startTime>19700101-00:00:00</startTime>"), "{neither}");
+    assert!(!neither.contains("<endTime>"), "{neither}");
 }
 
 /// A historical size crosses as text because it can be a fraction of a share.

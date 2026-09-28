@@ -690,8 +690,10 @@ impl EClient {
     ///
     /// Named from one end and counted from there: give `start_date_time` for
     /// the ticks after a moment or `end_date_time` for the ones before it, and
-    /// `number_of_ticks` says how far it reaches. Naming both, or neither, is
-    /// what the venue refuses.
+    /// `number_of_ticks` says how far it reaches. Where both are named the
+    /// start wins and the ticks run forward from it, as at a gateway; where
+    /// neither is, the query still goes — the gateway's epoch-anchored
+    /// forward window — and the venue's own answer or refusal is relayed.
     ///
     /// `ignore_size` asks the venue to leave out a bid/ask change that moves
     /// only a size, and what it answers is passed on as it stands, as a
@@ -721,7 +723,6 @@ impl EClient {
             let number_of_ticks = u32::try_from(number_of_ticks).map_err(|_| {
                 Refusal::validation(format!("number_of_ticks {number_of_ticks} is negative"))
             })?;
-            crate::control::historical::validate_tick_window(start_date_time, end_date_time)?;
             self.send(ControlCommand::FetchHistoricalTicks {
                 contract: contract.into(),
                 req_id: wire_id,

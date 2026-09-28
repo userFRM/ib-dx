@@ -1268,34 +1268,6 @@ pub fn tick_data_type(what_to_show: &str) -> Result<&'static str, String> {
     })
 }
 
-/// What a historical-tick window has to state to be askable.
-///
-/// The query this client sends is bounded at its end and counts back from
-/// there. Writing a start into that same field returns the ticks before the
-/// moment rather than after it: the right number of records, off the wrong
-/// side of the clock, with nothing in them to say so.
-pub fn validate_tick_window(start_date_time: &str, end_date_time: &str) -> Result<(), String> {
-    match (start_date_time.is_empty(), end_date_time.is_empty()) {
-        // One end and a count is what the venue serves an API client, and it
-        // is the venue that says so — asked with neither it answers "2 out of
-        // startTime/endTime/timeLength parameters have to be specified", and
-        // with both and no count "Times and Sales queries not length based not
-        // allowed from API".
-        (true, true) => Err(
-            "historical ticks are asked for from one end and counted from there, and this \
-             request names neither. Give start_date_time for the ticks after a moment, or \
-             end_date_time for the ones before it."
-                .to_string(),
-        ),
-        (false, false) => Err(format!(
-            "historical ticks are asked for from one end and counted from there, and this \
-             request names both ({start_date_time} and {end_date_time}). Give one of them \
-             and the count says how far it reaches.",
-        )),
-        _ => Ok(()),
-    }
-}
-
 /// Build the XML query for a historical ticks request.
 ///
 /// Uses `<type>TickData</type>`, `<step>ticks</step>`, `<timeLength>{N}
@@ -1323,17 +1295,18 @@ pub fn build_tick_query_xml(
     // right and covered the wrong side of the clock. The field, not the
     // request, was the trouble.
     //
-    // One end and a count, which is what the venue serves an API client. It
-    // says so itself when asked otherwise: naming neither end is answered
-    // "2 out of startTime/endTime/timeLength parameters have to be specified",
-    // and naming both without a count "Times and Sales queries not length
-    // based not allowed from API". Either end will do — a start was refused
-    // here before it was ever sent, and the venue answers one with the ticks
-    // after it.
-    let time_tag = if start_date_time.is_empty() {
+    // The start wins: a gateway navigates forward from the start and reads
+    // the end only where the start is absent. Naming neither end, it still
+    // sends — its epoch-anchored forward query — and relays the venue's own
+    // answer or refusal; the venue says so itself where a shape it cannot
+    // serve arrives ("2 out of startTime/endTime/timeLength parameters have
+    // to be specified"). Nothing here is refused locally.
+    let time_tag = if !start_date_time.is_empty() {
+        format!("<startTime>{start_date_time}</startTime>")
+    } else if !end_date_time.is_empty() {
         format!("<endTime>{end_date_time}</endTime>")
     } else {
-        format!("<startTime>{start_date_time}</startTime>")
+        "<startTime>19700101-00:00:00</startTime>".to_string()
     };
     let length_tag = format!("<timeLength>{number_of_ticks} t</timeLength>");
     // The filter that leaves out a change moving only the size, where a

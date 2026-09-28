@@ -2215,7 +2215,7 @@ pub fn cancel_histogram_data(&self, req_id: i64)
 
 #### `req_historical_ticks`
 
-Request historical tick data. Named from one end and counted from there: give `start_date_time` for the ticks after a moment or `end_date_time` for the ones before it, and `number_of_ticks` says how far it reaches. Naming both, or neither, is what the venue refuses. `ignore_size` asks the venue to leave out a bid/ask change that moves only a size, and what it answers is passed on as it stands, as a gateway passes it: nothing is filtered here. A gateway asks for midpoint ticks that way whatever the caller asked, and so does this client; for trades it is not asked. One session saw the venue answer the same with the filter as without it.
+Request historical tick data. Named from one end and counted from there: give `start_date_time` for the ticks after a moment or `end_date_time` for the ones before it, and `number_of_ticks` says how far it reaches. Where both are named the start wins and the ticks run forward from it, as at a gateway; where neither is, the query still goes — the gateway's epoch-anchored forward window — and the venue's own answer or refusal is relayed. `ignore_size` asks the venue to leave out a bid/ask change that moves only a size, and what it answers is passed on as it stands, as a gateway passes it: nothing is filtered here. A gateway asks for midpoint ticks that way whatever the caller asked, and so does this client; for trades it is not asked. One session saw the venue answer the same with the filter as without it.
 
 ```rust
 pub fn req_historical_ticks( &self, req_id: i64, contract: &Contract, start_date_time: &str, end_date_time: &str, number_of_ticks: i32, what_to_show: &str, use_rth: bool, ignore_size: bool, )

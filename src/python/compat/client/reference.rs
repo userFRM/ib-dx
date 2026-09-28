@@ -590,12 +590,7 @@ impl EClient {
         if let Some(why) = self.options_refused(py, &crate::client_core::HISTORICAL_TICKS_OPTIONS, misc_options)? {
             return self.report_refusal(py, req_id, why);
         }
-        if let Err(why) = crate::control::historical::tick_data_type(what_to_show)
-            .map(|_| ())
-            .and_then(|()| crate::control::historical::validate_tick_window(
-                start_date_time, end_date_time,
-            ))
-        {
+        if let Err(why) = crate::control::historical::tick_data_type(what_to_show) {
             return self.report_refusal(py, req_id, why.into());
         }
         // A contract given by id alone is named by the engine before the
