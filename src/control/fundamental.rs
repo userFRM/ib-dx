@@ -111,8 +111,11 @@ impl ReportType {
 pub struct FundamentalRequest {
     /// The venue's id for the contract.
     pub con_id: u32,
-    /// Which report is wanted.
-    pub report_type: ReportType,
+    /// The report's name on the wire: a registry name where the caller's
+    /// spelling maps to one, and the caller's own spelling for every other
+    /// name — forwarded as stated, the way a gateway's registry fallback
+    /// carries it without erroring.
+    pub report_type: String,
     /// What this request calls itself, which the venue echoes on the answer.
     pub query_id: String,
 }
@@ -160,7 +163,7 @@ pub fn build_fundamental_request_xml(req: &FundamentalRequest) -> String {
          </FundamentalsQuery>\
          </ListOfQueries>",
         con_id = req.con_id,
-        report_type = req.report_type.report_type_str(),
+        report_type = req.report_type,
     )
 }
 
@@ -264,7 +267,7 @@ mod tests {
         let req = FundamentalRequest {
             query_id: fundamentals_query_id(1),
             con_id: 265598,
-            report_type: ReportType::Snapshot,
+            report_type: ReportType::Snapshot.report_type_str().to_string(),
         };
         let xml = build_fundamental_request_xml(&req);
         assert!(xml.contains("<ListOfQueries>"));
@@ -328,7 +331,7 @@ mod tests {
         assert_ne!(first, second, "two requests do not share a name");
 
         let asked = build_fundamental_request_xml(&FundamentalRequest {
-            con_id: 265598, report_type: ReportType::Snapshot, query_id: first.clone(),
+            con_id: 265598, report_type: ReportType::Snapshot.report_type_str().to_string(), query_id: first.clone(),
         });
         assert!(asked.contains(&format!("<id>{first}</id>")));
         assert_eq!(echoed_query_id(&asked), first, "and the answer is matched by it");

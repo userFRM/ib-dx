@@ -3587,21 +3587,18 @@ fn build_tbt_query(
 
     pub(crate) fn send_fundamental_data_request(&mut self, req_id: u32, con_id: u32, report_type: &str, shared: &SharedState, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState) {
         use crate::control::fundamental::ReportType;
-        let rt = match report_type {
-            "ReportSnapshot" | "snapshot" => ReportType::Snapshot,
-            "RESC" | "estimates" => ReportType::Estimates,
-            "CalendarReport" | "calendar" => ReportType::Calendar,
-            other => {
-                // Refused rather than substituted; an unsupported report
-                // type is not silently answered with a snapshot.
-                let told = format!(
-                    "report type {other:?} is not one the venue states: it is \
-                     ReportSnapshot, RESC or CalendarReport"
-                );
-                log::warn!("{told}");
-                super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::VALIDATION, told, false);
-                return;
-            }
+        // A gateway performs no local report-type validation: its registry
+        // matches the three names and their aliases and falls back for every
+        // other string without erroring, so the request is forwarded as
+        // stated and the venue's own failure of it is relayed under the
+        // fundamentals code. Refused here instead, the caller was told words
+        // and a number a gateway has neither of, and the venue was never
+        // asked.
+        let report_type = match report_type {
+            "ReportSnapshot" | "snapshot" => ReportType::Snapshot.report_type_str().to_string(),
+            "RESC" | "estimates" => ReportType::Estimates.report_type_str().to_string(),
+            "CalendarReport" | "calendar" => ReportType::Calendar.report_type_str().to_string(),
+            other => other.to_string(),
         };
         // Its own name, which the venue echoes on the answer. The name was
         // worked out here and then not sent: every request went out under one
@@ -3611,7 +3608,7 @@ fn build_tbt_query(
         self.next_hmds_query_id += 1;
         let req = crate::control::fundamental::FundamentalRequest {
             con_id,
-            report_type: rt,
+            report_type,
             query_id: query_id.clone(),
         };
         let xml = crate::control::fundamental::build_fundamental_request_xml(&req);

@@ -501,6 +501,33 @@ fn query_error_releases_news_article_and_fundamental_queries_under_their_own_cod
     }
 }
 
+/// A report type the registry does not name is not refused locally: a gateway
+/// forwards it as stated — its registry carries every other name without
+/// erroring — and the venue's own failure of it is relayed under the
+/// fundamentals code. Refused here, the caller was told words and a number a
+/// gateway has neither of, and the venue was never asked.
+#[test]
+fn an_unknown_fundamental_report_type_is_forwarded_as_stated() {
+    use std::io::Read;
+    // The registry's own names still canonicalise to what the venue knows
+    // them by; every other name is carried as stated.
+    for (stated, on_the_wire) in [("ReportsFinSummary", "ReportsFinSummary"), ("ReportSnapshot", "snapshot")] {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let (conn, mut peer) = Connection::for_test();
+        let mut conn = Some(conn);
+
+        hmds.send_fundamental_data_request(3, 265598, stated, &shared, &mut conn, &mut hb);
+
+        assert!(shared.reference.drain_historical_errors().is_empty(), "{stated}: nothing is refused locally");
+        assert_eq!(hmds.pending_fundamental.len(), 1, "{stated}: the query is held for its answer");
+        let mut sent = [0u8; 4096];
+        let n = peer.read(&mut sent).unwrap();
+        let sent = String::from_utf8_lossy(&sent[..n]);
+        assert!(sent.contains(&format!("<reportType>{on_the_wire}</reportType>")), "{stated}: {sent}");
+    }
+}
 
 /// A second head timestamp under a live number is refused in the wrapper a
 /// gateway wraps it in, and the first keeps answering: held as a second
