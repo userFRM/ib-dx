@@ -1,4 +1,4 @@
-"""A request number already watching a contract is refused, under 102.
+"""A request number already watching a contract is refused, under 322.
 
 The number a caller gives a market data request is the only thing the ticks
 come back under. Given a second contract, the two records that answer "who is
@@ -7,8 +7,9 @@ second contract took the request, the first stayed in the one the delivery loop
 reads, and the caller was handed both contracts' ticks under one number with
 nothing to tell them apart.
 
-Refused instead, on the error callback, under the number that names it — which
-is what a program branches on.
+Refused instead, on the error callback, as a gateway refuses it: under the
+number a request it could not carry out is answered with, in the wire text it
+states one with — the number is what a program branches on.
 """
 
 import ibkr_dx
@@ -42,6 +43,6 @@ def test_a_second_contract_under_a_live_number_is_refused():
     c.reqMktData(5, contract(320227571, "QQQ"), "", False, False, [])
 
     c.poll()
-    assert [(r, code) for r, code, _ in w.seen] == [(5, 102)], (
-        f"the number is already watching something: {w.seen}"
-    )
+    assert w.seen == [
+        (5, 322, "Error processing request:-'' : cause - Duplicate ticker id")
+    ], f"the number is already watching something: {w.seen}"

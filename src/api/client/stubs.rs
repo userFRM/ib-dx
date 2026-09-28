@@ -852,7 +852,7 @@ mod expiry_tests {
     #[test]
     fn option_calculations_report_the_duplicate_watch_refusal() {
         use crate::api::client::tests::{engine_refused, settled, test_client};
-        use crate::error_codes::DUPLICATE_TICKER_ID;
+        use crate::error_codes::REQUEST_NOT_PROCESSED;
 
         for wants_volatility in [true, false] {
             let (client, rx, shared) = test_client();
@@ -863,7 +863,7 @@ mod expiry_tests {
             client.try_req_mkt_data(7, &other, "", false, false).unwrap();
             let refused = engine_refused(&rx, &shared);
             assert!(
-                matches!(refused.as_slice(), [(7, code, _)] if *code == i64::from(DUPLICATE_TICKER_ID)),
+                matches!(refused.as_slice(), [(7, code, _)] if *code == i64::from(REQUEST_NOT_PROCESSED)),
                 "{refused:?}",
             );
 

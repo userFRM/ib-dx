@@ -4432,7 +4432,7 @@ w.error = lambda *a: errors.append(a)
             // The watch refused under the caller's number, and the question
             // with it: nothing is watching a model for it.
             let codes: Vec<i32> = py.eval(c"[e[2] for e in errors]", Some(&g), None).unwrap().extract().unwrap();
-            assert_eq!(codes, [crate::error_codes::DUPLICATE_TICKER_ID], "{codes:?}");
+            assert_eq!(codes, [crate::error_codes::REQUEST_NOT_PROCESSED], "{codes:?}");
             assert!(
                 (client.get().shared_state().unwrap().market.kept_calculation_count() == 0),
                 "a refused calculation was kept against a watch it never opened",
@@ -4495,7 +4495,7 @@ w.error = error
                     py.run(c"w.error = lambda *args: errors.append(args)", Some(&g), None).unwrap();
                     client.call_method0(py, "poll").unwrap();
                     let codes: Vec<i32> = py.eval(c"[e[2] for e in errors]", Some(&g), None).unwrap().extract().unwrap();
-                    assert_eq!(codes, [crate::error_codes::DUPLICATE_TICKER_ID], "said once: {codes:?}");
+                    assert_eq!(codes, [crate::error_codes::REQUEST_NOT_PROCESSED], "said once: {codes:?}");
                     assert!(shared.reference.drain_historical_errors_for_dispatch(|_| false).is_empty(),
                         "the interrupt must not queue another refusal");
                     assert!((client.get().shared_state().unwrap().market.kept_calculation_count() == 0));

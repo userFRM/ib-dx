@@ -1697,7 +1697,11 @@ fn a_duplicate_quote_number_cannot_open_a_second_lookup() {
         hl.poll_once();
         let refused = shared.drain_refused();
         assert_eq!(refused.len(), 1, "the second request is refused at once");
-        assert_eq!((refused[0].0, refused[0].1), (17, 102));
+        assert_eq!(
+            refused[0],
+            (17, 322, "Error processing request:-'' : cause - Duplicate ticker id".to_string()),
+            "the number is already spoken for, refused as a gateway refuses it",
+        );
         assert_eq!(hl.ccp.pending_named.len(), usize::from(!first_is_named));
         shared.admit(&tx, ControlCommand::CancelMktData { req_id: 17 }).unwrap();
         hl.poll_once();

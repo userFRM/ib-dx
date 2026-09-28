@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 
 use crate::bridge::{MarketDataTaken, Record};
-use crate::error_codes::{DUPLICATE_TICKER_ID, NO_SUCH_SUBSCRIPTION, Refusal};
+use crate::error_codes::{NO_SUCH_SUBSCRIPTION, REQUEST_NOT_PROCESSED, Refusal};
 use crate::types::model::ErrorOrigin;
 use crate::types::{ContractRef, ControlCommand, InstrumentId};
 
@@ -96,8 +96,8 @@ impl HotLoop {
             matches!(held, ControlCommand::Subscribe { req_id: waiting, .. } if *waiting == req_id)
         }) {
             return self.refuse_md(req_id, Refusal::stated(
-                DUPLICATE_TICKER_ID,
-                format!("request {req_id} is already waiting for market data: withdraw it before asking again"),
+                REQUEST_NOT_PROCESSED,
+                "Duplicate ticker id",
             ));
         }
         // One request per number. Taken twice, the two contracts' quotes were
@@ -117,13 +117,7 @@ impl HotLoop {
             }
             return self.refuse_md(
                 req_id,
-                Refusal::stated(
-                    DUPLICATE_TICKER_ID,
-                    format!(
-                        "request {req_id} is already watching a contract: withdraw it before \
-                     asking for another under the same number",
-                    ),
-                ),
+                Refusal::stated(REQUEST_NOT_PROCESSED, "Duplicate ticker id"),
             );
         }
         // One scan of a contract at a time. Its series is asked once per slot

@@ -9871,8 +9871,9 @@ fn a_request_already_watching_a_contract_is_not_given_another() {
     let heard = settled(&client, &rx);
 
     assert!(
-        heard.iter().any(|e| e.starts_with("error:5:102:")),
-        "the number is already watching something under 102: {heard:?}",
+        heard.iter().any(|e| e
+            == "error:5:322:Error processing request:-'' : cause - Duplicate ticker id"),
+        "the number is already watching something, refused as a gateway refuses it: {heard:?}",
     );
     assert_eq!(
         client.core.watching(5), Some(slot),
