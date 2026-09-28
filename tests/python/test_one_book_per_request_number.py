@@ -16,7 +16,7 @@ class Errors(ibkr_dx.EWrapper):
         self.seen = []
 
     def error(self, req_id, error_time, code, msg, advanced_order_reject_json=""):
-        self.seen.append((req_id, code))
+        self.seen.append((req_id, code, msg))
 
 
 def contract(con_id, symbol):
@@ -37,7 +37,9 @@ def test_withdrawing_a_book_that_is_not_held_says_so():
     c.cancelMktDepth(7, False)
 
     c.poll()
-    assert w.seen == [(7, 310)], f"nothing is held under that number: {w.seen}"
+    assert w.seen == [(7, 310, "no book is held under request 7")], (
+        f"nothing is held under that number: {w.seen}"
+    )
 
 
 def test_a_second_book_under_a_live_number_is_refused():
@@ -51,7 +53,9 @@ def test_a_second_book_under_a_live_number_is_refused():
     c.reqMktDepth(7, contract(320227571, "QQQ"), 5, False, [])
 
     c.poll()
-    assert w.seen == [(7, 102)], f"the number already holds a book: {w.seen}"
+    assert w.seen == [
+        (7, 322, "Error processing request:-'' : cause - Duplicate ticker id")
+    ], f"the number already holds a book: {w.seen}"
 
     # Withdrawn, the number is the caller's again.
     w.seen.clear()

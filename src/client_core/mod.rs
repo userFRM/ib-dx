@@ -23,7 +23,7 @@ pub use crate::types::order_status::{is_open_or_reactivatable, is_open_status, o
 use std::collections::{HashMap, HashSet};
 use crate::error_codes::{
     CHANGE_CANNOT_CHANGE_TYPE, COMBINATION_LEG_INVALID, COMBINATION_NEEDS_LEGS, COMBO_AND_LEG_PRICES,
-    CONDITION_CONTRACT_INCOMPLETE, DISCRETIONARY_AMOUNT_INVALID, DUPLICATE_TICKER_ID, GOOD_TILL_DATE_INVALID,
+    CONDITION_CONTRACT_INCOMPLETE, DISCRETIONARY_AMOUNT_INVALID, GOOD_TILL_DATE_INVALID,
     E_TRADE_ONLY_DROPPED, E_TRADE_ONLY_WITHDRAWN, FIRM_QUOTE_ONLY_DROPPED, FIRM_QUOTE_ONLY_WITHDRAWN,
     NBBO_PRICE_CAP_DROPPED, NBBO_PRICE_CAP_WITHDRAWN,
     MISC_OPTION_KEY_INVALID, MISC_OPTION_VALUE_INVALID, NO_SUCH_BOOK, OCA_GROUP_REVISION,
@@ -2624,13 +2624,7 @@ impl ClientCore {
     pub fn hold_the_book(&self, req_id: i64, shared: &SharedState) -> Result<(), Refusal> {
         self.forget_books_let_go(shared);
         if !self.depth_reqs.lock().unwrap().insert(req_id) {
-            return Err(Refusal::stated(
-                DUPLICATE_TICKER_ID,
-                format!(
-                    "request {req_id} is already holding a book: withdraw it before \
-                     asking for another under the same number",
-                ),
-            ));
+            return Err(Refusal::stated(REQUEST_NOT_PROCESSED, "Duplicate ticker id"));
         }
         Ok(())
     }

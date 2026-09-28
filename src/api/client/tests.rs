@@ -4931,8 +4931,11 @@ fn a_request_number_holds_one_book_and_says_when_it_holds_none() {
     let elsewhere = Contract { symbol: "QQQ".into(), con_id: 320227571, ..spy() };
     let refused = crate::api::client::tests::reported(&client, || client.req_mkt_depth(7, &elsewhere, 5, false));
     assert!(
-        refused.as_ref().is_err_and(|why| why.code == 102),
-        "the number already holds a book: {refused:?}",
+        refused.as_ref().is_err_and(|why| {
+            why.code == 322
+                && why.message == "Error processing request:-'' : cause - Duplicate ticker id"
+        }),
+        "the number already holds a book, refused as a gateway refuses it: {refused:?}",
     );
     assert!(rx.try_recv().is_err(), "and the second contract was not asked for");
 
