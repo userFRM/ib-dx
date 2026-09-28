@@ -181,11 +181,17 @@ class AccountSummaryTags:
     )
 
 
-def floatMaxString(value):
-    """A float written for a person, and nothing where nobody set one."""
-    if value is None or value == UNSET_DOUBLE:
+def floatMaxString(val: float):
+    """A float written for a person, and nothing where nobody set one.
+
+    The reference's own expression (ibapi/utils.py:185): the eight-place
+    format, so a binary float's exact tail is gone.
+    """
+    if val is None:
         return ""
-    return str(value)
+    return (
+        f"{val:.8f}".rstrip("0").rstrip(".").rstrip(",") if val != UNSET_DOUBLE else ""
+    )
 
 
 def intMaxString(value):
@@ -202,11 +208,14 @@ def longMaxString(value):
     return str(value)
 
 
-def decimalMaxString(value):
-    """A quantity written for a person, and nothing where nobody set one."""
-    if value is None or value == UNSET_DECIMAL:
-        return ""
-    return str(value)
+def decimalMaxString(val: Decimal):
+    """A quantity written for a person, and nothing where nobody set one.
+
+    The reference's own expression (ibapi/utils.py:205): a float is taken
+    through its string, and the plain format, so no exponent survives.
+    """
+    val = Decimal(str(val)) if type(val) is float else Decimal(val)
+    return f"{val:f}" if val != UNSET_DECIMAL else ""
 
 class Object:
     """The base the reference client's plain objects are written on.

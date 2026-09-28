@@ -12,6 +12,8 @@ accepted, and these are what a caller reaches for when they have no reason to
 write their own.
 """
 
+from decimal import Decimal
+
 import ibkr_dx
 
 
@@ -105,6 +107,15 @@ def test_a_figure_is_written_for_a_person_and_an_unset_one_is_not():
     assert ibkr_dx.floatMaxString(ibkr_dx.UNSET_DOUBLE) == ""
     assert ibkr_dx.longMaxString(ibkr_dx.UNSET_LONG) == ""
     assert ibkr_dx.decimalMaxString(ibkr_dx.UNSET_DECIMAL) == ""
+    # The reference's own expressions, not a plain `str()`: a float is written
+    # through the eight-place format, so a binary float's exact tail is gone,
+    # and a Decimal through the plain format, so the exponent is gone.
+    assert ibkr_dx.floatMaxString(0.1 + 0.2) == "0.3"
+    assert ibkr_dx.floatMaxString(100.0) == "100"
+    assert ibkr_dx.decimalMaxString(Decimal("1E+2")) == "100"
+    # A float goes through its string first: taken directly, 0.1 would carry
+    # the binary float's exact tail.
+    assert ibkr_dx.decimalMaxString(0.1) == "0.1"
 
 
 def test_the_account_figures_are_named():
