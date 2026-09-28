@@ -1282,8 +1282,13 @@ impl Decimal {
         product
     }
 
-    /// The quotient to `places`, rounded half to even.
+    /// The quotient to `places`, rounded half to even. A divisor that rounds
+    /// to nought — a price finer than the places it is read to — converts no
+    /// amount, and the quotient is nought.
     fn over(&self, divisor: &Decimal, places: u32) -> Decimal {
+        if divisor.mantissa == 0 {
+            return Decimal { mantissa: 0, scale: places };
+        }
         let numerator = self.mantissa * 10_i128.pow(divisor.scale + places);
         let denominator = divisor.mantissa * 10_i128.pow(self.scale);
         let (quotient, remainder) = (numerator / denominator, numerator % denominator);

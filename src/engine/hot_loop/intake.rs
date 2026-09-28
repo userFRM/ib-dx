@@ -2211,8 +2211,9 @@ mod tests {
     /// quantity alone. The size a gateway works out for an amount is the
     /// order's size — at the market's price, the order's own or the preset's
     /// margin — and is stated on tag 38 only where the venue does not work
-    /// it out; a size the caller states on a pair passes through. A
-    /// definition not held is asked for first.
+    /// it out; a size the caller states on a pair passes through. A price
+    /// finer than the places it is read to converts no amount, and the size
+    /// worked out is nought. A definition not held is asked for first.
     #[test]
     fn a_cash_order_is_checked_and_sent_as_a_gateway_sends_it() {
         #[derive(Clone)]
@@ -2347,6 +2348,14 @@ mod tests {
                 what: "a tie at an odd place rounds half to even up",
                 features: &[], cash: 19.76, limit: 20.0, finest: Some(0.01),
                 size: Some("1.24"), held_at: Some(1.24),
+                ..share.clone()
+            },
+            Row {
+                what: "a share bought at a limit finer than eight places show",
+                limit: 1e-9,
+                finest: Some(0.00000001),
+                size_places: Some(8),
+                held_at: Some(0.0),
                 ..share.clone()
             },
             Row {
