@@ -257,9 +257,11 @@ impl EClient {
         // held against a request that was then refused.
         let wire = wire_req_id(req_id)?;
         // What a gateway refuses before it looks the contract up.
+        let shared = self.shared_state()?;
         if let Err(why) = crate::client_core::ClientCore::validate_depth_request(
             contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type,
             num_rows, &contract.last_trade_date_or_contract_month, &contract.lookup_filters(),
+            crate::client_core::ClientCore::zero_strike_enabled(&shared),
         ) {
             return self.report_refusal(py, req_id, why);
         }
@@ -273,7 +275,6 @@ impl EClient {
         // disconnects takes this same lock on its way out — held across the
         // call, the two are one thread waiting on a lock it is already holding,
         // with the interpreter stopped behind it.
-        let shared = self.shared_state()?;
         if let Some(why) = shared.market.market_data_over() {
             return self.report_refusal(
                 py, req_id,
@@ -359,11 +360,13 @@ impl EClient {
         real_time_bars_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        let shared = self.shared_state()?;
         // The base description refusals, which a gateway runs on this request
         // kind too — without the field checks: a live bar request goes by the
         // contract as described or by id, and no option field is read.
         if let Err(why) = crate::client_core::ClientCore::validate_contract_description(
             contract.con_id, &contract.symbol, &contract.sec_type, &contract.lookup_filters(), false,
+            crate::client_core::ClientCore::zero_strike_enabled(&shared),
         ) {
             return self.report_refusal(py, req_id, why);
         }

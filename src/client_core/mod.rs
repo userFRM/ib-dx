@@ -2417,7 +2417,9 @@ impl ClientCore {
         if spread_scan.is_none() && calculation.is_none()
             && (Self::identifier_unstated(con_id) || Self::resolve_sec_type(sec_type) == Some("BAG"))
         {
-            Self::validate_contract_description(con_id, symbol, sec_type, filters, true)?;
+            Self::validate_contract_description(
+                con_id, symbol, sec_type, filters, true, Self::zero_strike_enabled(shared),
+            )?;
         }
         Self::validate_contract_expiry(&filters.last_trade_date_or_contract_month)?;
         // A combination stating no legs describes nothing, and a gateway
@@ -2725,6 +2727,13 @@ impl ClientCore {
         con_id == 0 || con_id == i64::from(i32::MAX)
     }
 
+    /// The session's zero-strike capability, as the venue states it at
+    /// logon: where it is on, a zero strike counts as stated in the
+    /// option-fields check.
+    pub(crate) fn zero_strike_enabled(shared: &SharedState) -> bool {
+        shared.reference.enables("ZEROSTRKOPT")
+    }
+
     /// What a gateway refuses in a contract description before it looks
     /// anything up: a source type no identifier kind answers to, a contract
     /// naming no identifier at all — a stated identifier counts only where a
@@ -2739,13 +2748,17 @@ impl ClientCore {
     /// counts as no id at all. The field checks run only where
     /// `describe` is set, and only on a contract described rather than given
     /// by id with no local symbol stated — a local symbol is itself the
-    /// description the fields would spell out.
+    /// description the fields would spell out. A zero strike reads as
+    /// unstated — the wire carries the unset marker and a zero as the same
+    /// zero — unless `zero_strike` says the session enabled the capability
+    /// that counts a zero as stated.
     pub fn validate_contract_description(
         con_id: i64,
         symbol: &str,
         sec_type: &str,
         filters: &crate::types::SecDefFilters,
         describe: bool,
+        zero_strike: bool,
     ) -> Result<(), Refusal> {
         let resolved = Self::resolve_sec_type(sec_type);
         let unstated_id = Self::identifier_unstated(con_id);
@@ -2797,10 +2810,14 @@ impl ClientCore {
             if option_like {
                 // The right is read as the wire reads it: the first character,
                 // exactly — anything but C or P is an unset right. The strike
-                // is read as the wire writes it: empty only for the unset
-                // marker, a zero strike is stated.
+                // is read as a gateway reads it off the wire, which carries
+                // the unset marker and a zero as the same zero: unstated,
+                // unless the session's zero-strike capability counts a zero
+                // as stated.
                 let right_set = matches!(filters.right.chars().next(), Some('C') | Some('P'));
-                if expiry_missing || filters.strike == f64::MAX || !right_set {
+                let strike_unstated = !zero_strike
+                    && (filters.strike == 0.0 || filters.strike == f64::MAX);
+                if expiry_missing || strike_unstated || !right_set {
                     return Err(Refusal::validation(
                         "When the local symbol field is empty, please fill the following fields (right, strike, expiry)",
                     ));
@@ -2853,12 +2870,14 @@ impl ClientCore {
     /// futures field checks run on it too.
     pub fn validate_depth_request(
         con_id: i64, symbol: &str, exchange: &str, sec_type: &str, num_rows: i32,
-        expiry: &str, filters: &crate::types::SecDefFilters,
+        expiry: &str, filters: &crate::types::SecDefFilters, zero_strike: bool,
     ) -> Result<(), Refusal> {
         if exchange.trim().is_empty() {
             return Err(Refusal::validation("Please enter exchange."));
         }
-        Self::validate_contract_description(con_id, symbol, sec_type, filters, true)?;
+        Self::validate_contract_description(
+            con_id, symbol, sec_type, filters, true, zero_strike,
+        )?;
         Self::validate_contract_expiry(expiry)?;
         if sec_type.trim().eq_ignore_ascii_case("BAG") {
             return Err(Refusal::validation("Market depth does not support combos."));
@@ -3177,6 +3196,7 @@ impl ClientCore {
         // the contract as described or by id, and no option field is read.
         Self::validate_contract_description(
             contract.con_id, &contract.symbol, &contract.sec_type, &filters, false,
+            Self::zero_strike_enabled(shared),
         )?;
         shared.admit(control_tx, ControlCommand::SubscribeTbt {
             contract,

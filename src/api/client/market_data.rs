@@ -394,7 +394,7 @@ impl EClient {
             if self.session_over() {
                 return Err(Refusal::not_connected("Not connected"));
             }
-            crate::client_core::ClientCore::validate_depth_request(contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type, num_rows, &contract.last_trade_date_or_contract_month, &contract.lookup_filters())?;
+            crate::client_core::ClientCore::validate_depth_request(contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type, num_rows, &contract.last_trade_date_or_contract_month, &contract.lookup_filters(), crate::client_core::ClientCore::zero_strike_enabled(&self.shared))?;
             // A book rides the quote feed, so a feed the engine has given up on
             // serves none. Accepted, the request took a book slot and reached a
             // sender with no connection to write it to, which is silent — and a
@@ -471,6 +471,7 @@ impl EClient {
             crate::client_core::ClientCore::validate_contract_description(
                 contract.con_id, &contract.symbol, &contract.sec_type,
                 &contract.lookup_filters(), false,
+                crate::client_core::ClientCore::zero_strike_enabled(&self.shared),
             )?;
             crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
             // The live series are a gateway's own table, matched exactly:

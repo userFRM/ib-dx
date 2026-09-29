@@ -12652,6 +12652,14 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
         // An identifier accompanied by its source type names the contract.
         (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "US0378331005".into(), sec_id_type: "CUSIP".into(), ..base() },
          None, &[]),
+        // (g) a zero strike reads as unstated under the default
+        // capabilities — the wire carries it as the zero a gateway reads as
+        // the unset it writes — and the description is refused unless the
+        // session enabled the zero-strike capability, as the serving side
+        // below shows.
+        (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 0.0, right: "C".into(), ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
         // Described in full, or by local symbol, every surface serves it.
         (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, right: "C".into(), ..base() },
          None, &[]),
@@ -12678,6 +12686,26 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
             }
         }
     }
+}
+
+/// A zero strike counts as stated on a session that enabled the
+/// zero-strike capability: the same description the default refuses is
+/// served on both surfaces that read the option fields.
+#[test]
+fn a_zero_strike_option_is_served_where_the_session_enables_the_capability() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_enabled_features(vec!["ZEROSTRKOPT".into()]);
+    let contract = Contract {
+        con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(), exchange: "SMART".into(),
+        last_trade_date_or_contract_month: "20261218".into(), strike: 0.0, right: "C".into(),
+        ..spy()
+    };
+    reported(&client, || client.req_mkt_data(71, &contract, "", false, false, &[]))
+        .unwrap_or_else(|why| panic!("market data refused: {why:?}"));
+    assert!(next_command(&rx).is_some(), "market data sent nothing");
+    reported(&client, || client.req_mkt_depth(72, &contract, 5, false))
+        .unwrap_or_else(|why| panic!("depth refused: {why:?}"));
+    assert!(next_command(&rx).is_some(), "depth sent nothing");
 }
 
 #[test]

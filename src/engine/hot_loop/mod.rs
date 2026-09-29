@@ -1414,6 +1414,7 @@ impl HotLoop {
                 if let Err(why) = crate::client_core::ClientCore::validate_depth_request(
                     *con_id, symbol, exchange, sec_type, *num_rows,
                     &filters.last_trade_date_or_contract_month, filters,
+                    crate::client_core::ClientCore::zero_strike_enabled(&self.shared),
                 ) {
                     self.shared.reference.push_historical_error(*req_id, why.code, why.message);
                     continue;
@@ -9330,6 +9331,56 @@ mod tests {
             );
         }
         assert!(hl.farm.depth_subs.is_empty());
+        assert!(farm::tests::drain_inner(&mut peer).is_empty(), "nothing asked of the venue");
+    }
+
+    /// A book stating a zero strike is refused on the control channel as on
+    /// the surfaces under the default capabilities, and held for the lookup
+    /// that names it on a session that enabled the zero-strike capability.
+    #[test]
+    fn a_zero_strike_book_is_refused_on_the_control_channel_unless_the_session_enables_it() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (conn, peer) = crate::protocol::connection::Connection::for_test();
+        let mut peer = crate::protocol::connection::Connection::new_raw(peer).unwrap();
+        hl.farm_conn = Some(conn);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        let ask = |req_id| ControlCommand::SubscribeDepth {
+            req_id,
+            num_rows: 5,
+            is_smart_depth: false,
+            contract: crate::types::ContractRef {
+                con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(), exchange: "SMART".into(),
+                ..Default::default()
+            },
+            filters: crate::types::SecDefFilters {
+                last_trade_date_or_contract_month: "20261218".into(),
+                strike: 0.0,
+                right: "C".into(),
+                ..Default::default()
+            },
+        };
+        tx.send(ask(9)).unwrap();
+        hl.poll_control_commands();
+        assert_eq!(
+            shared.reference.drain_historical_errors(),
+            [(
+                9,
+                crate::error_codes::Refusal::VALIDATION,
+                "Error validating request:-'' : cause - When the local symbol field is empty, please fill the following fields (right, strike, expiry)"
+                    .to_string(),
+            )],
+        );
+        shared.reference.set_enabled_features(vec!["ZEROSTRKOPT".into()]);
+        tx.send(ask(10)).unwrap();
+        hl.poll_control_commands();
+        assert!(
+            shared.reference.drain_historical_errors().is_empty(),
+            "the capability serves it",
+        );
+        assert_eq!(hl.ccp.pending_named.len(), 1, "held for the lookup that names it");
+        assert!(hl.farm.depth_subs.is_empty(), "nothing subscribed before it is named");
         assert!(farm::tests::drain_inner(&mut peer).is_empty(), "nothing asked of the venue");
     }
 

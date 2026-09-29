@@ -3246,6 +3246,15 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                     exchange: "SMART".into(), strike: 5.0, right: "C".into(),
                     ..Default::default()
                 }, "When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+                // A zero strike reads as unstated under the default
+                // capabilities, and is refused as a strike not stated.
+                ("req_mkt_depth", Contract {
+                    con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(),
+                    exchange: "SMART".into(),
+                    last_trade_date_or_contract_month: "20261218".into(),
+                    strike: 0.0, right: "C".into(),
+                    ..Default::default()
+                }, "When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
                 ("req_real_time_bars", Contract {
                     con_id: 0, sec_type: "STK".into(), exchange: "SMART".into(),
                     ..Default::default()
@@ -3285,6 +3294,22 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
             assert!(
                 matches!(rx.try_recv(), Ok(ControlCommand::SubscribeRealTimeBar { .. })),
                 "a live bar request carries no option field checks",
+            );
+            // A zero strike counts as stated on a session that enabled the
+            // zero-strike capability: the same book request the default
+            // refuses is served.
+            _shared.reference.set_enabled_features(vec!["ZEROSTRKOPT".into()]);
+            let zero = Py::new(py, Contract {
+                con_id: 0, symbol: "AAPL".into(), sec_type: "OPT".into(),
+                exchange: "SMART".into(),
+                last_trade_date_or_contract_month: "20261218".into(),
+                strike: 0.0, right: "C".into(),
+                ..Default::default()
+            }).unwrap();
+            client.call_method1(py, "req_mkt_depth", (3i64, &zero, 5, false)).unwrap();
+            assert!(
+                matches!(rx.try_recv(), Ok(ControlCommand::SubscribeDepth { .. })),
+                "the capability serves the same book request",
             );
         });
     }
