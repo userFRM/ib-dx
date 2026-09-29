@@ -6,6 +6,9 @@ language = "en"
 src = "src"
 
 [output.html]
+# The project-pages path the docs workflow deploys to. Without it the 404 page
+# served for any missing URL links home to `/`, off the book.
+site-url = "/ibkr-dx/"
 default-theme = "light"
 preferred-dark-theme = "coal"
 git-repository-url = "https://github.com/userFRM/ibkr-dx"
