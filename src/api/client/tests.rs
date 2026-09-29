@@ -12619,6 +12619,16 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
         (Contract { symbol: "EUR".into(), sec_type: "FWD".into(), ..base() },
          Some("Please enter a local symbol or an expiry"),
          &["market data", "depth"]),
+        // (e) the maximum 32-bit integer is the unset marker the reference
+        // client carries: a gateway reads it as unstated, exactly like 0, in
+        // every description check that reads the identifier.
+        (Contract { con_id: i64::from(i32::MAX), symbol: String::new(), local_symbol: String::new(), sec_id: String::new(), ..base() },
+         Some("The symbol or the local-symbol or the security id must be entered"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // The field checks that follow an unstated identifier apply to it too.
+        (Contract { con_id: i64::from(i32::MAX), symbol: "AAPL".into(), sec_type: "OPT".into(), strike: 5.0, right: "C".into(), ..base() },
+         Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
+         &["market data", "depth"]),
         // Described in full, or by local symbol, every surface serves it.
         (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, right: "C".into(), ..base() },
          None, &[]),

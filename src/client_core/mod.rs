@@ -2415,7 +2415,7 @@ impl ClientCore {
         // and an option calculation ride their own gateway request, not this
         // one, and are not read against it.
         if spread_scan.is_none() && calculation.is_none()
-            && (con_id == 0 || Self::resolve_sec_type(sec_type) == Some("BAG"))
+            && (Self::identifier_unstated(con_id) || Self::resolve_sec_type(sec_type) == Some("BAG"))
         {
             Self::validate_contract_description(con_id, symbol, sec_type, filters, true)?;
         }
@@ -2718,6 +2718,13 @@ impl ClientCore {
         DISPLAY.iter().find(|(d, _)| *d == sec_type).map(|(_, c)| *c)
     }
 
+    /// The identifier read as a gateway reads one: zero, and the maximum
+    /// 32-bit integer — the unset marker the reference client carries — both
+    /// count as unstated.
+    fn identifier_unstated(con_id: i64) -> bool {
+        con_id == 0 || con_id == i64::from(i32::MAX)
+    }
+
     /// What a gateway refuses in a contract description before it looks
     /// anything up: a contract naming no identifier at all, a name carrying a
     /// character the wire cannot take, a security type that resolves to
@@ -2726,7 +2733,9 @@ impl ClientCore {
     /// description needs.
     ///
     /// A contract given by id skips the identifier and type checks: the id
-    /// stands in for the description. The field checks run only where
+    /// stands in for the description. An identifier equal to the maximum
+    /// 32-bit integer is the unset marker the reference client carries, and
+    /// counts as no id at all. The field checks run only where
     /// `describe` is set, and only on a contract described rather than given
     /// by id with no local symbol stated — a local symbol is itself the
     /// description the fields would spell out.
@@ -2738,9 +2747,10 @@ impl ClientCore {
         describe: bool,
     ) -> Result<(), Refusal> {
         let resolved = Self::resolve_sec_type(sec_type);
+        let unstated_id = Self::identifier_unstated(con_id);
         // The news type is exempt from the identifier check, as headlines
         // name providers and no venue.
-        if con_id == 0
+        if unstated_id
             && symbol.is_empty()
             && filters.local_symbol.is_empty()
             && filters.sec_id.is_empty()
@@ -2758,10 +2768,10 @@ impl ClientCore {
                 "Symbol should contain valid non-unicode characters only",
             ));
         }
-        if con_id == 0 && resolved.is_none() && filters.sec_id.is_empty() {
+        if unstated_id && resolved.is_none() && filters.sec_id.is_empty() {
             return Err(Refusal::validation("Please enter a valid security type"));
         }
-        if describe && con_id == 0 && filters.local_symbol.is_empty() {
+        if describe && unstated_id && filters.local_symbol.is_empty() {
             let expiry_missing = filters.last_trade_date_or_contract_month.trim().is_empty();
             let option_like = matches!(resolved, Some("OPT") | Some("FOP") | Some("IOPT"));
             if option_like {
