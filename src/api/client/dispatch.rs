@@ -631,7 +631,15 @@ impl EClient {
                 }
                 for (rank, entry) in result.entries.iter().enumerate() {
                     let mut contract = Contract { con_id: entry.con_id as i64, ..Default::default() };
+                    let mut market_name = String::new();
                     if let Some(ac) = self.core.get_contract(entry.con_id as i64, &self.shared) {
+                        // The scan's answer carries no market name, so it is
+                        // read from the venue's own definition of the row's
+                        // contract — the record a gateway reads it from too
+                        // before it writes the wire row.
+                        if let Some(def) = self.shared.reference.contract_definition(entry.con_id, &ac.exchange) {
+                            market_name = def.market_name;
+                        }
                         contract.symbol = ac.symbol;
                         contract.sec_type = ac.sec_type;
                         contract.exchange = ac.exchange;
@@ -640,7 +648,7 @@ impl EClient {
                         contract.primary_exchange = ac.primary_exchange;
                         contract.trading_class = ac.trading_class;
                     }
-                    let details = ContractDetails { contract, ..Default::default() };
+                    let details = ContractDetails { contract, market_name, ..Default::default() };
                     wrapper.scanner_data(req_id as i64, rank as i32, &details, "", "", "", "");
                 }
                 wrapper.scanner_data_end(req_id as i64);

@@ -1085,10 +1085,10 @@ pub mod tests {
             self.events.push(format!("sec_def_opt_param_end:{req_id}"));
         }
         fn scanner_data(
-            &mut self, req_id: i64, rank: i32, _details: &ContractDetails,
+            &mut self, req_id: i64, rank: i32, details: &ContractDetails,
             _: &str, _: &str, _: &str, _: &str,
         ) {
-            self.events.push(format!("scanner_data:{req_id}:{rank}"));
+            self.events.push(format!("scanner_data:{req_id}:{rank}:{}", details.market_name));
         }
         fn scanner_data_end(&mut self, req_id: i64) {
             self.events.push(format!("scanner_data_end:{req_id}"));

@@ -3680,6 +3680,42 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// The details a scan's row delivers state the market's name where the
+    /// session holds the venue's definition of the row's contract, as the
+    /// reference decoder's details state the name its wire row carried.
+    #[test]
+    fn a_scans_details_state_the_market_name() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, _rx, shared, w) = wired_client(py);
+            client.get().core.cache_contract(265598, ApiContract {
+                con_id: 265598, symbol: "AAPL".into(), sec_type: "STK".into(),
+                exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
+            });
+            shared.reference.cache_contract_definition(crate::control::contracts::ContractDefinition {
+                con_id: 265598, symbol: "AAPL".into(), exchange: "SMART".into(),
+                market_name: "NMS".into(), ..Default::default()
+            });
+            shared.reference.push_scanner_data(4, crate::control::scanner::ScannerResult {
+                con_ids: vec![265598],
+                entries: vec![crate::control::scanner::ScannerEntry { con_id: 265598 }],
+                scan_time: String::new(),
+                error_text: String::new(),
+            });
+            client.borrow(py).dispatch_once(py, &shared).unwrap();
+
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            let named: Vec<String> = py
+                .eval(
+                    c"[c[3].market_name for c in w.calls if c[0] in ('scanner_data', 'scannerData')]",
+                    Some(&g), None,
+                )
+                .unwrap().extract().unwrap();
+            assert_eq!(named, ["NMS"], "the row's details state the market's name");
+        });
+    }
+
     /// A symbol match states the contract's type in the spelling a request
     /// takes, which is the one the Rust surface hands back. The wire spelling
     /// — a stock is CS there — came back to a caller whose own calls do not

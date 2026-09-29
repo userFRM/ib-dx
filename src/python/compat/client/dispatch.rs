@@ -144,12 +144,20 @@ impl EClient {
     pub(crate) fn scanned_details(
         &self, py: Python<'_>, entry: &crate::control::scanner::ScannerEntry, shared: &SharedState,
     ) -> PyResult<Py<ContractDetails>> {
-        let cd = ContractDetails::new_default(py);
+        let mut cd = ContractDetails::new_default(py);
         {
             let mut contract = cd.contract.borrow_mut(py);
             contract.con_id = entry.con_id as i64;
             // Look up cached contract for symbol info
             if let Some(ac) = self.core.get_contract(entry.con_id as i64, shared) {
+                // The scan's answer carries no market name, so it is read
+                // from the venue's own definition of the row's contract —
+                // the record a gateway reads it from too before it writes
+                // the wire row, which the reference decoder then puts into
+                // the details it hands over.
+                if let Some(def) = shared.reference.contract_definition(entry.con_id, &ac.exchange) {
+                    cd.market_name = def.market_name;
+                }
                 contract.symbol = ac.symbol;
                 contract.sec_type = ac.sec_type;
                 contract.exchange = ac.exchange;

@@ -7207,9 +7207,22 @@ fn process_msgs_dispatches_scanner_params() {
     assert!(w.events.iter().any(|e| e == "scanner_parameters"));
 }
 
+/// A row's details state the market's name where the session holds the
+/// venue's definition of the row's contract — the enrichment before a batch's
+/// release puts it there — as the reference decoder's details state the name
+/// its wire row carried. A row the session holds nothing about still states
+/// its rank and its contract's id.
 #[test]
 fn process_msgs_dispatches_scanner_data() {
     let (client, _rx, shared) = test_client();
+    client.core.cache_contract(265598, ApiContract {
+        con_id: 265598, symbol: "AAPL".into(), sec_type: "STK".into(),
+        exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
+    });
+    shared.reference.cache_contract_definition(ContractDefinition {
+        con_id: 265598, symbol: "AAPL".into(), exchange: "SMART".into(),
+        market_name: "NMS".into(), ..Default::default()
+    });
     shared.reference.push_scanner_data(3, ScannerResult {
         con_ids: vec![265598, 756733],
         entries: vec![
@@ -7221,8 +7234,8 @@ fn process_msgs_dispatches_scanner_data() {
     });
     let mut w = RecordingWrapper::default();
     client.process_msgs(&mut w);
-    assert!(w.events.iter().any(|e| e == "scanner_data:3:0"));
-    assert!(w.events.iter().any(|e| e == "scanner_data:3:1"));
+    assert!(w.events.iter().any(|e| e == "scanner_data:3:0:NMS"), "{:?}", w.events);
+    assert!(w.events.iter().any(|e| e == "scanner_data:3:1:"), "{:?}", w.events);
     assert!(w.events.iter().any(|e| e == "scanner_data_end:3"));
 }
 
