@@ -12629,6 +12629,29 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
         (Contract { con_id: i64::from(i32::MAX), symbol: "AAPL".into(), sec_type: "OPT".into(), strike: 5.0, right: "C".into(), ..base() },
          Some("When the local symbol field is empty, please fill the following fields (right, strike, expiry)"),
          &["market data", "depth"]),
+        // (f) a stated identifier counts as accompanied only where a source
+        // type is stated with it: alone, it names nothing.
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "US0378331005".into(), ..base() },
+         Some("The symbol or the local-symbol or the security id must be entered"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // The same reading in the type check: an identifier with no source
+        // type does not stand in for a type that resolves to nothing.
+        (Contract { sec_type: "XYZ".into(), sec_id: "US0378331005".into(), ..base() },
+         Some("Please enter a valid security type"),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // A source type that is not one of the identifier kinds a gateway
+        // knows is refused as stated, in its standing text — whatever else
+        // the description states.
+        (Contract { sec_id: "US0378331005".into(), sec_id_type: "FOO".into(), ..base() },
+         Some("Unknown security type : FOO "),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // The kind is matched on its exact spelling, as an enum name is.
+        (Contract { sec_id: "US0378331005".into(), sec_id_type: "cusip".into(), ..base() },
+         Some("Unknown security type : cusip "),
+         &["market data", "depth", "tick by tick", "real time bars"]),
+        // An identifier accompanied by its source type names the contract.
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "US0378331005".into(), sec_id_type: "CUSIP".into(), ..base() },
+         None, &[]),
         // Described in full, or by local symbol, every surface serves it.
         (Contract { symbol: "AAPL".into(), sec_type: "OPT".into(), last_trade_date_or_contract_month: "20261218".into(), strike: 5.0, right: "C".into(), ..base() },
          None, &[]),

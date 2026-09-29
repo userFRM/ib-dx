@@ -2726,11 +2726,12 @@ impl ClientCore {
     }
 
     /// What a gateway refuses in a contract description before it looks
-    /// anything up: a contract naming no identifier at all, a name carrying a
-    /// character the wire cannot take, a security type that resolves to
-    /// nothing, and — on the surfaces where a gateway describes the contract
-    /// it is asked for — an option or futures type missing the fields the
-    /// description needs.
+    /// anything up: a source type no identifier kind answers to, a contract
+    /// naming no identifier at all — a stated identifier counts only where a
+    /// source type accompanies it — a name carrying a character the wire
+    /// cannot take, a security type that resolves to nothing, and — on the
+    /// surfaces where a gateway describes the contract it is asked for — an
+    /// option or futures type missing the fields the description needs.
     ///
     /// A contract given by id skips the identifier and type checks: the id
     /// stands in for the description. An identifier equal to the maximum
@@ -2748,12 +2749,31 @@ impl ClientCore {
     ) -> Result<(), Refusal> {
         let resolved = Self::resolve_sec_type(sec_type);
         let unstated_id = Self::identifier_unstated(con_id);
+        // A source type stated with any spelling but one of the identifier
+        // kinds a gateway knows is refused before the description is read
+        // further, in its standing text as it states it — the kind is
+        // matched on its exact spelling, as an enum name is.
+        if !filters.sec_id_type.is_empty()
+            && !matches!(
+                filters.sec_id_type.as_str(),
+                "CUSIP" | "SEDOL" | "ISIN" | "RIC" | "FIGI" | "BB_SYMBOL"
+            )
+        {
+            return Err(Refusal::validation(format!(
+                "Unknown security type : {} ",
+                filters.sec_id_type
+            )));
+        }
+        // A stated identifier counts as accompanied only where a source type
+        // is stated with it — an unknown one is refused above, so a stated
+        // one here is known.
+        let accompanied = !filters.sec_id.is_empty() && !filters.sec_id_type.is_empty();
         // The news type is exempt from the identifier check, as headlines
         // name providers and no venue.
         if unstated_id
             && symbol.is_empty()
             && filters.local_symbol.is_empty()
-            && filters.sec_id.is_empty()
+            && !accompanied
             && resolved != Some("NEWS")
         {
             return Err(Refusal::validation(
@@ -2768,7 +2788,7 @@ impl ClientCore {
                 "Symbol should contain valid non-unicode characters only",
             ));
         }
-        if unstated_id && resolved.is_none() && filters.sec_id.is_empty() {
+        if unstated_id && resolved.is_none() && !accompanied {
             return Err(Refusal::validation("Please enter a valid security type"));
         }
         if describe && unstated_id && filters.local_symbol.is_empty() {
