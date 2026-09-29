@@ -9,8 +9,9 @@ Everything below is stated by the venue on an ordinary session. The figures are
 from one paper session and will differ with the account; what does not differ is
 that none of it is reachable through `ib_async` or the TWS API.
 
-The examples are Python. Every one of these is on the Rust `EClient` under the
-same name — see the [table at the end](#the-same-calls-in-rust).
+The examples are Python. Every one of these has a Rust `EClient` equivalent —
+fields and `Option`-wrapped returns included — see the
+[table at the end](#the-same-calls-in-rust).
 
 ## What the account may do
 
@@ -236,4 +237,4 @@ Two consequences worth stating plainly:
 | `client.closing_option_model(req_id)` | `client.closing_option_model(req_id)` |
 | `client.chain_model_parameters(req_id, series)` | `client.chain_model_parameters(req_id, series)` |
 | `client.req_ping()` | `client.req_ping()` |
-| `client.last_rtt_ms()` | `client.shared_state().last_ccp_rtt()`, a `Duration` |
+| `client.last_rtt_ms()` | `client.last_rtt()`, an `Option<Duration>` (delegating to `client.shared_state().last_ccp_rtt()`) |
