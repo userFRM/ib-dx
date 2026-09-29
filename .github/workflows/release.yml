@@ -262,7 +262,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      # Pinned by commit: this job holds contents: write, and what it uploads
+      # overwrites the distributions on the release page.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
