@@ -198,21 +198,22 @@ pub fn ib_datetime_to_unix_millis(stamped: &str) -> Option<i64> {
         return None;
     }
 
-    let days = ymd_to_days(year, month, day)?;
+    let days = ymd_to_days(year, i64::from(month), i64::from(day));
     Some((days * 86_400 + hours * 3_600 + minutes * 60 + seconds) * 1_000 + millis)
 }
 
 /// Days since the epoch for a civil date, by the same reckoning `days_to_ymd`
-/// undoes.
-fn ymd_to_days(year: i64, month: u32, day: u32) -> Option<i64> {
+/// undoes. A field past its range rolls into the next, as the plain
+/// arithmetic has always done and a gateway's lenient calendar does.
+fn ymd_to_days(year: i64, month: i64, day: i64) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;
-    let m = month as i64;
-    let d = day as i64;
+    let m = month;
+    let d = day;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some(era * 146_097 + doe - 719_468)
+    era * 146_097 + doe - 719_468
 }
 
 /// Format unix timestamp (seconds) to IB's "YYYYMMDD HH:MM:SS" format (UTC).
@@ -539,6 +540,40 @@ pub(crate) fn request_end(end_date_time: &str) -> Option<jiff::Zoned> {
     civil.to_zoned(on).ok()
 }
 
+/// The shape a gateway publishes an execution's time in, read at publish time
+/// from the setting its configuration window carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DatetimeFormat {
+    /// The date, the time and the operator's zone id beside it —
+    /// `20260925 11:46:36 Europe/Brussels`. What a gateway publishes unless
+    /// its setting says otherwise.
+    #[default]
+    OperatorTimezone,
+    /// The same shape on the instrument's exchange zone. A contract whose
+    /// zone the venue has not stated, or one no database answers to,
+    /// publishes on the operator's zone, keeping one shape family for the
+    /// setting.
+    InstrumentTimezone,
+    /// The plain UTC figure, `20260925-09:46:36`.
+    UtcFormat,
+}
+
+impl DatetimeFormat {
+    /// The setting as a gateway reads it: `operator`, `instrument` or `utc`,
+    /// however it is cased. Anything else is not a value it knows.
+    pub fn named(value: &str) -> Option<Self> {
+        if value.eq_ignore_ascii_case("operator") {
+            Some(Self::OperatorTimezone)
+        } else if value.eq_ignore_ascii_case("instrument") {
+            Some(Self::InstrumentTimezone)
+        } else if value.eq_ignore_ascii_case("utc") {
+            Some(Self::UtcFormat)
+        } else {
+            None
+        }
+    }
+}
+
 /// The time of an execution as a gateway publishes it: the venue's UTC stamp
 /// written on the clock the session's datetime-format setting names. Under
 /// its default the operator's zone, with the zone id beside it —
@@ -549,22 +584,24 @@ pub(crate) fn request_end(end_date_time: &str) -> Option<jiff::Zoned> {
 /// what a caller reads is written this way.
 ///
 /// A contract whose zone the venue has not stated, or one no database answers
-/// to, publishes on the operator's zone — a gateway falls back to its own. An
-/// operator zone no database answers to publishes on UTC and says so, rather
-/// than naming a clock the stamp was not written on.
+/// to, publishes on the operator's zone, keeping one shape family for the
+/// setting. An operator zone no database answers to publishes on UTC and says
+/// so, rather than naming a clock the stamp was not written on.
 ///
-/// A stamp that cannot be read is published as it came: what the venue said
-/// beats a guess at what it meant.
+/// A stamp the current reading refuses falls back to the legacy rendering a
+/// gateway keeps for those — the digits at fixed positions read as GMT,
+/// written on the session's clock with a double space between the date and
+/// the time — and one that leaves no digits at those positions publishes no
+/// time at all, rather than the unreadable string reaching the caller raw.
 pub fn published_execution_time(
     raw: &str,
     zone: &str,
-    format: crate::settings::DatetimeFormat,
+    format: DatetimeFormat,
     instrument_zone: Option<&str>,
 ) -> String {
-    use crate::settings::DatetimeFormat;
     let Some(at) = ib_datetime_to_unix(raw).and_then(|secs| jiff::Timestamp::from_second(secs).ok())
     else {
-        return raw.to_string();
+        return legacy_execution_time(raw, zone);
     };
     if format == DatetimeFormat::UtcFormat {
         return unix_to_ib_utc_dash(at.as_second());
@@ -577,6 +614,30 @@ pub fn published_execution_time(
     .or_else(|| clock_named(zone).map(|clock| (clock, zone.to_string())))
     .unwrap_or_else(|| (jiff::tz::TimeZone::UTC, "UTC".to_string()));
     format!("{} {name}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
+}
+
+/// The legacy rendering a gateway falls back to where its current reading of
+/// a stamp returns nothing: the digits at fixed positions — year, month, day,
+/// hour, minute, second, the separators between them whatever the venue
+/// wrote — read as GMT and written on the session's clock as a date and a
+/// time separated by a double space. A field past its range rolls into the
+/// next, as a gateway's lenient calendar rolls it. A stamp with no digits at
+/// those positions publishes no time at all: a gateway leaves the field unset
+/// rather than publishing a string nobody parses.
+fn legacy_execution_time(raw: &str, zone: &str) -> String {
+    let field = |at: std::ops::Range<usize>| raw.get(at)?.parse::<i64>().ok();
+    let (
+        Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second),
+    ) = (field(0..4), field(4..6), field(6..8), field(9..11), field(12..14), field(15..17))
+    else {
+        return String::new();
+    };
+    let at = jiff::Timestamp::from_second(
+        ymd_to_days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second,
+    );
+    let Ok(at) = at else { return String::new() };
+    let clock = clock_named(zone).unwrap_or(jiff::tz::TimeZone::UTC);
+    at.to_zoned(clock).strftime("%Y%m%d  %H:%M:%S").to_string()
 }
 
 /// The range a bar request named, as stated once its bars have all arrived.
@@ -1024,6 +1085,41 @@ mod venue_clock_tests {
         assert!(ib_datetime_to_unix_millis("20260830-14:30").is_none());
         // The same stamp naming one is read.
         assert!(ib_datetime_to_unix("20260830-14:30:00").is_some());
+    }
+
+    /// A stamp the current reading refuses falls back to the legacy rendering
+    /// a gateway keeps for those — the digits at its fixed positions read as
+    /// GMT and written on the session's clock, a date and a time separated by
+    /// a double space — rather than reaching the caller raw. One that leaves
+    /// no digits at those positions publishes no time at all: a gateway
+    /// leaves the field unset rather than publishing a string nobody parses.
+    #[test]
+    fn an_unreadable_stamp_falls_back_to_the_legacy_rendering() {
+        let published = |raw: &str| {
+            published_execution_time(raw, "Europe/Brussels", DatetimeFormat::OperatorTimezone, None)
+        };
+        // A separator the current reading does not split on: the legacy
+        // reader never looked at the separators, only at the digits.
+        assert_eq!(published("20260729T11:00:00"), "20260729  13:00:00");
+        // A field past its range rolls into the next, as a gateway's lenient
+        // calendar rolls it: the twenty-fifth hour of the twenty-ninth is
+        // 01:00 on the thirtieth in UTC, 03:00 in July Brussels.
+        assert_eq!(published("20260729-25:00:00"), "20260730  03:00:00");
+        // No digits at the positions, no time published.
+        assert_eq!(published("not-a-time"), "");
+        assert_eq!(published(""), "");
+        // A stamp the current reading accepts is untouched, single space and
+        // zone id as ever.
+        assert_eq!(published("20260729-11:00:00"), "20260729 13:00:00 Europe/Brussels");
+        // The fallback is the one a gateway keeps whatever its setting says:
+        // it fires where the current reading returned nothing, before any
+        // shape was chosen.
+        assert_eq!(
+            published_execution_time(
+                "20260729T11:00:00", "Europe/Brussels", DatetimeFormat::UtcFormat, None,
+            ),
+            "20260729  13:00:00",
+        );
     }
 }
 

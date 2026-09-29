@@ -3844,13 +3844,15 @@ fn execution_filter_time_is_a_lower_bound() {
 
     // A dash-joined bound is UTC. The fill at 11:00 UTC is at or after
     // 10:00 UTC, one the venue never timed cannot be placed either side and
-    // is kept, and what is published is written on Brussels' clock — two
-    // hours ahead of UTC in July — with the zone beside it.
+    // is kept — published with no time, as a gateway leaves the field unset
+    // rather than publishing a string nobody parses — and what is published
+    // is written on Brussels' clock, two hours ahead of UTC in July, with
+    // the zone beside it.
     let mut w = Rows::default();
     client.req_executions(1, &crate::types::model::ExecutionFilter {
         time: "20260729-10:00:00".into(), ..Default::default()
     }); client.process_msgs(&mut w);
-    assert_eq!(w.seen, vec!["20260729 13:00:00 Europe/Brussels", "not-a-time"],
+    assert_eq!(w.seen, vec!["20260729 13:00:00 Europe/Brussels", ""],
         "only executions at or after the bound, published on the session's clock");
 
     // A bound naming a zone is read on that zone: 12:00 in Brussels is
@@ -3860,7 +3862,7 @@ fn execution_filter_time_is_a_lower_bound() {
     client.req_executions(1, &crate::types::model::ExecutionFilter {
         time: "20260729 12:00:00 Europe/Brussels".into(), ..Default::default()
     }); client.process_msgs(&mut w2);
-    assert_eq!(w2.seen, vec!["20260729 13:00:00 Europe/Brussels", "not-a-time"],
+    assert_eq!(w2.seen, vec!["20260729 13:00:00 Europe/Brussels", ""],
         "a zoned bound compares instants, not digits");
 
     // A date alone is no moment a gateway reads: it refuses the request.
@@ -3949,7 +3951,7 @@ fn the_published_time_follows_the_datetime_format_setting() {
     // York — published under each spelling of the setting. The instrument's
     // zone is the one the venue stated on the contract's schedule; a contract
     // the venue stated no zone for, or one no database answers to, publishes
-    // on the operator's zone, as a gateway falls back to its own.
+    // on the operator's zone, keeping one shape family for the setting.
     for (stated, con_id, zone, want) in [
         ("operator", 42_i64, "America/New_York", "20260729 13:00:00 Europe/Brussels"),
         ("instrument", 42, "America/New_York", "20260729 07:00:00 America/New_York"),

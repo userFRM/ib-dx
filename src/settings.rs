@@ -110,38 +110,9 @@ pub enum ExecutionReportScope {
     All,
 }
 
-/// The shape a gateway publishes an execution's time in, read at publish time
-/// from the setting its configuration window carries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DatetimeFormat {
-    /// The date, the time and the operator's zone id beside it —
-    /// `20260925 11:46:36 Europe/Brussels`. What a gateway publishes unless
-    /// its setting says otherwise.
-    #[default]
-    OperatorTimezone,
-    /// The same shape on the instrument's exchange zone. A contract whose
-    /// zone the venue has not stated, or one no database answers to,
-    /// publishes on the operator's zone, as a gateway falls back to its own.
-    InstrumentTimezone,
-    /// The plain UTC figure, `20260925-09:46:36`.
-    UtcFormat,
-}
-
-impl DatetimeFormat {
-    /// The setting as a gateway reads it: `operator`, `instrument` or `utc`,
-    /// however it is cased. Anything else is not a value it knows.
-    pub fn named(value: &str) -> Option<Self> {
-        if value.eq_ignore_ascii_case("operator") {
-            Some(Self::OperatorTimezone)
-        } else if value.eq_ignore_ascii_case("instrument") {
-            Some(Self::InstrumentTimezone)
-        } else if value.eq_ignore_ascii_case("utc") {
-            Some(Self::UtcFormat)
-        } else {
-            None
-        }
-    }
-}
+// The shape lives with the rendering it chooses, in the module that writes
+// the wire's times; re-exported here because a setting names it.
+pub use crate::protocol::datetime::DatetimeFormat;
 
 /// Gateway settings that are not settings here, and what to do instead.
 ///
