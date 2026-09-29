@@ -136,7 +136,7 @@ def main() -> int:
         return 0
 
     run = subprocess.run(
-        ["cargo", "run", "--quiet", "--bin", "capture_conformance"],
+        ["cargo", "run", "--quiet", "--features", "dev-tools", "--bin", "capture_conformance"],
         cwd=ROOT, capture_output=True, text=True,
     )
     theirs = parse(run.stdout)
