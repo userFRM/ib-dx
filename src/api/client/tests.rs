@@ -13053,10 +13053,14 @@ fn the_series_a_type_takes_are_the_ones_a_gateway_takes() {
         );
     }
     // A series legal for some types is refused for the rest, under the list
-    // the type it was asked for does have.
+    // the type it was asked for does have. And a series a gateway answers an
+    // older number by is not thereby legal under its own: the registry keeps
+    // the two spellings as two entries, and the one under 512 is legal for
+    // no type while its older number 104 above is legal for every one.
     for (req_id, (contract, list, kind, absent)) in [
         (&cash, "456", "CASH", "456/59(IBDividends)"),
         (&index, "595", "IND", "595(Short-Term Volume X Mins)"),
+        (&spy(), "512", "STK", "512(hvolrt30"),
     ].into_iter().enumerate() {
         let req_id = 95 + req_id as i64;
         let why = reported(&client, || client.req_mkt_data(req_id, contract, list, false, false, &[]))
