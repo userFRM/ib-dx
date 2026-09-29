@@ -56,6 +56,10 @@ _SETTINGS: dict[str, tuple[str, str]] = {
         "IBKR_DX_EXECUTION_REPORTS",
         "which executions arrive when a session opens: 'today' or 'all'",
     ),
+    "datetime_format": (
+        "IBKR_DX_DATETIME_FORMAT",
+        "sendInstrumentTimezone: the shape an execution's time is published in — 'operator', 'instrument' or 'utc'",
+    ),
     "island_for_nasdaq": (
         "IBKR_DX_ISLAND_FOR_NASDAQ",
         "whether a US stock on Nasdaq is handed back under the older spelling",
@@ -73,7 +77,6 @@ _SETTINGS: dict[str, tuple[str, str]] = {
 #: names it.
 UNAVAILABLE: dict[str, str] = {
     "rejectMessagesAboveMaxRate": "nothing paces what a caller sends: a gateway paces requests at the rate its logon states (fifty a second where it states none) unless this is set; set, a request above that rate is answered with error 100 and still carried out, and the third ends the connection, unless the venue or the client asks for pacing. This client does neither; the pacing here is the subscription burst a reconnect replays, stated on ReconnectConfig",
-    "sendInstrumentTimezone": "no setting chooses the zone a timestamp is stated in: a bar is stated on the zone the venue names beside it, or as seconds since the epoch where the request asked for that; an execution is stamped as the venue stamps it",
     "LocalServerPort": "no local socket to listen on; this client is the client",
     "LocalApiPort": "no local socket to listen on; this client is the client",
     "TrustedIPs": "nothing connects to this client, so nothing needs trusting",

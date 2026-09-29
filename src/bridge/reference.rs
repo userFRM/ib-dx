@@ -1877,6 +1877,16 @@ impl ReferenceState {
         keys.get(&con_id).and_then(|key| schedules.get(key)).map(read)
     }
 
+    /// The zone the venue's market rule states for a contract — what a
+    /// gateway reads an instrument's time zone from when it publishes an
+    /// execution's time on it — where this session holds one.
+    pub(crate) fn instrument_zone(&self, con_id: i64) -> Option<String> {
+        (con_id > 0)
+            .then(|| self.contract_schedule(con_id as u32, |schedule| schedule.timezone.clone()))
+            .flatten()
+            .filter(|zone| !zone.is_empty())
+    }
+
     /// The key a contract's sessions are joined to it on, where it is known.
     pub(crate) fn schedule_key(&self, con_id: u32) -> Option<String> {
         self.contract_schedules.lock().unwrap().0.get(&con_id).cloned()

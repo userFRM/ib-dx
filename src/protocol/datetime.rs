@@ -540,22 +540,42 @@ pub(crate) fn request_end(end_date_time: &str) -> Option<jiff::Zoned> {
 }
 
 /// The time of an execution as a gateway publishes it: the venue's UTC stamp
-/// written on the session's clock, with the zone named beside it —
-/// `20260925 11:46:36 Europe/Brussels`. The record kept for a replay holds
-/// the venue's own stamp; only what a caller reads is written this way.
+/// written on the clock the session's datetime-format setting names. Under
+/// its default the operator's zone, with the zone id beside it —
+/// `20260925 11:46:36 Europe/Brussels`; under the instrument setting the
+/// exchange's zone in the same shape; under the UTC setting the plain figure
+/// `20260925-09:46:36`. A gateway reads the setting as it publishes; the
+/// record kept for a replay holds the venue's own stamp either way, and only
+/// what a caller reads is written this way.
+///
+/// A contract whose zone the venue has not stated, or one no database answers
+/// to, publishes on the operator's zone — a gateway falls back to its own. An
+/// operator zone no database answers to publishes on UTC and says so, rather
+/// than naming a clock the stamp was not written on.
 ///
 /// A stamp that cannot be read is published as it came: what the venue said
-/// beats a guess at what it meant. A zone no database answers to publishes on
-/// UTC and says so, rather than naming a clock the stamp was not written on.
-pub fn published_execution_time(raw: &str, zone: &str) -> String {
+/// beats a guess at what it meant.
+pub fn published_execution_time(
+    raw: &str,
+    zone: &str,
+    format: crate::settings::DatetimeFormat,
+    instrument_zone: Option<&str>,
+) -> String {
+    use crate::settings::DatetimeFormat;
     let Some(at) = ib_datetime_to_unix(raw).and_then(|secs| jiff::Timestamp::from_second(secs).ok())
     else {
         return raw.to_string();
     };
-    let (clock, name) = match clock_named(zone) {
-        Some(clock) => (clock, zone.to_string()),
-        None => (jiff::tz::TimeZone::UTC, "UTC".to_string()),
-    };
+    if format == DatetimeFormat::UtcFormat {
+        return unix_to_ib_utc_dash(at.as_second());
+    }
+    let (clock, name) = if format == DatetimeFormat::InstrumentTimezone {
+        instrument_zone.and_then(|named| clock_named(named).map(|clock| (clock, named.to_string())))
+    } else {
+        None
+    }
+    .or_else(|| clock_named(zone).map(|clock| (clock, zone.to_string())))
+    .unwrap_or_else(|| (jiff::tz::TimeZone::UTC, "UTC".to_string()));
     format!("{} {name}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
 }
 

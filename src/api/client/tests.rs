@@ -3908,6 +3908,86 @@ fn execution_filter_time_is_a_lower_bound() {
     );
 }
 
+/// The shape an execution's time is published in follows the session's
+/// datetime-format setting: the operator's zone with its id beside it (the
+/// default), the instrument's exchange zone in the same shape, or the plain
+/// UTC figure. A gateway reads the setting as it publishes; stating one of
+/// the other two shapes and receiving the default was the whole of #174.
+#[test]
+fn the_published_time_follows_the_datetime_format_setting() {
+    // The setting is read from the environment as a session settles, and
+    // environment changes belong to this test's process alone.
+    if std::env::var("RUST_TEST_THREADS").as_deref() != Ok("1") {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "api::client::tests::the_published_time_follows_the_datetime_format_setting",
+            ])
+            .env("RUST_TEST_THREADS", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        return;
+    }
+
+    #[derive(Default)]
+    struct Rows {
+        seen: Vec<String>,
+    }
+    impl Wrapper for Rows {
+        fn exec_details(&mut self, _r: i64, _c: &Contract, e: &crate::types::model::Execution) {
+            self.seen.push(e.time.clone());
+        }
+    }
+
+    // One venue stamp — 11:00 UTC, 13:00 in July Brussels, 07:00 in July New
+    // York — published under each spelling of the setting. The instrument's
+    // zone is the one the venue stated on the contract's schedule; a contract
+    // the venue stated no zone for, or one no database answers to, publishes
+    // on the operator's zone, as a gateway falls back to its own.
+    for (stated, con_id, zone, want) in [
+        ("operator", 42_i64, "America/New_York", "20260729 13:00:00 Europe/Brussels"),
+        ("instrument", 42, "America/New_York", "20260729 07:00:00 America/New_York"),
+        ("INSTRUMENT", 43, "", "20260729 13:00:00 Europe/Brussels"),
+        ("instrument", 44, "Mars/Olympus_Mons", "20260729 13:00:00 Europe/Brussels"),
+        ("utc", 42, "America/New_York", "20260729-11:00:00"),
+    ] {
+        unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", stated) };
+        let (client, _rx, shared) = test_client();
+        shared.set_settings(Arc::new(
+            crate::settings::GatewaySettings {
+                timezone: Some("Europe/Brussels".into()),
+                ..Default::default()
+            }
+            .resolve(),
+        ));
+        shared.reference.note_schedule_key(con_id as u32, "key");
+        shared.reference.set_contract_schedule(
+            "key",
+            crate::control::contracts::ContractSchedule {
+                timezone: zone.into(),
+                trading_hours: vec![],
+                liquid_hours: vec![],
+            },
+        );
+        client.core.push_execution(
+            crate::types::model::Contract { symbol: "AAPL".into(), con_id, ..Default::default() },
+            crate::types::model::Execution { time: "20260729-11:00:00".into(), ..Default::default() },
+            Default::default(),
+        );
+        let mut w = Rows::default();
+        client.req_executions(1, &crate::types::model::ExecutionFilter::default());
+        client.process_msgs(&mut w);
+        assert_eq!(w.seen, vec![want], "{stated} on con_id {con_id} (zone {zone:?})");
+        unsafe { std::env::remove_var("IBKR_DX_DATETIME_FORMAT") };
+    }
+}
+
 /// A window reaching back before what the session holds is answered with what
 /// it holds, and the days named ahead of the answer under 321, in the wire
 /// text a gateway states a refusal it raised itself with.

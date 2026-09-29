@@ -1047,9 +1047,19 @@ impl EClient {
         // unstated so a replay of this execution says the charge is unknown.
         let api_commission = ApiCommissionAndFeesReport::default();
 
+        let settings = shared.settings();
+        let instrument_zone = shared.reference.instrument_zone(api_contract.con_id);
         let c_py = Py::new(py, Contract::from_api(py, &api_contract)?)?.into_any();
-        let exec_py =
-            Py::new(py, Execution::from_api(&api_exec, &shared.settings().timezone))?.into_any();
+        let exec_py = Py::new(
+            py,
+            Execution::from_api(
+                &api_exec,
+                &settings.timezone,
+                settings.datetime_format,
+                instrument_zone.as_deref(),
+            ),
+        )?
+        .into_any();
         // Kept for `req_executions` to answer from, before either callback
         // about the print.
         self.core.push_execution(api_contract, api_exec, api_commission);
@@ -1322,10 +1332,19 @@ impl EClient {
                         crate::error_codes::Refusal::VALIDATION as i64, &why,
                     )?);
                 }
-                let zone = shared.settings().timezone.clone();
+                let settings = shared.settings();
                 for se in snapshot {
                     let c_py = Py::new(py, Contract::from_api(py, &se.contract)?)?.into_any();
-                    let exec_py = Py::new(py, Execution::from_api(&se.execution, &zone))?.into_any();
+                    let exec_py = Py::new(
+                        py,
+                        Execution::from_api(
+                            &se.execution,
+                            &settings.timezone,
+                            settings.datetime_format,
+                            shared.reference.instrument_zone(se.contract.con_id).as_deref(),
+                        ),
+                    )?
+                    .into_any();
                     owed!(out, py, "exec_details", (req_id, &c_py, &exec_py));
                     // Only where the venue has said what it cost.
                     if !se.commission_and_fees.exec_id.is_empty() {

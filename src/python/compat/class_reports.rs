@@ -145,14 +145,24 @@ impl Execution {
     /// caller's own label for the order and the other did not, and a replay
     /// answered with a blank where the live callback had stated it.
     ///
-    /// The time is published as a gateway publishes it, on the session's clock
-    /// with the zone beside it; the record stored for the replay keeps the
-    /// venue's own stamp.
-    pub(crate) fn from_api(e: &crate::types::model::Execution, zone: &str) -> Self {
+    /// The time is published as a gateway publishes it, on the clock the
+    /// session's datetime-format setting names; the record stored for the
+    /// replay keeps the venue's own stamp.
+    pub(crate) fn from_api(
+        e: &crate::types::model::Execution,
+        zone: &str,
+        format: crate::settings::DatetimeFormat,
+        instrument_zone: Option<&str>,
+    ) -> Self {
         Self {
             unnamed_fields: e.unnamed_fields.clone(),
             exec_id: e.exec_id.clone(),
-            time: crate::protocol::datetime::published_execution_time(&e.time, zone),
+            time: crate::protocol::datetime::published_execution_time(
+                &e.time,
+                zone,
+                format,
+                instrument_zone,
+            ),
             acct_number: e.acct_number.clone(),
             exchange: e.exchange.clone(),
             side: e.side.clone(),

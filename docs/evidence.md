@@ -21,7 +21,7 @@ Verification runs against a paper account on IBKR production servers, and the or
 | Requests | 86. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,466 offline, and 183 more that live in the suites run against a broker session |
+| Tests | 4,467 offline, and 183 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,7 +72,7 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,257 | No |
+| Rust unit and integration | 3,258 | No |
 | Rust, live | 9 | Yes |
 | Python | 1,209 | No |
 | Python, live | 123 | Yes |
@@ -102,7 +102,7 @@ ordinary wheels.
 | Surface | Status | Verification |
 | --- | :---: | --- |
 | `EClient` / `EWrapper` (TWS API shape) | ✅ Supported | `tests/ib_paper_compat`, `tests/python/test_compat_tier1..3.py` |
-| Gateway settings | ✅ Supported | 17 settings carried, 15 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
+| Gateway settings | ✅ Supported | 18 settings carried, 14 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
 | Rust/Python equivalence | ✅ Supported | 4 static gates (settings, order fields, surface, error behaviour) plus `scripts/conformance.py --compare`, which compares 10 server responses across both clients |
 
 ## Market data
@@ -278,7 +278,7 @@ read from here as a stream that did not arrive.
 
 | Gateway | This client |
 | --- | --- |
-| Configuration file and settings window | Settings on the client, read back at runtime. 15 gateway settings are not settings here, each saying why or naming what stands in for it: no window geometry, no local listening socket, no JVM heap, no message pacing (a gateway paces by default), and a bar dated on the zone the venue names beside it |
+| Configuration file and settings window | Settings on the client, read back at runtime. 14 gateway settings are not settings here, each saying why or naming what stands in for it: no window geometry, no local listening socket, no JVM heap, and no message pacing (a gateway paces by default) |
 | Local socket for client programs | The client is in-process; there is no socket to connect to, authorise, or keep running |
 | Java runtime | None |
 
@@ -366,8 +366,8 @@ Price, Close Price, Dark Ice, PctVol. Conditions: price, volume, percent change,
 and time. Brackets, one-cancels-all, and combinations with a price per leg.
 
 **Settings.** The gateway's configuration file is replaced by settings on the
-client: announced build, time zone, execution-report scope, and others — 17 in
-total, readable at runtime. Fifteen gateway settings are not settings here, and
+client: announced build, time zone, execution-report scope, and others — 18 in
+total, readable at runtime. Fourteen gateway settings are not settings here, and
 each says why or names what stands in for it (no window geometry, no local
 listening socket, no JVM heap, and no message pacing: a gateway paces requests
 at the rate its logon states (fifty a second where it states none) unless it is

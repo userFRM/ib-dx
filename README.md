@@ -892,8 +892,8 @@ factor included. Offering the saved session (`EClientConfig::resume`, or
 ## Configuration
 
 The gateway's configuration file is replaced by settings on the client:
-announced build, time zone, execution-report scope, and others — 17 in total,
-readable at runtime. Fifteen gateway settings are not settings here, and each says
+announced build, time zone, execution-report scope, and others — 18 in total,
+readable at runtime. Fourteen gateway settings are not settings here, and each says
 why or names what stands in for it (no window geometry, no local listening socket,
 no JVM heap, and no message pacing: a gateway paces requests at the rate its logon
 states (fifty a second where it states none) unless it is set to reject them
@@ -1088,7 +1088,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,257 | No |
+| Rust, unit and integration | 3,258 | No |
 | Python | 1,209 | No |
 | Rust, live | 9 | Yes |
 | Python, live | 123 | Yes |

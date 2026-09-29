@@ -35,12 +35,12 @@ def test_a_gateway_setting_with_no_counterpart_says_so_rather_than_vanishing():
 def test_only_settings_a_gateway_has_are_named():
     """A name a gateway does not carry, recorded as one of its settings, sends
     a caller migrating to look for something that was never there. A gateway's
-    pacing has one switch, and its timestamps one setting; both are named by
-    what a gateway calls them."""
+    pacing has one switch, named by what a gateway calls it; its timestamps
+    setting is a setting here, answered under _A_GATEWAY_CARRIES below."""
     for invented in ("ApiMsgsPerSlice", "ApiTimeSliceMillis", "TimestampZone"):
         assert invented not in ibkr_dx.UNAVAILABLE
     assert "rejectMessagesAboveMaxRate" in ibkr_dx.UNAVAILABLE
-    assert "sendInstrumentTimezone" in ibkr_dx.UNAVAILABLE
+    assert "sendInstrumentTimezone" not in ibkr_dx.UNAVAILABLE
 
 
 def test_a_setting_with_a_counterpart_leads_with_it():
@@ -67,6 +67,7 @@ _A_GATEWAY_CARRIES = {
     "useSsl": None,
     "UseSSL": None,
     "reconnectOnSocketErr": "reconnect_on_socket_err",
+    "sendInstrumentTimezone": "datetime_format",
     "RemoteHostOrderRouting": None,
     "RemotePortOrderRouting": None,
     "Select_account_type": None,

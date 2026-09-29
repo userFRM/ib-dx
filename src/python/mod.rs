@@ -26,7 +26,7 @@ pub mod compat;
 pub(crate) fn settings_from(
     stated: std::collections::HashMap<String, String>,
 ) -> Result<crate::settings::SessionSettings, String> {
-    use crate::settings::{ExecutionReportScope, GatewaySettings};
+    use crate::settings::{DatetimeFormat, ExecutionReportScope, GatewaySettings};
     let mut settings = GatewaySettings::default();
     let mut level = None;
     for (name, value) in stated {
@@ -73,6 +73,17 @@ pub(crate) fn settings_from(
                 } else {
                     return Err(format!("execution_reports: {value}"));
                 });
+            }
+            // The shape an execution's time is published in, under the name a
+            // gateway gives the setting beside the spelling the rest of this
+            // map uses. Read as a gateway reads it, however it is cased; a
+            // value naming none of the three is refused rather than resolved
+            // to a shape nobody stated.
+            "datetime_format" | "sendInstrumentTimezone" => {
+                settings.datetime_format = Some(
+                    DatetimeFormat::named(&value)
+                        .ok_or_else(|| format!("datetime_format: {value}"))?,
+                );
             }
             "island_for_nasdaq" => {
                 settings.island_for_nasdaq = Some(

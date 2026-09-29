@@ -783,11 +783,16 @@ impl EClient {
             );
             // Unsolicited executions carry request id -1. A market-data
             // subscription id does not identify a `reqExecutions` request.
-            // The time is published as a gateway publishes it, on the
-            // session's clock; the record stored above keeps the venue's stamp.
+            // The time is published as a gateway publishes it, on the clock
+            // the session's datetime-format setting names; the record stored
+            // above keeps the venue's stamp.
+            let settings = self.shared.settings();
             let mut published = exec.clone();
             published.time = crate::protocol::datetime::published_execution_time(
-                &exec.time, &self.shared.settings().timezone,
+                &exec.time,
+                &settings.timezone,
+                settings.datetime_format,
+                self.shared.reference.instrument_zone(c.con_id).as_deref(),
             );
             wrapper.exec_details(NO_REQUEST, &c, &published);
         }
@@ -1028,13 +1033,17 @@ impl EClient {
                     );
                     wrapper.error_from(origin, raised_now(), crate::error_codes::Refusal::VALIDATION as i64, &why, "");
                 }
-                // Published as a gateway publishes the time, on the session's
-                // clock; the record itself keeps the venue's stamp.
-                let zone = self.shared.settings().timezone.clone();
+                // Published as a gateway publishes the time, on the clock the
+                // session's datetime-format setting names; the record itself
+                // keeps the venue's stamp.
+                let settings = self.shared.settings();
                 for se in rows {
                     let mut published = se.execution.clone();
                     published.time = crate::protocol::datetime::published_execution_time(
-                        &se.execution.time, &zone,
+                        &se.execution.time,
+                        &settings.timezone,
+                        settings.datetime_format,
+                        self.shared.reference.instrument_zone(se.contract.con_id).as_deref(),
                     );
                     wrapper.exec_details(req_id, &se.contract, &published);
                     // Only where the venue has said what it cost. An execution

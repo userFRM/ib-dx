@@ -82,6 +82,10 @@ pub struct GatewaySettings {
     /// Which executions arrive when a session opens: today's, or every one
     /// the venue still holds. The gateway asks for every one.
     pub execution_reports: Option<ExecutionReportScope>,
+    /// The shape a gateway publishes an execution's time in. Its setting
+    /// states `operator`, `instrument` or `utc`; also read from
+    /// `IBKR_DX_DATETIME_FORMAT`.
+    pub datetime_format: Option<DatetimeFormat>,
     /// Whether a US stock trading on Nasdaq is handed back under the older
     /// spelling. The gateway does, so a program written against it compares
     /// against that spelling.
@@ -106,6 +110,39 @@ pub enum ExecutionReportScope {
     All,
 }
 
+/// The shape a gateway publishes an execution's time in, read at publish time
+/// from the setting its configuration window carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DatetimeFormat {
+    /// The date, the time and the operator's zone id beside it —
+    /// `20260925 11:46:36 Europe/Brussels`. What a gateway publishes unless
+    /// its setting says otherwise.
+    #[default]
+    OperatorTimezone,
+    /// The same shape on the instrument's exchange zone. A contract whose
+    /// zone the venue has not stated, or one no database answers to,
+    /// publishes on the operator's zone, as a gateway falls back to its own.
+    InstrumentTimezone,
+    /// The plain UTC figure, `20260925-09:46:36`.
+    UtcFormat,
+}
+
+impl DatetimeFormat {
+    /// The setting as a gateway reads it: `operator`, `instrument` or `utc`,
+    /// however it is cased. Anything else is not a value it knows.
+    pub fn named(value: &str) -> Option<Self> {
+        if value.eq_ignore_ascii_case("operator") {
+            Some(Self::OperatorTimezone)
+        } else if value.eq_ignore_ascii_case("instrument") {
+            Some(Self::InstrumentTimezone)
+        } else if value.eq_ignore_ascii_case("utc") {
+            Some(Self::UtcFormat)
+        } else {
+            None
+        }
+    }
+}
+
 /// Gateway settings that are not settings here, and what to do instead.
 ///
 /// Named rather than dropped: someone moving off a gateway will look for them,
@@ -114,7 +151,6 @@ pub enum ExecutionReportScope {
 /// and the reason names it.
 pub const UNAVAILABLE: &[(&str, &str)] = &[
     ("rejectMessagesAboveMaxRate", "nothing paces what a caller sends: a gateway paces requests at the rate its logon states (fifty a second where it states none) unless this is set; set, a request above that rate is answered with error 100 and still carried out, and the third ends the connection, unless the venue or the client asks for pacing. This client does neither; the pacing here is the subscription burst a reconnect replays, stated on ReconnectConfig"),
-    ("sendInstrumentTimezone", "no setting chooses the zone a timestamp is stated in: a bar is stated on the zone the venue names beside it, or as seconds since the epoch where the request asked for that; an execution is stamped as the venue stamps it"),
     ("LocalServerPort", "no local socket to listen on; this client is the client"),
     ("LocalApiPort", "no local socket to listen on; this client is the client"),
     ("TrustedIPs", "nothing connects to this client, so nothing needs trusting"),
@@ -169,6 +205,8 @@ pub struct SessionSettings {
     pub port: u16,
     /// Which executions a session asks for when it opens.
     pub execution_reports: ExecutionReportScope,
+    /// The shape this session publishes an execution's time in.
+    pub datetime_format: DatetimeFormat,
     /// Whether a US stock on Nasdaq is named by the older spelling. Takes the
     /// venue's grant as well as this setting.
     pub island_for_nasdaq: bool,
@@ -301,6 +339,24 @@ impl GatewaySettings {
                         ExecutionReportScope::All
                     }
                     _ => ExecutionReportScope::All,
+                }
+            }),
+            datetime_format: self.datetime_format.unwrap_or_else(|| {
+                // However it is cased, and said out loud when it names none
+                // of the three: a value nothing reads is a setting that was
+                // set and did nothing.
+                match std::env::var("IBKR_DX_DATETIME_FORMAT") {
+                    Ok(stated) if !stated.is_empty() => {
+                        DatetimeFormat::named(&stated).unwrap_or_else(|| {
+                            log::warn!(
+                                "IBKR_DX_DATETIME_FORMAT names neither operator, instrument \
+                                 nor utc: {stated}. This session publishes execution times on \
+                                 the operator's zone",
+                            );
+                            DatetimeFormat::OperatorTimezone
+                        })
+                    }
+                    _ => DatetimeFormat::OperatorTimezone,
                 }
             }),
             island_for_nasdaq: self.island_for_nasdaq.unwrap_or_else(|| {
@@ -443,6 +499,29 @@ mod tests {
         );
         unsafe { std::env::remove_var("IBKR_DX_EXECUTION_REPORTS") };
 
+        // The datetime-format setting reads the same way: however it is
+        // cased, and a value naming none of the three keeps the default
+        // rather than resolving to a shape nobody stated.
+        for (spelling, want) in [
+            ("operator", DatetimeFormat::OperatorTimezone),
+            ("Instrument", DatetimeFormat::InstrumentTimezone),
+            ("UTC", DatetimeFormat::UtcFormat),
+        ] {
+            unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", spelling) };
+            assert_eq!(
+                GatewaySettings::default().resolve().datetime_format,
+                want,
+                "{spelling} published on another clock",
+            );
+        }
+        unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", "sidereal") };
+        assert_eq!(
+            GatewaySettings::default().resolve().datetime_format,
+            DatetimeFormat::OperatorTimezone,
+            "a value naming none of the three keeps the default",
+        );
+        unsafe { std::env::remove_var("IBKR_DX_DATETIME_FORMAT") };
+
         for spelling in ["false", "False", "NO", "0"] {
             unsafe { std::env::set_var("IBKR_DX_ISLAND_FOR_NASDAQ", spelling) };
             assert!(
@@ -518,6 +597,7 @@ mod tests {
             log_queue: Some(4096),
             order_id_file: Some("state/order-ids.json".into()),
             execution_reports: Some(ExecutionReportScope::Today),
+            datetime_format: Some(DatetimeFormat::UtcFormat),
             island_for_nasdaq: Some(false),
             reconnect_on_socket_err: Some(false),
         };
@@ -534,6 +614,7 @@ mod tests {
         assert_eq!(resolved.market_data_host.as_deref(), Some("m"));
         assert_eq!(resolved.port, 1);
         assert_eq!(resolved.execution_reports, ExecutionReportScope::Today);
+        assert_eq!(resolved.datetime_format, DatetimeFormat::UtcFormat);
         assert!(!resolved.island_for_nasdaq);
         assert!(!resolved.reconnect_on_socket_err);
         // The three log settings are process-scoped by nature — one logger per
@@ -554,7 +635,8 @@ mod tests {
             market_data_host: _, port: _,
             log_level: _, log_dir: _, log_queue: _,
             order_id_file: _,
-            execution_reports: _, island_for_nasdaq: _, reconnect_on_socket_err: _,
+            execution_reports: _, datetime_format: _,
+            island_for_nasdaq: _, reconnect_on_socket_err: _,
         } = all;
     }
 }
