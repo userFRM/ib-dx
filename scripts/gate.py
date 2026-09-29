@@ -204,19 +204,20 @@ def new_rust_files_are_formatted():
 def generated_docs_are_current():
     """What the workflow checks after running the generators: nothing moved.
 
-    This compares the whole of `docs/`, so it cannot tell a page a generator
-    rewrote from one a person edited and has not committed. Both fail, and both
-    should: the push carries a documents tree that does not match what was
+    This compares the whole of `docs/` and `README.md`, the same paths the
+    workflow stages and diffs, so it cannot tell a page a generator rewrote
+    from one a person edited and has not committed. Both fail, and both
+    should: the push carries generated content that does not match what was
     committed either way. The message says what is known rather than guessing
     which of the two it was.
     """
-    for tree in ("docs/",):
+    for tree in ("docs/", "README.md"):
         subprocess.run(["git", "add", "-A", tree], check=False)
-    done = subprocess.run(["git", "diff", "--cached", "--quiet", "docs/"])
+    done = subprocess.run(["git", "diff", "--cached", "--quiet", "docs/", "README.md"])
     if done.returncode != 0:
-        print("\nFAILED: docs/ does not match what is committed. Either a generator "
-              "moved a page, or an edit is uncommitted. `git diff --cached docs/` "
-              "says which; commit it either way.")
+        print("\nFAILED: docs/ or README.md does not match what is committed. Either a "
+              "generator moved a page, or an edit is uncommitted. "
+              "`git diff --cached docs/ README.md` says which; commit it either way.")
     return done.returncode
 
 
