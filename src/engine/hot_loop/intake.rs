@@ -2214,7 +2214,8 @@ mod tests {
     /// margin — and is stated on tag 38 only where the venue does not work
     /// it out; a size the caller states on a pair passes through. A price
     /// finer than the places it is read to converts no amount, and the size
-    /// worked out is nought. A definition not held is asked for first.
+    /// worked out is nought; a rule stating a least size of nought rounds to
+    /// nought the same way. A definition not held is asked for first.
     #[test]
     fn a_cash_order_is_checked_and_sent_as_a_gateway_sends_it() {
         #[derive(Clone)]
@@ -2240,6 +2241,8 @@ mod tests {
             market: Option<(f64, f64, f64)>,
             /// The fund's least amount, where it states one.
             tick: Option<&'static str>,
+            /// The least size the contract states, where it states one.
+            min_size: Option<&'static str>,
             /// The margin percentage the account's preset states, where one
             /// is seeded.
             percent: Option<&'static str>,
@@ -2271,6 +2274,7 @@ mod tests {
             size_places: None,
             market: None,
             tick: None,
+            min_size: None,
             percent: None,
             model: "",
             order_types: None,
@@ -2356,6 +2360,12 @@ mod tests {
                 limit: 1e-9,
                 finest: Some(0.00000001),
                 size_places: Some(8),
+                held_at: Some(0.0),
+                ..share.clone()
+            },
+            Row {
+                what: "a rule stating a least size of nought sizes to nought",
+                min_size: Some("0"),
                 held_at: Some(0.0),
                 ..share.clone()
             },
@@ -2499,6 +2509,8 @@ mod tests {
                 market_rule_id: row.finest.map(|_| 26),
                 algo_group: "IBALGO".into(),
                 unnamed_fields: row.tick.map(|tick| (8482, tick.to_string())).into_iter().collect(),
+                min_size_stated: row.min_size.is_some(),
+                min_size_text: row.min_size.unwrap_or_default().into(),
                 ..Default::default()
             };
             if row.held {

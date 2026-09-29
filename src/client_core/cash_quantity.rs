@@ -815,13 +815,7 @@ pub(crate) fn estimate(
         return if size.mantissa > 0 { size.truncated_to_its_magnitude().value() } else { 0.0 };
     }
     let size = cash / rate * margin;
-    let step = least_size(shared, definition);
-    let size = half_up(size, -(step.log10() as i32));
-    // A rule stating a step of nought rounds to nothing a gateway reads
-    // back: its size works out to nought, and so does this one's.
-    if size.is_nan() {
-        return 0.0;
-    }
+    let size = rounded_to_step(size, least_size(shared, definition));
     let whole = size.ceil().min(f64::from(i32::MAX)).max(f64::from(i32::MIN));
     let in_parts = fractional_allowed(shared, order, venue, definition)
         && !held_to_regular_hours(shared, order);
@@ -883,7 +877,7 @@ pub(crate) fn resized(
         {
             size.ceil()
         }
-        None => half_up(size, -(least_size(shared, definition).log10() as i32)),
+        None => rounded_to_step(size, least_size(shared, definition)),
     };
     let lotted =
         lots(shared, venue, definition) || !fractional_allowed(shared, order, venue, definition);
@@ -979,6 +973,18 @@ fn half_up(value: f64, places: i32) -> f64 {
     let scale = 10_f64.powi(places);
     let rounded = (value * scale + 0.5).floor();
     if rounded.is_nan() { 0.0 } else { rounded.min(i64::MAX as f64) / scale }
+}
+
+/// A size rounded to the places of a step. A rule stating no positive step
+/// rounds to nothing a gateway reads back: its own rounding of such a step
+/// works out to nought, and so does this one's — the places of a step of
+/// nought are no count a negation holds.
+fn rounded_to_step(size: f64, step: f64) -> f64 {
+    if step <= 0.0 || step.is_nan() {
+        return 0.0;
+    }
+    let rounded = half_up(size, -(step.log10() as i32));
+    if rounded.is_nan() { 0.0 } else { rounded }
 }
 
 /// The least size a whole-unit contract states: the one behind its flag, a
