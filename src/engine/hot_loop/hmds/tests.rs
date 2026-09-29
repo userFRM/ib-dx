@@ -690,13 +690,28 @@ fn a_bar_query_past_a_limited_contract_window_is_refused_under_166() {
 /// crypto-aggregation feature as aggregated prints: the query and the
 /// five-second stream continuing it both query the mapped series, and the
 /// program is advised of the mapping under 10299 — non-fatally, the query
-/// still goes out. Without the feature the mapping stands as it is: the
-/// raw prints, and silence.
+/// still goes out. The mapping reads the same in both directions: where the
+/// feature is absent, a query stating the aggregated series is served the
+/// raw prints and advised the same way, the advisory naming the mapped kind
+/// and then the stated one, and a series stated as the session serves it is
+/// served in silence.
 #[test]
 fn a_crypto_bar_query_under_the_aggregation_feature_is_served_aggregated_and_advised() {
     use crate::protocol::connection::Connection;
 
-    for feature_on in [true, false] {
+    for (feature_on, stated, served, advice) in [
+        (
+            true, "TRADES", "AggLast",
+            Some("Expected what to show is AGGTRADES, please use that instead of TRADES."),
+        ),
+        (false, "TRADES", "Last", None),
+        (true, "AGGTRADES", "AggLast", None),
+        (
+            false, "AGGTRADES", "Last",
+            Some("Expected what to show is TRADES, please use that instead of AGGTRADES."),
+        ),
+    ] {
+        let row = format!("{stated} under the feature {feature_on}");
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let (mut peer, _) = listener.accept().unwrap();
@@ -709,37 +724,42 @@ fn a_crypto_bar_query_under_the_aggregation_feature_is_served_aggregated_and_adv
             shared.reference.set_enabled_features(vec!["ZHAGGCHART".to_string()]);
         }
 
-        assert!(hmds.send_historical_request_ex(
-            11, 596518305, "20260101 16:00:00", "1 D", "5 mins", "TRADES",
-            true, true, false, "BTC", "CRYPTO", "PAXOS", &mut conn, &mut hb, &shared,
-        ));
+        assert!(
+            hmds.send_historical_request_ex(
+                11, 596518305, "20260101 16:00:00", "1 D", "5 mins", stated,
+                true, true, false, "BTC", "CRYPTO", "PAXOS", &mut conn, &mut hb, &shared,
+            ),
+            "{row}: the mapping is an advisory, the query goes on",
+        );
         let wire = String::from_utf8_lossy(&read_frame(&mut peer)).to_string();
         let errors = shared.reference.drain_historical_errors();
 
-        // The five-second stream that continues a query kept up to date.
+        assert!(
+            wire.contains(&format!("<data>{served}</data>")),
+            "{row}: the query queries the {served} series: {wire}",
+        );
+        match advice {
+            Some(text) => assert_eq!(
+                errors,
+                vec![(11, crate::error_codes::SOURCE_PRICE_EXPECTED, text.to_string())],
+                "{row}: the program is advised of the mapping, and the query goes on",
+            ),
+            None => assert!(errors.is_empty(), "{row}: silence: {errors:?}"),
+        }
+
+        // The five-second stream that continues a query kept up to date
+        // states the raw series and queries the one the session is served
+        // under, whichever way the feature maps it.
         hmds.send_realtime_bar_subscribe(
             11, 596518305, "BTC", "CRYPTO", "PAXOS", "TRADES", true,
             &mut conn, &mut hb, &shared,
         );
         let stream = String::from_utf8_lossy(&read_frame(&mut peer)).to_string();
-
-        if feature_on {
-            assert!(wire.contains("<data>AggLast</data>"), "the query queries the mapped series: {wire}");
-            assert!(stream.contains("<data>AggLast</data>"), "and so does the stream: {stream}");
-            assert_eq!(
-                errors,
-                vec![(
-                    11,
-                    crate::error_codes::SOURCE_PRICE_EXPECTED,
-                    "Expected what to show is AGGTRADES, please use that instead of TRADES.".to_string(),
-                )],
-                "the program is advised of the mapping, and the query goes on",
-            );
-        } else {
-            assert!(wire.contains("<data>Last</data>"), "{wire}");
-            assert!(stream.contains("<data>Last</data>"), "{stream}");
-            assert!(errors.is_empty(), "silence: {errors:?}");
-        }
+        let streamed = if feature_on { "AggLast" } else { "Last" };
+        assert!(
+            stream.contains(&format!("<data>{streamed}</data>")),
+            "{row}: and so does the stream: {stream}",
+        );
     }
 }
 

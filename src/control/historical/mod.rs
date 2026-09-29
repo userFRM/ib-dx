@@ -1524,7 +1524,9 @@ pub fn parse_tick_response(xml: &str, what_to_show: &str) -> Option<(String, cra
 /// bars are served from the aggregated series, the query goes out under its
 /// name, and the program is advised of the mapping — and the five-second
 /// lookup that continues a query kept up to date queries the mapped series
-/// too. Where the feature is absent the mapping stands as it is.
+/// too. The mapping reads the same in both directions: where the pair does
+/// not hold, a bar query naming AGGTRADES is served the raw trades and
+/// advised the same way.
 ///
 /// `sec_type` is the type as the wire states it; `session_aggregates` is the
 /// feature the login carried.

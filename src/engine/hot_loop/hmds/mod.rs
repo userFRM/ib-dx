@@ -2527,21 +2527,24 @@ fn build_tbt_query(
                 }
             }
         };
-        // A gateway maps a bar query naming TRADES on a crypto contract
-        // through its series registry where the login carries the venue's
-        // crypto-aggregation feature: the query goes out under the aggregated
-        // series, and the parser tells the program, non-fatally and in the
-        // gateway's words, which name it expected — served the raw prints
-        // instead, a program reads a series the venue never sent, and the
-        // bars kept up to date continue the wrong one. An adjusted name is
-        // not TRADES and is left alone: it is the gateway's choice of raw
-        // trades, not the program's naming of a series. Where the feature is
-        // absent the mapping stands as it is.
+        // A gateway maps a bar query on a crypto contract through its series
+        // registry in both directions, under exactly the login that carries
+        // the venue's crypto-aggregation feature: a query naming TRADES goes
+        // out under the aggregated series, and a query naming AGGTRADES where
+        // the feature is absent is served the raw trades instead. The parser
+        // tells the program, non-fatally and in the gateway's words, which
+        // name it expected — the mapped kind first, then the stated one.
+        // Served either series with no advisory, a program reads a series the
+        // venue never sent, and the bars kept up to date continue the wrong
+        // one. An adjusted name is not TRADES and is left alone: it is the
+        // gateway's choice of raw trades, not the program's naming of a
+        // series.
+        let aggregated = crate::control::historical::serves_aggregated_trades(
+            &hist_sec_type(sec_type), shared.reference.enables("ZHAGGCHART"),
+        );
         let data_type = if !adjusted
             && data_type == crate::control::historical::BarDataType::Trades
-            && crate::control::historical::serves_aggregated_trades(
-                &hist_sec_type(sec_type), shared.reference.enables("ZHAGGCHART"),
-            )
+            && aggregated
         {
             super::push_hmds_refusal(
                 shared, req_id, crate::error_codes::SOURCE_PRICE_EXPECTED,
@@ -2549,6 +2552,13 @@ fn build_tbt_query(
                 false,
             );
             crate::control::historical::BarDataType::AggTrades
+        } else if data_type == crate::control::historical::BarDataType::AggTrades && !aggregated {
+            super::push_hmds_refusal(
+                shared, req_id, crate::error_codes::SOURCE_PRICE_EXPECTED,
+                "Expected what to show is TRADES, please use that instead of AGGTRADES.".into(),
+                false,
+            );
+            crate::control::historical::BarDataType::Trades
         } else {
             data_type
         };
