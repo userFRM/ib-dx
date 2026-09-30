@@ -565,10 +565,12 @@ pub struct ContractDefinition {
     /// The group of algorithm providers the contract's orders go through, tag
     /// 6599 beside its order-type table; empty where none is stated.
     pub algo_group: String,
-    /// How many decimal places its prices carry.
-    pub last_price_precision: f64,
-    /// How many its sizes carry.
-    pub last_size_precision: f64,
+    /// How many decimal places its prices carry, as the venue wrote it
+    /// (tag 8598); empty where it stated none. Kept as text: a precision is
+    /// a decimal figure and an f64 rounds it.
+    pub last_price_precision: String,
+    /// How many its sizes carry (tag 8599), on the same footing.
+    pub last_size_precision: String,
     /// How it settles: physically, or in cash.
     pub settlement_method: String,
     /// The venues SMART routes it to, in the order a quote's exchange mask
@@ -695,8 +697,8 @@ impl Default for ContractDefinition {
             suggested_size_increment: 0.0,
             suggested_size: 0.0,
             algo_group: String::new(),
-            last_price_precision: 0.0,
-            last_size_precision: 0.0,
+            last_price_precision: String::new(),
+            last_size_precision: String::new(),
             settlement_method: String::new(),
             smart_venues: Vec::new(),
             unnamed_fields: Vec::new(),
@@ -1429,10 +1431,10 @@ fn parse_secdef_record(
     // reference client and recorded here as computed rather than sent, which
     // was wrong — they are sent.
     if let Some(v) = tags.get(&TAG_LAST_PRICE_PRECISION) {
-        def.last_price_precision = v.parse().unwrap_or(0.0);
+        def.last_price_precision = v.trim().to_string();
     }
     if let Some(v) = tags.get(&TAG_LAST_SIZE_PRECISION) {
-        def.last_size_precision = v.parse().unwrap_or(0.0);
+        def.last_size_precision = v.trim().to_string();
     }
     // Only where the field this parser already reads states nothing: that one
     // was established earlier and is not displaced on the strength of a second
@@ -2465,8 +2467,8 @@ impl crate::types::model::ContractDetails {
             issue_date: def.issue_date.clone(),
             size_increment: def.size_increment,
             suggested_size_increment: def.suggested_size_increment,
-            last_price_precision: def.last_price_precision,
-            last_size_precision: def.last_size_precision,
+            last_price_precision: def.last_price_precision.parse().unwrap_or(0.0),
+            last_size_precision: def.last_size_precision.parse().unwrap_or(0.0),
             settlement_method: def.settlement_method.clone(),
             unnamed_fields: def.unnamed_fields.clone(),
             bond_notes: def.bond_notes.clone(),

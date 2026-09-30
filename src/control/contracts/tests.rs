@@ -1918,11 +1918,11 @@ mod size_and_precision_tests {
     #[test]
     fn the_smallest_order_is_read_from_the_size_field_not_a_price_precision() {
         let frame = b"35=d\x01320=R1\x016008=756733\x0155=SPY\x01\
-                      8193=1\x018175=0.0001\x018598=0.01\x018599=0.000001\x01";
+                      8193=1\x018175=0.0001\x018598=0.010\x018599=0.000001\x01";
         let def = parse_secdef_response(frame, true).expect("the definition parses");
         assert_eq!(def.min_size, 0.0001);
-        assert_eq!(def.last_price_precision, 0.01);
-        assert_eq!(def.last_size_precision, 0.000001);
+        assert_eq!(def.last_price_precision, "0.010");
+        assert_eq!(def.last_size_precision, "0.000001");
     }
 
     /// Where no fraction decides it, the least size and the step between sizes

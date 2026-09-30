@@ -719,9 +719,10 @@ pub struct ContractDetails {
     #[pyo3(get, set)]
     pub min_size: DecimalField,
     /// Unset until stated, as the reference client holds it; this client
-    /// reads none off a definition.
+    /// reads none off a definition, which the reference reads only off its
+    /// protobuf path.
     #[pyo3(get, set)]
-    pub min_algo_size: f64,
+    pub min_algo_size: DecimalField,
     /// A bond's date, which the reference client files here and not on
     /// the contract.
     #[pyo3(get, set)]
@@ -762,10 +763,13 @@ pub struct ContractDetails {
     pub size_increment: DecimalField,
     #[pyo3(get, set)]
     pub suggested_size_increment: DecimalField,
+    /// How many decimal places its prices carry, as the venue wrote it;
+    /// unset until a definition states it.
     #[pyo3(get, set)]
-    pub last_price_precision: f64,
+    pub last_price_precision: DecimalField,
+    /// How many its sizes carry, on the same footing.
     #[pyo3(get, set)]
-    pub last_size_precision: f64,
+    pub last_size_precision: DecimalField,
     #[pyo3(get, set)]
     pub settlement_method: String,
     #[pyo3(get, set)]
@@ -959,8 +963,8 @@ impl Clone for ContractDetails {
             issue_date: self.issue_date.clone(),
             size_increment: self.size_increment.clone(),
             suggested_size_increment: self.suggested_size_increment.clone(),
-            last_price_precision: self.last_price_precision,
-            last_size_precision: self.last_size_precision,
+            last_price_precision: self.last_price_precision.clone(),
+            last_size_precision: self.last_size_precision.clone(),
             settlement_method: self.settlement_method.clone(),
             unnamed_fields: self.unnamed_fields.clone(),
             agg_group: self.agg_group,
@@ -1019,7 +1023,7 @@ impl Clone for ContractDetails {
             cusip: self.cusip.clone(),
             sec_id_list: self.sec_id_list.clone(),
             min_size: self.min_size.clone(),
-            min_algo_size: self.min_algo_size,
+            min_algo_size: self.min_algo_size.clone(),
             maturity: self.maturity.clone(),
             event_contract1: self.event_contract1.clone(),
             event_contract_description1: self.event_contract_description1.clone(),
@@ -1061,7 +1065,7 @@ impl ContractDetails {
             cusip: String::new(),
             sec_id_list: ListField::new(),
             min_size: DecimalField::unset(),
-            min_algo_size: f64::MAX,
+            min_algo_size: DecimalField::unset(),
             maturity: String::new(),
             event_contract1: String::new(),
             event_contract_description1: String::new(),
@@ -1079,8 +1083,8 @@ impl ContractDetails {
             issue_date: String::new(),
             size_increment: DecimalField::unset(),
             suggested_size_increment: DecimalField::unset(),
-            last_price_precision: f64::MAX,
-            last_size_precision: f64::MAX,
+            last_price_precision: DecimalField::unset(),
+            last_size_precision: DecimalField::unset(),
             settlement_method: String::new(),
             unnamed_fields: Vec::new(),
             agg_group: 0,
@@ -1184,7 +1188,7 @@ impl ContractDetails {
             cusip: def.cusip.clone(),
             sec_id_list: ListField::of(py, def.sec_id_list.iter().map(|(tag, value)| TagValue { tag: tag.clone(), value: value.clone() })).unwrap_or_default(),
             min_size: DecimalField::from_float(def.min_size),
-            min_algo_size: f64::MAX,
+            min_algo_size: DecimalField::unset(),
             maturity: if bond { def.last_trade_date.clone() } else { String::new() },
             event_contract1: String::new(),
             event_contract_description1: String::new(),
@@ -1202,8 +1206,10 @@ impl ContractDetails {
             issue_date: def.issue_date.clone(),
             size_increment: DecimalField::from_float(def.size_increment),
             suggested_size_increment: DecimalField::from_float(def.suggested_size_increment),
-            last_price_precision: def.last_price_precision,
-            last_size_precision: def.last_size_precision,
+            // The digits the venue wrote, exactly: a precision is a decimal
+            // text on the wire and an f64 rounds it.
+            last_price_precision: DecimalField::from_wire(&def.last_price_precision),
+            last_size_precision: DecimalField::from_wire(&def.last_size_precision),
             settlement_method: def.settlement_method.clone(),
             unnamed_fields: def.unnamed_fields.clone(),
             agg_group: def.agg_group,
@@ -1803,6 +1809,29 @@ for cls in [Contract, ContractDetails, ContractDescription]:
             details.__clear__(py).unwrap();
             assert!(!details.contract.is(&old));
             assert_eq!(old.borrow(py).con_id, 7, "clearing the owner leaves the shared contract alone");
+        });
+    }
+
+    /// The size and precision figures a definition states cross as the exact
+    /// digits the venue wrote, and one it does not state reads as the unset
+    /// Decimal every such field carries in the reference's own classes.
+    #[test]
+    fn the_figures_a_definition_states_cross_as_the_digits_they_state() {
+        Python::initialize();
+        Python::attach(|py| {
+            let mut def = crate::control::contracts::ContractDefinition::default();
+            let bare = ContractDetails::from_definition(py, &def);
+            assert_eq!(bare.min_algo_size, DecimalField::unset());
+            assert_eq!(bare.last_price_precision, DecimalField::unset());
+            assert_eq!(bare.last_size_precision, DecimalField::unset());
+
+            // A trailing zero is a digit the venue wrote: text kept as text
+            // carries it, a float round-trip does not.
+            def.last_price_precision = "0.010".to_string();
+            def.last_size_precision = "0.000001".to_string();
+            let details = ContractDetails::from_definition(py, &def);
+            assert_eq!(details.last_price_precision.to_string(), "0.010");
+            assert_eq!(details.last_size_precision.to_string(), "0.000001");
         });
     }
 
