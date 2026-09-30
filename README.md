@@ -410,7 +410,7 @@ One row per capability, one column per client — every one of the 87 calls and 
 
 **Every call and callback on that list is present on both surfaces.** 2 callbacks are declared and not fired: a gateway reroutes a request to another contract for a contract for difference whose definition asks for it, and this client does not read a definition's flags for that before subscribing: the request goes to the venue as asked. Each says so where it is declared, so a program that implements one still compiles and runs. 7 more are declared by the TWS API and never fire on a gateway — the four steps of the verification handshake, the exchange-for-physical quote, the delta-neutral validation, which a gateway never sends, and `win_error`, which no message on the wire carries — so they fire here exactly as often as there: never.
 
-**And 86 more beyond that list.** The venue states more on a session than the documented calls ask for — what it permits this account, which algorithms it offers, the order defaults it fills an order's blanks from, what it says about an issuer, which session holds the account — and this client answers for those too, beside helpers and instrumentation of its own. The table under *Beyond the canonical list* says which each is, and which a reference client also names.
+**And 166 more beyond that list.** The venue states more on a session than the documented calls ask for — what it permits this account, which algorithms it offers, the order defaults it fills an order's blanks from, what it says about an issuer, which session holds the account — and this client answers for those too, beside helpers and instrumentation of its own. The table under *Beyond the canonical list* says which each is, and which a reference client also names.
 
 Every figure here is read from the client it names, on the machine that generated it. A client that is not installed is left out rather than filled in from memory.
 
@@ -668,10 +668,34 @@ ib_async's transport, has a method by that name.
 | `algorithms` | venue | · | · | · | ● | ● |
 | `algorithmsFor` | venue | · | · | · | ● | ● |
 | `await_order` | venue | · | · | · | ● | — |
+| `calculateImpliedVolatilityProtoBuf` | venue | · | · | · | · | ● |
+| `calculateOptionPriceProtoBuf` | venue | · | · | · | · | ● |
 | `calendarEvents` | venue | · | · | · | ● | ● |
 | `calendarSchema` | venue | · | · | · | ● | ● |
+| `cancelAccountSummaryProtoBuf` | venue | · | · | · | · | ● |
+| `cancelAccountUpdatesMultiProtoBuf` | venue | · | · | · | · | ● |
 | `cancelAdjustments` | venue | · | · | · | ● | ● |
+| `cancelCalculateImpliedVolatilityProtoBuf` | venue | · | · | · | · | ● |
+| `cancelCalculateOptionPriceProtoBuf` | venue | · | · | · | · | ● |
+| `cancelContractDataProtoBuf` | venue | · | · | · | · | ● |
+| `cancelHeadTimestampProtoBuf` | venue | · | · | · | · | ● |
+| `cancelHistogramDataProtoBuf` | venue | · | · | · | · | ● |
+| `cancelHistoricalDataProtoBuf` | venue | · | · | · | · | ● |
 | `cancelHistoricalNews` | venue | · | · | · | ● | ● |
+| `cancelHistoricalTicksProtoBuf` | venue | · | · | · | · | ● |
+| `cancelMarketDataProtoBuf` | venue | · | · | · | · | ● |
+| `cancelMarketDepthProtoBuf` | venue | · | · | · | · | ● |
+| `cancelNewsBulletinsProtoBuf` | venue | · | · | · | · | ● |
+| `cancelOrderProtoBuf` | venue | · | · | · | · | ● |
+| `cancelPnLProtoBuf` | venue | · | · | · | · | ● |
+| `cancelPnLSingleProtoBuf` | venue | · | · | · | · | ● |
+| `cancelPositionsMultiProtoBuf` | venue | · | · | · | · | ● |
+| `cancelPositionsProtoBuf` | venue | · | · | · | · | ● |
+| `cancelRealTimeBarsProtoBuf` | venue | · | · | · | · | ● |
+| `cancelScannerSubscriptionProtoBuf` | venue | · | · | · | · | ● |
+| `cancelTickByTickProtoBuf` | venue | · | · | · | · | ● |
+| `cancelWshEventDataProtoBuf` | venue | · | · | · | · | ● |
+| `cancelWshMetaDataProtoBuf` | venue | · | · | · | · | ● |
 | `ccpSessionId` | venue | · | · | · | ● | ● |
 | `chainModelParameters` | venue | · | · | · | ● | ● |
 | `checkConnected` | this client | · | · | · | — | ● |
@@ -686,6 +710,7 @@ ib_async's transport, has a method by that name.
 | `enabledFeatures` | venue | · | · | · | ● | ● |
 | `error_from` | this client | · | · | · | ● | ● |
 | `eventsLost` | this client | · | · | · | ● | ● |
+| `exerciseOptionsProtoBuf` | venue | · | · | · | · | ● |
 | `instrumentOf` | this client | · | · | · | ● | ● |
 | `last_rtt` / `last_rtt_ms` | this client | · | · | · | ● | ● |
 | `matchingSymbols` | venue | · | · | · | ● | ● |
@@ -707,20 +732,67 @@ ib_async's transport, has a method by that name.
 | `pairedFiguresSeries` | venue | · | · | · | ● | ● |
 | `parse_algo_params` | this client | · | · | · | ● | — |
 | `permittedOrderTypes` | venue | · | · | · | ● | ● |
+| `placeOrderProtoBuf` | venue | · | · | · | · | ● |
 | `poll` | this client | · | · | · | · | ● |
 | `positions` | venue | · | · | ● | ● | ● |
 | `positionsElsewhere` | venue | · | · | · | ● | ● |
 | `qualifyContract` | venue | · | · | · | ● | ● |
 | `qualifyContracts` | venue | · | · | ● | ● | ● |
+| `queryDisplayGroupsProtoBuf` | venue | · | · | · | · | ● |
 | `question_retired` | this client | · | · | · | ● | — |
 | `quote` | venue | · | · | · | ● | ● |
 | `quoteByInstrument` | venue | · | · | · | ● | ● |
 | `refuse` | this client | · | · | · | ● | ● |
+| `replaceFAProtoBuf` | venue | · | · | · | · | ● |
+| `reqAccountSummaryProtoBuf` | venue | · | · | · | · | ● |
+| `reqAccountUpdatesMultiProtoBuf` | venue | · | · | · | · | ● |
+| `reqAccountUpdatesProtoBuf` | venue | · | · | · | · | ● |
 | `reqAdjustments` | venue | · | · | · | ● | ● |
+| `reqAllOpenOrdersProtoBuf` | venue | · | · | · | · | ● |
+| `reqAutoOpenOrdersProtoBuf` | venue | · | · | · | · | ● |
+| `reqCompletedOrdersProtoBuf` | venue | · | · | · | · | ● |
 | `req_config` / `req_config_proto_buf` | this client | · | · | · | ◐ | ◐ |
+| `reqContractDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqCurrentTimeInMillisProtoBuf` | venue | · | · | · | · | ● |
+| `reqCurrentTimeProtoBuf` | venue | · | · | · | · | ● |
+| `reqExecutionsProtoBuf` | venue | · | · | · | · | ● |
+| `reqFamilyCodesProtoBuf` | venue | · | · | · | · | ● |
+| `reqFAProtoBuf` | venue | · | · | · | · | ● |
+| `reqGlobalCancelProtoBuf` | venue | · | · | · | · | ● |
+| `reqHeadTimestampProtoBuf` | venue | · | · | · | · | ● |
+| `reqHistogramDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqHistoricalDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqHistoricalNewsProtoBuf` | venue | · | · | · | · | ● |
+| `reqHistoricalTicksProtoBuf` | venue | · | · | · | · | ● |
+| `reqIdsProtoBuf` | venue | · | · | · | · | ● |
+| `reqManagedAcctsProtoBuf` | venue | · | · | · | · | ● |
+| `reqMarketDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqMarketDataTypeProtoBuf` | venue | · | · | · | · | ● |
+| `reqMarketDepthExchangesProtoBuf` | venue | · | · | · | · | ● |
+| `reqMarketDepthProtoBuf` | venue | · | · | · | · | ● |
+| `reqMarketRuleProtoBuf` | venue | · | · | · | · | ● |
+| `reqMatchingSymbolsProtoBuf` | venue | · | · | · | · | ● |
 | `reqMktDataEx` | venue | · | · | · | ● | ● |
+| `reqNewsArticleProtoBuf` | venue | · | · | · | · | ● |
+| `reqNewsBulletinsProtoBuf` | venue | · | · | · | · | ● |
+| `reqNewsProvidersProtoBuf` | venue | · | · | · | · | ● |
+| `reqOpenOrdersProtoBuf` | venue | · | · | · | · | ● |
 | `reqPing` | venue | · | · | · | ● | ● |
+| `reqPnLProtoBuf` | venue | · | · | · | · | ● |
+| `reqPnLSingleProtoBuf` | venue | · | · | · | · | ● |
+| `reqPositionsMultiProtoBuf` | venue | · | · | · | · | ● |
+| `reqPositionsProtoBuf` | venue | · | · | · | · | ● |
+| `reqRealTimeBarsProtoBuf` | venue | · | · | · | · | ● |
+| `reqScannerParametersProtoBuf` | venue | · | · | · | · | ● |
+| `reqScannerSubscriptionProtoBuf` | venue | · | · | · | · | ● |
+| `reqSecDefOptParamsProtoBuf` | venue | · | · | · | · | ● |
+| `reqSmartComponentsProtoBuf` | venue | · | · | · | · | ● |
+| `reqSoftDollarTiersProtoBuf` | venue | · | · | · | · | ● |
 | `reqSpreadScan` | venue | · | · | · | ● | ● |
+| `reqTickByTickDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqUserInfoProtoBuf` | venue | · | · | · | · | ● |
+| `reqWshEventDataProtoBuf` | venue | · | · | · | · | ● |
+| `reqWshMetaDataProtoBuf` | venue | · | · | · | · | ● |
 | `reset` | this client | ● | ● | ● | · | ● |
 | `run` | this client | ● | ● | ● | · | ● |
 | `scan` | venue | · | · | · | ● | ● |
@@ -731,20 +803,28 @@ ib_async's transport, has a method by that name.
 | `setConnectionOptions` | this client | ● | ● | ● | · | ◐ |
 | `setNewsProviders` | venue | · | · | · | ● | ● |
 | `setOptionalCapabilities` | this client | · | · | · | — | ◐ |
+| `setServerLogLevelProtoBuf` | venue | · | · | · | · | ● |
 | `shortSaleRestricted` | venue | · | · | · | ● | ● |
 | `shortSaleRestrictedByInstrument` | venue | · | · | · | ● | ● |
+| `startApiProtoBuf` | venue | · | · | · | · | ● |
 | `statedFigures` | venue | · | · | · | ● | ● |
 | `statedFiguresSeries` | venue | · | · | · | ● | ● |
 | `statedRows` | venue | · | · | · | ● | ● |
 | `statedRowsSeries` | venue | · | · | · | ● | ● |
+| `subscribeToGroupEventsProtoBuf` | venue | · | · | · | · | ● |
 | `traffic` | venue | · | · | · | ● | ● |
 | `twsConnectionTime` | venue | ● | ● | · | ● | ● |
 | `unreadWire` | this client | · | · | · | ● | ● |
+| `unsubscribeFromGroupEventsProtoBuf` | venue | · | · | · | · | ● |
 | `update_config` / `update_config_proto_buf` | this client | · | · | · | ◐ | ◐ |
+| `updateDisplayGroupProtoBuf` | venue | · | · | · | · | ● |
+| `useProtoBuf` | venue | · | · | · | · | ● |
 | `validateAttachedOrdersParameters` | this client | · | · | · | — | ● |
 | `validateInvalidSymbols` | this client | · | · | · | — | ● |
 | `validateOrderParameters` | this client | · | · | · | — | ● |
 | `valuesElsewhere` | venue | · | · | · | ● | ● |
+| `verifyMessageProtoBuf` | venue | · | · | · | · | ● |
+| `verifyRequestProtoBuf` | venue | · | · | · | · | ● |
 | `waitForData` | this client | · | · | · | ● | ● |
 | `whatIfOrder` | venue | · | · | ● | ● | ● |
 
