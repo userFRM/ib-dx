@@ -2618,7 +2618,9 @@ fn a_parent_is_read_back_only_in_the_shape_a_parent_is_written_in() {
 
 /// A busted trade arrives as an execution like any other. Its quantity
 /// reconciles against the order's cumulative figure rather than adding to it,
-/// and the reconciliation may be negative.
+/// the reconciliation may be negative, and the announcement carries that
+/// signed reconciliation — as a gateway's synthetic report does — rather than
+/// the unsigned print the frame states.
 #[test]
 fn a_busted_execution_reconciles_rather_than_adds() {
     let (mut ccp, mut context, shared) = ord_status_test_state();
@@ -2647,7 +2649,16 @@ fn a_busted_execution_reconciles_rather_than_adds() {
     let fills = shared.orders.drain_fills();
     assert_eq!(fills.len(), 1);
     let bust_fill = &fills[0];
-    assert_eq!(bust_fill.0.qty, 50 * QTY_SCALE, "the execution states tag 32 even when the booking is negative");
+    assert_eq!(
+        bust_fill.0.qty, -50 * QTY_SCALE,
+        "the bust announces the signed shares the booking took back — what a \
+         gateway's synthetic report carries — not the unsigned print",
+    );
+    assert_eq!(
+        bust_fill.0.price, crate::types::price_from_f64(412.25),
+        "the frame states no cost tags, so the last print is the price: \
+         exact for a single-print bust",
+    );
     // The report states zero, and zero is what the caller reads. Filtering
     // the stated figure on being positive fell back to adding the print to
     // what was already booked, and the caller was told the order had twice
@@ -2662,11 +2673,22 @@ fn a_busted_execution_reconciles_rather_than_adds() {
     );
 }
 
-/// A replay or correction reconciles what the order holds, but the execution
-/// still reports its own quantity on tag 32.
+/// A restatement of a trade — one late revision report — announces what a
+/// gateway's synthetic report carries: the signed delta the booking moved,
+/// and the price derived from the frame's cost tags where it states them.
+/// A re-execution of a report the venue already sent once announces the
+/// print as it stands. Either way only the delta is booked.
 #[test]
-fn a_reconciled_execution_reports_tag_32_and_books_only_the_delta() {
-    for (exec_type, tag, value) in [("F", 20, "2"), ("G", 20, "0"), ("F", 97, "Y"), ("F", 43, "Y")] {
+fn a_restated_trade_announces_its_signed_delta_and_a_reexecution_its_print() {
+    for (exec_type, tag, value, want_qty, want_price) in [
+        // One restatement: the signed booking delta, and the price the cost
+        // tags derive — 4130 over 10 shares, not the print the frame states.
+        ("F", 20, "2", 10, 413.0),
+        ("G", 20, "0", 10, 413.0),
+        // One re-execution: the print as it stands, cost tags aside.
+        ("F", 97, "Y", 60, 412.25),
+        ("F", 43, "Y", 60, 412.25),
+    ] {
         let (mut ccp, mut context, shared) = tracked_order_state();
         let first = fix::fix_build(&[
             (35, "8"), (11, "42"), (39, "1"), (150, "F"),
@@ -2681,12 +2703,17 @@ fn a_reconciled_execution_reports_tag_32_and_books_only_the_delta() {
         let restated = fix::fix_build(&[
             (35, "8"), (11, "42"), (39, "1"), (150, exec_type), (tag, value),
             (17, "exec-2"), (32, "60"), (31, "412.25"), (14, "60"), (38, "100"),
+            (6821, "10"), (6822, "4130"),
         ], 2);
         ccp.process_ccp_message(&restated, &mut None, &mut context, &shared,
             &None, &mut HeartbeatState::new(), "");
         let fills = shared.orders.drain_fills();
         assert_eq!(fills.len(), 1);
-        assert_eq!(fills[0].0.qty, 60 * QTY_SCALE, "the execution reports tag 32, not the booking delta");
+        assert_eq!(fills[0].0.qty, want_qty * QTY_SCALE, "the announced quantity");
+        assert_eq!(
+            fills[0].0.price, crate::types::price_from_f64(want_price),
+            "the announced price",
+        );
         assert_eq!(fills[0].0.cum_qty, 60 * QTY_SCALE);
         assert_eq!(context.order(42).unwrap().filled, 60 * QTY_SCALE, "only ten more are booked");
         assert_eq!(context.position(0), 60.0, "only ten more are held");
@@ -2716,7 +2743,10 @@ fn a_replayed_correction_does_not_erase_a_later_fill() {
             ccp.handle_exec_report(&correction, b"", &mut context, &shared, &None, "");
             let fills = shared.orders.drain_fills();
             assert_eq!(fills.len(), 1, "an unseen correction still reconciles");
-            assert_eq!(fills[0].0.qty, if cumulative == 0 { 50 } else { 60 } * QTY_SCALE);
+            assert_eq!(
+                fills[0].0.qty, (cumulative - 50) * QTY_SCALE,
+                "the correction announces the signed delta it booked",
+            );
             assert_eq!(context.order(42).unwrap().filled, cumulative * QTY_SCALE);
             assert_eq!(context.position(0), cumulative as f64);
 

@@ -1185,12 +1185,28 @@ impl CcpState {
             };
             if booked != 0 {
                 context.adjust_order_filled(clord_id, booked);
+                // A restated trade announces what a gateway's synthetic report
+                // carries: the signed quantity the booking moved, and — where
+                // the frame states what the undone trade cost — the price the
+                // cost deltas derive. Without the cost tags the last print is
+                // the price, exact for a single-print bust. A repeat or a
+                // re-execution announces the print as it stands.
+                let (qty, px) = if restates_history {
+                    let derived = parsed
+                        .get(&6822).and_then(|c| c.parse::<f64>().ok())
+                        .zip(parsed.get(&6821).and_then(|q| q.parse::<f64>().ok()))
+                        .filter(|(_, q)| *q != 0.0)
+                        .map(|(cost, q)| cost / q);
+                    (booked, derived.unwrap_or(last_px))
+                } else {
+                    (last_shares, last_px)
+                };
                 let fill = Fill {
                     instrument,
                     order_id: clord_id,
                     side,
-                    price: crate::types::price_from_f64(last_px),
-                    qty: last_shares,
+                    price: crate::types::price_from_f64(px),
+                    qty,
                     remaining: leaves_qty,
                     timestamp_ns: context.now_ns(),
                     cum_qty: order_cum_qty,
