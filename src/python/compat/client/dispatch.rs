@@ -1587,10 +1587,16 @@ impl EClient {
                     self.core.note_snapshot_tick(id, tick.tick_type);
                 }
             }
+            // The sizes each caller was just sent beside a price: the
+            // standalone tick of the same pass states the same figure again,
+            // and is not said twice.
+            let mut paired: Vec<(i64, i32)> = Vec::new();
             for tick in &result.ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
-                    let snapshot = self.core.snapshot_sends(id, tick.tick_type);
-                    if snapshot == Some(false) {
+                    if self.core.snapshot_sends(id, tick.tick_type) == Some(false) {
+                        continue;
+                    }
+                    if !tick.is_price && paired.contains(&(id, tick.tick_type)) {
                         continue;
                     }
                     if tick.is_price {
@@ -1603,10 +1609,14 @@ impl EClient {
                     } else {
                         call_wrapper!(self, py, shared, "tick_size", (id, tick.tick_type, DecimalField::from_float(tick.value)));
                     }
-                    if let (Some(true), Some((size_tick, size))) =
-                        (snapshot, result.size_beside(tick.tick_type))
-                    {
+                    // The reference client's decoder hands a size over beside
+                    // every price it delivers, streaming or snapshot: a
+                    // gateway embeds the standing size in the price's own
+                    // message, so a program hears the pair however the size
+                    // moved.
+                    if let Some((size_tick, size)) = result.size_beside(tick.tick_type) {
                         call_wrapper!(self, py, shared, "tick_size", (id, size_tick, DecimalField::from_float(size)));
+                        paired.push((id, size_tick));
                     }
                 }
             }

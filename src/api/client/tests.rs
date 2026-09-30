@@ -11449,7 +11449,11 @@ fn a_dropped_data_connection_fabricates_no_ticks() {
     shared.market.push_quote(0, &Quote { bid: 150 * PRICE_SCALE, ..Default::default() });
     client.process_msgs(&mut w);
     let ticks: Vec<&String> = w.events.iter().filter(|e| e.starts_with("tick_price") || e.starts_with("tick_size") || e.starts_with("tick_generic")).collect();
-    assert_eq!(ticks, [&"tick_price:1:1:150".to_string()], "only what the venue restated: {:?}", w.events);
+    // The restated price carries the size as it stands beside it, as the
+    // reference client's decoder hands every price's size over — a nought
+    // here, the quote having been zeroed at the drop. Nothing of the quote
+    // before the drop is restated: no ask, no halted, no stale size.
+    assert_eq!(ticks, [&"tick_price:1:1:150".to_string(), &"tick_size:1:0:0".to_string()], "only what the venue restated: {:?}", w.events);
 }
 
 /// Withdrawing a held parent takes what hangs from it out of the hold, and

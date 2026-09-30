@@ -4505,6 +4505,47 @@ setattr(w, boundary, replace_session)
         });
     }
 
+    /// A streaming price hands its size over beside it, as the reference
+    /// client's decoder does after every price it delivers — even where the
+    /// size stood still — and the standalone size tick of the same pass is
+    /// not said twice.
+    #[cfg(feature = "test-helpers")]
+    #[test]
+    fn a_streaming_price_tick_delivers_its_size_beside_it() {
+        Python::initialize();
+        Python::attach(|py| {
+            let w = recording_wrapper(py);
+            let client = Py::new(py, client_with(py, w.clone_ref(py))).unwrap();
+            client.call_method0(py, "_test_connect").unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("client", &client).unwrap();
+            g.set_item("w", &w).unwrap();
+            g.set_item("Contract", py.get_type::<Contract>()).unwrap();
+            py.run(c"
+client._test_set_instrument_count(1)
+a = Contract()
+a.conId, a.symbol, a.secType, a.exchange = 100, 'AAA', 'STK', 'SMART'
+client.req_mkt_data(1, a)
+client._test_take_commands()
+client.poll()
+client._test_push_quote(0, bid=100.0, bid_size=5, ask=101.0, ask_size=6)
+client.poll()
+client._test_push_quote(0, bid=100.25, bid_size=5, ask=101.0, ask_size=6)
+client.poll()
+", Some(&g), None).unwrap();
+            let heard: Vec<(String, i32)> = py.eval(
+                c"[(c[0], c[2]) for c in w.calls if c[0] in ('tickPrice', 'tick_price', 'tickSize', 'tick_size')]",
+                Some(&g), None,
+            ).unwrap().extract().unwrap();
+            let price = ("tickPrice".to_string(), 1);
+            let size = ("tickSize".to_string(), 0);
+            let ask_price = ("tickPrice".to_string(), 2);
+            let ask_size = ("tickSize".to_string(), 3);
+            assert_eq!(heard, [price.clone(), size.clone(), ask_price, ask_size, price, size],
+                "each delivered price carries its size beside it, the standing size where it did not move");
+        });
+    }
+
     #[cfg(feature = "test-helpers")]
     #[test]
     fn an_abandoned_connect_leaves_the_new_connections_claim_alone() {

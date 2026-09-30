@@ -1296,10 +1296,16 @@ impl EClient {
                     self.core.note_snapshot_tick(id, tick.tick_type);
                 }
             }
+            // The sizes each caller was just sent beside a price: the
+            // standalone tick of the same pass states the same figure again,
+            // and is not said twice.
+            let mut paired: Vec<(i64, i32)> = Vec::new();
             for tick in &result.ticks {
                 for id in std::iter::once(tick.req_id).chain(watchers.iter().copied()) {
-                    let snapshot = self.core.snapshot_sends(id, tick.tick_type);
-                    if snapshot == Some(false) {
+                    if self.core.snapshot_sends(id, tick.tick_type) == Some(false) {
+                        continue;
+                    }
+                    if !tick.is_price && paired.contains(&(id, tick.tick_type)) {
                         continue;
                     }
                     if tick.is_price {
@@ -1310,10 +1316,14 @@ impl EClient {
                     } else {
                         wrapper.tick_size(id, tick.tick_type, tick.value);
                     }
-                    if let (Some(true), Some((size_tick, size))) =
-                        (snapshot, result.size_beside(tick.tick_type))
-                    {
+                    // The reference client's decoder hands a size over beside
+                    // every price it delivers, streaming or snapshot: a
+                    // gateway embeds the standing size in the price's own
+                    // message, so a program hears the pair however the size
+                    // moved.
+                    if let Some((size_tick, size)) = result.size_beside(tick.tick_type) {
                         wrapper.tick_size(id, size_tick, size);
+                        paired.push((id, size_tick));
                     }
                 }
             }
@@ -1696,6 +1706,48 @@ mod delivered_size_tests {
             client.process_msgs(&mut heard);
             assert_eq!(heard.said, expected, "{named}");
         }
+    }
+
+    /// A streaming price hands its size over beside it, as the reference
+    /// client's decoder does after every price it delivers — even where the
+    /// size stood still — and the standalone size tick of the same pass is
+    /// not said twice.
+    #[test]
+    fn a_streaming_price_tick_delivers_its_size_beside_it() {
+        #[derive(Default)]
+        struct Heard { said: Vec<(char, i32, f64)> }
+        impl Wrapper for Heard {
+            fn tick_price(&mut self, _: i64, tick_type: i32, value: f64, _: &crate::types::model::TickAttrib) {
+                self.said.push(('p', tick_type, value));
+            }
+            fn tick_size(&mut self, _: i64, tick_type: i32, value: f64) {
+                self.said.push(('s', tick_type, value));
+            }
+        }
+        let price = |p: f64| (p * PRICE_SCALE as f64) as i64;
+        let first = crate::types::Quote {
+            bid: price(100.0), bid_size: 5 * QTY_SCALE,
+            ask: price(101.0), ask_size: 6 * QTY_SCALE,
+            ..Default::default()
+        };
+        // The bid moves and its size stands still.
+        let then = crate::types::Quote { bid: price(100.25), ..first };
+        let share = crate::api::client::tests::spy();
+        let (client, rx, shared) = crate::api::client::tests::test_client();
+        client.try_req_mkt_data(1, &share, "", false, false, &[]).expect("taken");
+        crate::api::client::tests::settled(&client, &rx);
+        let slot = client.core.watching(1).expect("the engine took it");
+        let mut heard = Heard::default();
+        shared.market.push_quote(slot, &first);
+        client.process_msgs(&mut heard);
+        assert_eq!(heard.said, [
+            ('p', 1, 100.0), ('s', 0, 5.0), ('p', 2, 101.0), ('s', 3, 6.0),
+        ], "each price carries its size beside it, and no size is said twice");
+        heard.said.clear();
+        shared.market.push_quote(slot, &then);
+        client.process_msgs(&mut heard);
+        assert_eq!(heard.said, [('p', 1, 100.25), ('s', 0, 5.0)],
+            "a streaming price delivers the standing size even where it did not move");
     }
 
     /// News and model publications belong to whoever still watches the
