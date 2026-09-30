@@ -6379,12 +6379,15 @@ fn req_historical_news_sends_fetch() {
 }
 
 /// `total_results` is the TWS API's `int`, taken as a gateway takes it: no
-/// more than three hundred go out, and a smaller number is passed on as
-/// stated, below nought included.
+/// more than three hundred go out, a smaller positive number is passed on as
+/// stated, and a count below one is refused before the venue is asked.
 #[test]
-fn a_headline_count_is_capped_at_three_hundred_and_a_lower_one_passed_on() {
-    let (client, rx, _shared) = test_client();
-    for (asked, sent) in [(500, 300), (300, 300), (7, 7), (0, 0), (-5, -5)] {
+fn a_headline_count_is_read_as_a_gateway_reads_it() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+    for (asked, sent) in [(500, 300), (300, 300), (7, 7)] {
         client.req_historical_news(4, 265598, "BRFG", "", "", asked);
         match rx.try_recv().expect("the request is taken") {
             ControlCommand::FetchHistoricalNews { max_results, .. } => {
@@ -6394,6 +6397,18 @@ fn a_headline_count_is_capped_at_three_hundred_and_a_lower_one_passed_on() {
         }
     }
     assert!(client.shared.drain_refused().is_empty(), "nothing is refused");
+    // A count below one is refused in the gateway's words under the standing
+    // wrap, and the venue is asked nothing.
+    for asked in [0, -5] {
+        client.req_historical_news(4, 265598, "BRFG", "", "", asked);
+        assert!(rx.try_recv().is_err(), "{asked} was sent to the venue");
+        let refused = client.shared.drain_refused();
+        assert_eq!(refused.len(), 1, "{asked} asked");
+        assert_eq!(
+            (refused[0].1, refused[0].2.as_str()),
+            (321, "Error validating request:-'' : cause - Total results must be > 0"),
+        );
+    }
 }
 
 #[test]

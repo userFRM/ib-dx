@@ -392,6 +392,9 @@ impl EClient {
         ) {
             return self.report_refusal(py, req_id, why.into());
         }
+        if let Err(why) = crate::control::news::validate_headline_count(total_results) {
+            return self.report_refusal(py, req_id, why.into());
+        }
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalNews {
                 req_id: wire_req_id(req_id)?,
                 con_id: super::wire_con_id("a request for headlines", con_id)?,
@@ -399,7 +402,8 @@ impl EClient {
                 start_time: start_date_time.to_string(),
                 end_time: end_date_time.to_string(),
                 // No more than a gateway asks for, whatever was wanted, and a
-                // smaller number passed on as stated, below nought included.
+                // smaller positive number passed on as stated; a count below
+                // one is refused above, as a gateway refuses it.
                 max_results: total_results.min(crate::control::news::MOST_HEADLINES_ASKED_FOR),
             }) {
             return self.report_refusal(py, req_id, Refusal::not_connected(why.to_string()));

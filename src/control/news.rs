@@ -105,6 +105,17 @@ pub fn validate_news_window(start_time: &str, end_time: &str) -> Result<(), Stri
     Ok(())
 }
 
+/// What a historical-news count has to state to be askable.
+///
+/// A gateway refuses a count below one in its own words before the venue is
+/// asked anything; the upper cap is none of this check's business.
+pub fn validate_headline_count(total_results: i32) -> Result<(), String> {
+    if total_results <= 0 {
+        return Err("Total results must be > 0".to_string());
+    }
+    Ok(())
+}
+
 /// Build the XML query for a historical news request.
 ///
 /// The window must pass [`validate_news_window`] first, so a bound that cannot
@@ -322,8 +333,9 @@ pub(crate) fn parse_news_payload_rows(value: &str) -> Option<NewsHeadline> {
 /// The most headlines the venue is asked for at once.
 ///
 /// A gateway takes the smaller of what the caller wanted and this, so a larger
-/// number is one the venue never sees; a smaller one, below nought included,
-/// is passed on as stated.
+/// number is one the venue never sees; a smaller positive one is passed on as
+/// stated, and a count below one never reaches the cap — it is refused by
+/// [`validate_headline_count`] first.
 pub const MOST_HEADLINES_ASKED_FOR: i32 = 300;
 
 /// Whether a field is shaped like the time the venue stamps a headline with.
@@ -661,12 +673,6 @@ mod tests {
             end_time: String::new(),
             max_results: 10,
         };
-        // A count below nought goes out as stated, as a gateway passes it on.
-        let negative = build_historical_news_xml(&HistoricalNewsRequest { max_results: -5, ..req.clone() });
-        assert!(
-            negative.contains(&url_encode("conid_count=\"-5\";total_count=\"-5\";")),
-            "{negative}",
-        );
         let xml = build_historical_news_xml(&req);
         assert!(xml.contains("<ListOfQueries>"));
         assert!(xml.contains("<NewsHMDSQuery>"));

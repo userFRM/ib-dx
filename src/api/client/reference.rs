@@ -478,7 +478,8 @@ impl EClient {
     /// No more than three hundred are asked for however many are wanted. A
     /// gateway caps `total_results` there before the request goes out, so a
     /// bigger number is one the venue is never asked, and it passes a smaller
-    /// one on as stated, below nought included.
+    /// positive one on as stated; a count below one it refuses with 321
+    /// before the venue is asked anything.
     pub fn req_historical_news(
         &self, req_id: i64, con_id: i64, provider_codes: &str,
         start_time: &str, end_time: &str, total_results: i32,
@@ -494,10 +495,15 @@ impl EClient {
         &self, req_id: i64, con_id: i64, provider_codes: &str,
         start_time: &str, end_time: &str, total_results: i32,
     ) -> Result<(), Refusal> {
+        // The number and the contract are read before anything is validated,
+        // as a gateway reads the request before it checks what it states.
+        let numbered = wire_req_id(req_id)?;
+        let contract = wire_con_id(con_id, "a request for headlines")?;
         crate::control::news::validate_news_window(start_time, end_time)?;
+        crate::control::news::validate_headline_count(total_results)?;
         self.send(ControlCommand::FetchHistoricalNews {
-            req_id: wire_req_id(req_id)?,
-            con_id: wire_con_id(con_id, "a request for headlines")?,
+            req_id: numbered,
+            con_id: contract,
             provider_codes: provider_codes.into(),
             start_time: start_time.into(),
             end_time: end_time.into(),

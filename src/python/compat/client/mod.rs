@@ -4525,6 +4525,29 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// A headline count below one is refused as a gateway refuses it — its
+    /// own words under the standing wrap — and the venue is asked nothing.
+    #[test]
+    fn a_headline_count_a_gateway_refuses_is_refused_here() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, shared, _w) = wired_client(py);
+            shared.reference.set_news_providers(vec![
+                crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+            ]);
+            client.call_method1(
+                py, "req_historical_news", (1i64, 265598i64, "BRFG", "", "", 0i32),
+            ).unwrap();
+            assert!(rx.try_recv().is_err(), "the venue was asked for no headlines at all");
+            let refused = shared.drain_refused();
+            assert_eq!(refused.len(), 1, "the caller is told");
+            assert_eq!(
+                (refused[0].1, refused[0].2.as_str()),
+                (321, "Error validating request:-'' : cause - Total results must be > 0"),
+            );
+        });
+    }
+
     #[cfg(feature = "test-helpers")]
     #[test]
     fn a_callback_replacing_the_session_ends_the_old_dispatch_pass() {
