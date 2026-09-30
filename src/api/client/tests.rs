@@ -4634,8 +4634,14 @@ fn req_historical_data_refuses_adjusted_last_kept_up_to_date() {
 #[test]
 fn a_historical_request_a_gateway_refuses_is_refused_here() {
     let (client, rx, _shared) = test_client();
+    // Legs stated, so the live-update refusal is what fires: a combination
+    // naming none is refused for that first.
     let combo = Contract {
         symbol: "SPY".into(), exchange: "SMART".into(), sec_type: "BAG".into(),
+        combo_legs: vec![crate::types::model::ComboLeg {
+            con_id: 756733, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
+            ..Default::default()
+        }],
         ..Default::default()
     };
     for (contract, end, size, series, keep, format, reason) in [
@@ -4676,7 +4682,10 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
 /// sentence a gateway refuses it in — read off the contract as the caller
 /// stated it, a contract given by id alone included — before anything is
 /// looked up or sent. The schedule series rides the same gateway parser,
-/// and its own call is refused the same way beside the bars call.
+/// and its own call is refused the same way beside the bars call. The one
+/// exact spelling a gateway's lead-futures mode is entered on, CONTFUT,
+/// skips the venue check there and is handed over here too; a folded
+/// spelling does not enter the mode and stays refused.
 #[test]
 fn a_historical_request_naming_no_exchange_is_refused() {
     let (client, rx, _shared) = test_client();
@@ -4702,6 +4711,69 @@ fn a_historical_request_naming_no_exchange_is_refused() {
         }
         assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
     }
+
+    // The exact spelling a gateway's lead-futures mode is entered on skips
+    // the venue check there: a continuous-futures history naming no venue
+    // is served, so it is handed over here — and only that spelling is, a
+    // folded one staying refused.
+    let contfut = Contract { symbol: "ES".into(), sec_type: "CONTFUT".into(), ..Default::default() };
+    client.try_req_historical_data(8, &contfut, "", "1 D", "1 hour", "TRADES", true, 1, false).expect("a gateway serves it");
+    assert!(rx.try_recv().is_ok(), "the bars query is sent");
+    client.try_req_historical_data(9, &contfut, "", "1 D", "1 day", "SCHEDULE", true, 1, false).expect("a gateway serves it");
+    assert!(rx.try_recv().is_ok(), "the schedule series is sent");
+    client.try_req_historical_schedule(10, &contfut, "", "1 D", true).expect("a gateway serves it");
+    assert!(rx.try_recv().is_ok(), "the schedule query is sent");
+    let folded = Contract { symbol: "ES".into(), sec_type: "contfut".into(), ..Default::default() };
+    for err in [
+        client
+            .try_req_historical_data(11, &folded, "", "1 D", "1 hour", "TRADES", true, 1, false)
+            .expect_err("a folded spelling names no venue"),
+        client.try_req_historical_schedule(12, &folded, "", "1 D", true).expect_err("a folded spelling names no venue"),
+    ] {
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (Refusal::VALIDATION, "Please enter exchange"),
+            "{folded:?}",
+        );
+    }
+    assert!(rx.try_recv().is_err(), "something was sent for a folded spelling");
+}
+
+/// A combination stating no legs describes nothing, and a gateway refuses
+/// the bars request before it looks anything up — whether or not the
+/// contract states the venue's id for the combination, and with the COMB
+/// spelling folded onto BAG as a gateway folds it. Legs stated pass the
+/// intake; carrying them to the venue is the gap the limits page records.
+#[test]
+fn a_historical_request_on_a_combination_naming_no_legs_is_refused() {
+    let (client, rx, _shared) = test_client();
+    for (con_id, sec_type) in [(0i64, "BAG"), (28868674, "BAG"), (28868674, "bag"), (28868674, "COMB")] {
+        let combo = Contract {
+            con_id, symbol: "SPY".into(), sec_type: sec_type.into(), exchange: "SMART".into(),
+            ..Default::default()
+        };
+        let err = client
+            .try_req_historical_data(5, &combo, "", "1 D", "5 mins", "TRADES", false, 1, false)
+            .expect_err("a combination stating no legs");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (Refusal::VALIDATION, "Security type 'BAG' requires combo leg details."),
+            "{sec_type} {con_id}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {sec_type} {con_id}");
+    }
+    let leg = crate::types::model::ComboLeg {
+        con_id: 756733, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
+        ..Default::default()
+    };
+    let stated = Contract {
+        con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
+        combo_legs: vec![leg], ..Default::default()
+    };
+    client
+        .try_req_historical_data(5, &stated, "", "1 D", "5 mins", "TRADES", false, 1, false)
+        .expect("a combination stating legs is taken");
+    assert!(matches!(rx.try_recv(), Ok(ControlCommand::FetchHistorical { .. })));
 }
 
 /// A date string a gateway cannot read is refused at intake under the

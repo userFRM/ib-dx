@@ -6615,6 +6615,31 @@ impl ClientCore {
         Ok(())
     }
 
+    /// What a gateway refuses in the contract a historical request names
+    /// before it asks the venue: the exchange the caller left unstated, and
+    /// a combination stating no legs — required whether or not the contract
+    /// states the venue's id for the combination, as this reads the type the
+    /// caller stated, before any lookup, with the COMB spelling folded onto
+    /// BAG as a gateway folds it. The exchange alone is not asked where the
+    /// type is the exact spelling CONTFUT: a gateway enters its lead-futures
+    /// mode on that spelling, and only on it — a folded spelling does not
+    /// enter the mode and stays refused — and skips the venue check there,
+    /// so a continuous-futures history naming no venue is served. The
+    /// schedule series rides the same parser.
+    pub fn validate_historical_contract(
+        exchange: &str, sec_type: &str, stated_legs: bool,
+    ) -> Result<(), Refusal> {
+        if sec_type != "CONTFUT" {
+            Self::validate_exchange_stated(exchange)?;
+        }
+        if Self::resolve_sec_type(sec_type) == Some("BAG") && !stated_legs {
+            return Err(Refusal::validation(
+                "Security type 'BAG' requires combo leg details.",
+            ));
+        }
+        Ok(())
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized

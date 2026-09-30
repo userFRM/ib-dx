@@ -3365,6 +3365,13 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         Python::attach(|py| {
             let (client, rx, _shared, w) = wired_client(py);
             let no_exchange = Py::new(py, Contract { con_id: 756733, ..Default::default() }).unwrap();
+            // Named and on a venue, so the legs refusal is what fires: a
+            // combination naming no identifier at all is refused for that
+            // first on the requests that read the description.
+            let combo = Py::new(py, Contract {
+                con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
+                ..Default::default()
+            }).unwrap();
 
             client
                 .call_method1(py, "req_head_time_stamp", (1i64, &no_exchange, "TRADES", 1i32, 1i32))
@@ -3381,6 +3388,13 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .call_method1(py, "req_historical_schedule", (3i64, &no_exchange, "", "1 D", true))
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for a schedule naming no exchange");
+            client
+                .call_method1(
+                    py, "req_historical_data",
+                    (4i64, &combo, "", "1 D", "1 hour", "TRADES", 1i32, 1i32, false, py.None()),
+                )
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for a combination naming no legs");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3393,6 +3407,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (1, "Please enter exchange"),
                 (2, "Please enter exchange"),
                 (3, "Please enter exchange"),
+                (4, "Security type 'BAG' requires combo leg details."),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }

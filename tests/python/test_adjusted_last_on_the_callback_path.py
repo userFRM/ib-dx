@@ -89,6 +89,12 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
     w, c = _client()
     combo = _spy()
     combo.secType = "BAG"
+    # Legs stated, so the live-update refusal is what fires: a combination
+    # naming none is refused for that first.
+    leg = ibkr_dx.ComboLeg()
+    leg.conId, leg.ratio, leg.action, leg.exchange = 756733, 1, "BUY", "SMART"
+    combo.comboLegs = []
+    combo.comboLegs.append(leg)
     cases = [
         (4, _spy(), "20250101 00:00:00", "1 day", "ADJUSTED_LAST", False,
          "End date not supported with adjusted last"),

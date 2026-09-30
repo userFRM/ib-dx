@@ -81,13 +81,14 @@ impl EClient {
         end_date_time: &str, duration: &str, bar_size: &str,
         what_to_show: &str, use_rth: bool, format_date: i32, keep_up_to_date: bool,
     ) -> Result<(), Refusal> {
-        // The exchange is read off the contract as the caller stated it and
-        // refused empty before anything is looked up or sent, as a gateway
-        // refuses it — a contract given by id alone included, and the
-        // schedule series below rides the same gateway parser. What such a
-        // contract still leaves the venue is its naming, which the engine
-        // asks for by id before the query goes.
-        ClientCore::validate_exchange_stated(&contract.exchange)?;
+        // The contract is read as the caller stated it and refused before
+        // anything is looked up or sent, as a gateway refuses it — a contract
+        // given by id alone included, and the schedule series below rides the
+        // same gateway parser. What such a contract still leaves the venue is
+        // its naming, which the engine asks for by id before the query goes.
+        ClientCore::validate_historical_contract(
+            &contract.exchange, &contract.sec_type, !contract.combo_legs.is_empty(),
+        )?;
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
         // A series of its own on the reference client's historical request,
         // served there by the other surface too; refused here as a bar type
@@ -802,9 +803,11 @@ impl EClient {
         end_date_time: &str, duration: &str, use_rth: bool,
     ) -> Result<(), Refusal> {
         // The schedule rides the historical request's own gateway parser, so
-        // the exchange is read off the contract as the caller stated it and
-        // refused empty, as that parser refuses it.
-        ClientCore::validate_exchange_stated(&contract.exchange)?;
+        // the contract is read as the caller stated it and refused as that
+        // parser refuses it.
+        ClientCore::validate_historical_contract(
+            &contract.exchange, &contract.sec_type, !contract.combo_legs.is_empty(),
+        )?;
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
         self.send(ControlCommand::FetchHistoricalSchedule {
             contract: contract.into(),
