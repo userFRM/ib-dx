@@ -10552,11 +10552,12 @@ mod admission_tests {
             admitted.recv_timeout(Duration::from_secs(10)).is_ok(),
             "an admission waited on a loop that was not running",
         );
-        let client = admitting.join().unwrap();
-        assert_eq!(client.backlog(), 10_000);
+        // Held to the end of the test: a client dropped early disconnects.
+        let _client = admitting.join().unwrap();
+        assert_eq!(shared.backlog(), 10_000);
 
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 10_000 - 64, "one lap takes 64");
+        assert_eq!(shared.backlog(), 10_000 - 64, "one lap takes 64");
         let taken: Vec<u32> =
             shared.reference.drain_historical_errors().iter().map(|(id, ..)| *id).collect();
         assert_eq!(taken, (1..=64).collect::<Vec<u32>>(), "the first 64, in order");
@@ -10577,7 +10578,7 @@ mod admission_tests {
         for _ in 0..3 {
             hl.poll_control_commands();
         }
-        assert_eq!(client.backlog(), 130);
+        assert_eq!(shared.backlog(), 130);
         client.cancel_historical_data(500);
         shared.orders.set_replay_done();
         for expected in [64, 64, 2] {
@@ -10587,7 +10588,7 @@ mod admission_tests {
             let cancelled = answers.iter().any(|(_, r)| matches!(r, crate::bridge::Record::HistoricalError((crate::types::model::ErrorOrigin::Request { id: 500, .. }, ..))));
             assert_eq!(cancelled, expected == 2, "released questions precede the newly admitted command");
         }
-        assert_eq!(client.backlog(), 0);
+        assert_eq!(shared.backlog(), 0);
     }
 
     #[test]
@@ -10600,7 +10601,7 @@ mod admission_tests {
         for _ in 0..3 {
             hl.poll_control_commands();
         }
-        assert_eq!(client.backlog(), 130);
+        assert_eq!(shared.backlog(), 130);
         client.req_ids(1);
         shared.orders.set_replay_done();
         for expected in [64, 64, 2] {
@@ -10609,7 +10610,7 @@ mod admission_tests {
             let answers = shared.take_records(shared.next_seq(), crate::bridge::Take::Dispatch { bulletins: false });
             assert_eq!(answers.iter().any(|(_, r)| matches!(r, crate::bridge::Record::Answer(crate::bridge::Answer::NextValidId))), expected == 2);
         }
-        assert_eq!(client.backlog(), 0);
+        assert_eq!(shared.backlog(), 0);
     }
 
     #[test]
@@ -10627,7 +10628,7 @@ mod admission_tests {
         assert_eq!(hl.context.pending_orders.len(), 130);
         client.req_ids(1);
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 131);
+        assert_eq!(shared.backlog(), 131);
         client.cancel_historical_data(500);
         shared.admit(&client.control_tx, ControlCommand::Logout).unwrap();
         shared.admit(&client.control_tx, ControlCommand::Shutdown).unwrap();
@@ -10642,7 +10643,7 @@ mod admission_tests {
             assert_eq!(answers.iter().any(|(_, r)| matches!(r, crate::bridge::Record::Answer(crate::bridge::Answer::NextValidId))), remaining == 0);
             assert_eq!(answers.iter().any(|(_, r)| matches!(r, crate::bridge::Record::HistoricalError((crate::types::model::ErrorOrigin::Request { id: 500, .. }, ..)))), remaining == 0);
         }
-        assert_eq!(client.backlog(), 0);
+        assert_eq!(shared.backlog(), 0);
     }
 
     #[test]
@@ -10701,7 +10702,7 @@ mod admission_tests {
         client.req_head_time_stamp(7, &described(), "TRADES", true, 1);
         hl.poll_control_commands();
         assert_eq!(hl.ccp.pending_named.len(), 1, "held while the venue names it");
-        assert_eq!(client.backlog(), 1, "and counted while it is held");
+        assert_eq!(shared.backlog(), 1, "and counted while it is held");
 
         // The venue never names it.
         let long_ago = Instant::now().checked_sub(Duration::from_secs(600)).unwrap();
@@ -10712,7 +10713,7 @@ mod admission_tests {
             shared.reference.drain_historical_errors().iter().any(|(id, ..)| *id == 7),
             "refused",
         );
-        assert_eq!(client.backlog(), 0, "and finished once refused");
+        assert_eq!(shared.backlog(), 0, "and finished once refused");
     }
 
     /// An order in the buffer is counted until it leaves it: here, refused
@@ -10727,10 +10728,10 @@ mod admission_tests {
             .unwrap();
         hl.poll_control_commands();
         assert_eq!(hl.context.pending_orders.len(), 1, "waiting for the trading connection");
-        assert_eq!(client.backlog(), 1, "and counted while it waits");
+        assert_eq!(shared.backlog(), 1, "and counted while it waits");
         order_builder::refuse_what_is_left(&mut hl.context, &shared, "the engine stopped");
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 0, "and finished once it has left the buffer");
+        assert_eq!(shared.backlog(), 0, "and finished once it has left the buffer");
     }
 
     /// A subscription to a contract named by its description is counted
@@ -10755,11 +10756,11 @@ mod admission_tests {
             .unwrap();
         hl.poll_control_commands();
         assert_eq!(hl.ccp.pending_named.len(), 1, "held while the venue names it");
-        assert_eq!(client.backlog(), 1, "and counted while it is held");
+        assert_eq!(shared.backlog(), 1, "and counted while it is held");
         hl.ccp.pending_named[0].2 = Instant::now().checked_sub(Duration::from_secs(600)).unwrap();
         hl.ccp.sweep_pending_named(&shared);
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 0, "and finished once it is given up on");
+        assert_eq!(shared.backlog(), 0, "and finished once it is given up on");
     }
 
     /// A question about what the venue has finished, held behind the
@@ -10774,11 +10775,11 @@ mod admission_tests {
             .admit(&client.control_tx, ControlCommand::FetchCompletedOrders { api_only: false })
             .unwrap();
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 1, "held while the replay may still be running");
+        assert_eq!(shared.backlog(), 1, "held while the replay may still be running");
         hl.ccp.give_up_waiting_for_the_replay();
         hl.ccp.sweep_completed_orders_request(&mut hl.ccp_conn, &mut hl.hb, &shared, &mut { COMMANDS_PER_LAP });
         hl.poll_control_commands();
-        assert_eq!(client.backlog(), 0, "and finished once it is asked");
+        assert_eq!(shared.backlog(), 0, "and finished once it is asked");
     }
 
     /// Requests the venue has since named are taken first, within the same
@@ -10803,17 +10804,17 @@ mod admission_tests {
     /// it has lapped over them all.
     #[test]
     fn ten_thousand_pings_leave_nothing_counted_once_the_loop_has_lapped() {
-        let (mut hl, _shared, client) = stopped();
+        let (mut hl, shared, client) = stopped();
         for _ in 0..10_000 {
             client.req_ping();
         }
-        assert_eq!(client.backlog(), 10_000);
+        assert_eq!(shared.backlog(), 10_000);
         let mut laps = 0;
-        while client.backlog() > 0 && laps < 1_000 {
+        while shared.backlog() > 0 && laps < 1_000 {
             hl.poll_control_commands();
             laps += 1;
         }
-        assert_eq!(client.backlog(), 0);
+        assert_eq!(shared.backlog(), 0);
         assert_eq!(laps, 10_000_usize.div_ceil(COMMANDS_PER_LAP), "64 a lap");
     }
 
@@ -10825,7 +10826,7 @@ mod admission_tests {
         let (ccp, _peer) = crate::protocol::connection::Connection::for_test();
         hl.ccp_conn = Some(ccp);
         client.req_head_time_stamp(7, &described(), "TRADES", true, 1);
-        let before = client.backlog();
+        let before = shared.backlog();
         assert_eq!(before, 1);
         let read = Arc::new(Mutex::new(None));
         let reading = read.clone();
@@ -10837,7 +10838,7 @@ mod admission_tests {
         crate::bridge::hooks::clear(&crate::bridge::hooks::AFTER_THE_TAKE);
         let at_the_hook = read.lock().unwrap().expect("the hook ran");
         assert!(at_the_hook >= before, "read {at_the_hook} after the take, {before} before it");
-        assert_eq!(client.backlog(), 1, "and it is held");
+        assert_eq!(shared.backlog(), 1, "and it is held");
     }
 
     /// A caller admitting a command every microsecond does not keep the loop

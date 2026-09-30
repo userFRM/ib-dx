@@ -966,19 +966,6 @@ impl EClient {
         self.shared.admit(&self.control_tx, cmd)
     }
 
-    /// How many commands this client has handed the engine that the engine
-    /// has not finished with: still waiting to be taken, or taken and held —
-    /// for the contract to be named, in the order buffer, or behind the
-    /// session's own replay.
-    ///
-    /// No call waits for the engine to take what it is handed, so this is what
-    /// bounds what a caller has handed over. A command the engine has sent,
-    /// refused or withdrawn is no longer counted. Read once per lap of the
-    /// engine's loop, which takes at most 64 commands a lap.
-    pub fn backlog(&self) -> usize {
-        self.shared.backlog()
-    }
-
     // ── Connection ──
 
     /// What this session has sent and received on the venue's connections

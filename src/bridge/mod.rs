@@ -575,7 +575,11 @@ impl SharedState {
     /// the loop took it, so the difference is never negative; and a command
     /// the loop has taken still counts until the lap that took it publishes,
     /// so the count never drops between the take and the hold.
-    pub fn backlog(&self) -> usize {
+    ///
+    /// The engine's own reading of its queue: no surface offers it as a
+    /// caller's gauge, and only the crate's tests read it.
+    #[cfg(test)]
+    pub(crate) fn backlog(&self) -> usize {
         let finished = self.finished.load(Ordering::Acquire);
         let admitted = self.admitted.load(Ordering::Acquire);
         usize::try_from(admitted.saturating_sub(finished)).unwrap_or(usize::MAX)
@@ -583,8 +587,7 @@ impl SharedState {
 
     /// Hot-loop side: how many commands the loop has finished with, once its
     /// lap has taken its commands and updated its holds.
-    #[doc(hidden)]
-    pub fn publish_finished(&self, finished: u64) {
+    pub(crate) fn publish_finished(&self, finished: u64) {
         self.finished.store(finished, Ordering::Release);
     }
 

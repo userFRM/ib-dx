@@ -48,18 +48,6 @@ pub fn connect_with_events( config: &EClientConfig, capacity: usize, ) -> Result
 
 ---
 
-#### `backlog`
-
-How many commands this client has handed the engine that the engine has not finished with: still waiting to be taken, or taken and held — for the contract to be named, in the order buffer, or behind the session's own replay. No call waits for the engine to take what it is handed, so this is what bounds what a caller has handed over. A command the engine has sent, refused or withdrawn is no longer counted. Read once per lap of the engine's loop, which takes at most 64 commands a lap.
-
-```rust
-pub fn backlog(&self) -> usize
-```
-
-**Returns:** `usize`
-
----
-
 #### `traffic`
 
 What this session has sent and received on the venue's connections since it opened: bytes and messages, each way, across every connection it has held, those a reconnect opened included. Bytes are the protocol bytes read or written on the established connections, before TLS encryption and after decryption; messages are whole frames, including heartbeats. Authentication before a connection is established is outside these counts. What a TWS client reads as its connection's statistics.

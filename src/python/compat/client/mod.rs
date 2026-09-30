@@ -1095,18 +1095,6 @@ impl EClient {
         Ok(dict)
     }
 
-    /// How many requests this client has handed the engine that the engine
-    /// has not finished with: still waiting to be taken, or taken and held —
-    /// for the contract to be named, in the order buffer, or behind the
-    /// session's own replay. Zero before a session exists.
-    ///
-    /// No call waits for the engine to take what it is handed, so this is
-    /// what bounds what a caller has handed over. Read once per lap of the
-    /// engine's loop, which takes at most 64 commands a lap.
-    fn backlog(&self) -> usize {
-        self.shared.lock().unwrap().as_ref().map_or(0, |shared| shared.backlog())
-    }
-
     /// Deliver everything waiting, once, and return.
     ///
     /// `run` owns the thread it is called on, which a program with an event

@@ -301,7 +301,7 @@ fn a_held_positions_question_withdrawn_by_its_cancel_is_answered_with_its_retire
     client.req_positions();
     hl.poll_once();
     hl.asks.answer_what_is_ready(&shared, &mut { COMMANDS_PER_LAP });
-    assert_eq!(client.backlog(), 1, "held for the download, and counted");
+    assert_eq!(shared.backlog(), 1, "held for the download, and counted");
 
     client.cancel_positions();
     hl.poll_once();
@@ -309,7 +309,7 @@ fn a_held_positions_question_withdrawn_by_its_cancel_is_answered_with_its_retire
     shared.portfolio.account_download_is_settled();
     hl.asks.answer_what_is_ready(&shared, &mut { COMMANDS_PER_LAP });
     assert_eq!(heard(&client), ["question_retired:Positions"]);
-    assert_eq!(client.backlog(), 0);
+    assert_eq!(shared.backlog(), 0);
 }
 
 /// Answered before its cancel: the answer, its end, then the retirement, and
@@ -399,7 +399,7 @@ fn a_request_and_its_cancel_taken_together_leave_only_the_withdrawal() {
     hl.poll_once();
     hl.asks.answer_what_is_ready(&shared, &mut { COMMANDS_PER_LAP });
     assert!(heard(&client).is_empty(), "nothing answered, nothing refused");
-    assert_eq!(client.backlog(), 0);
+    assert_eq!(shared.backlog(), 0);
 }
 
 /// A question the replay decides is held in the engine, not on the caller's
@@ -415,14 +415,14 @@ fn an_open_orders_question_is_held_for_the_replay_and_the_call_waits_for_nothing
     hl.poll_once();
     hl.asks.answer_what_is_ready(&shared, &mut { COMMANDS_PER_LAP });
     assert!(heard(&client).is_empty(), "held while the venue names what is working");
-    assert_eq!(client.backlog(), 2);
+    assert_eq!(shared.backlog(), 2);
 
     shared.orders.set_replay_done();
     hl.poll_once();
     let told = heard(&client);
     assert_eq!(told.first().map(String::as_str), Some("open_order_end"), "{told:?}");
     assert!(told.iter().any(|e| e.starts_with("next_valid_id:")), "{told:?}");
-    assert_eq!(client.backlog(), 0);
+    assert_eq!(shared.backlog(), 0);
 }
 
 /// A loop with a trading connection and a channel to it.
@@ -2053,10 +2053,10 @@ fn an_exercise_without_a_number_is_allocated_after_replay_in_the_loop() {
     client.exercise_options(0, &spy(), 1, 1, "", true, Default::default());
     assert!(began.elapsed() < Duration::from_millis(100));
     hl.poll_control_commands();
-    assert_eq!(client.backlog(), 1);
+    assert_eq!(shared.backlog(), 1);
     shared.orders.set_replay_done();
     hl.poll_control_commands();
-    assert_eq!(client.backlog(), 0);
+    assert_eq!(shared.backlog(), 0);
 }
 
 #[test]

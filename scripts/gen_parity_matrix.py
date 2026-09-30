@@ -78,7 +78,7 @@ NOT_A_CLIENT = {"Evidence", "Fires on a gateway", "Answered from"}
 #: Hand-kept, and checked: a name here that no longer appears in that table
 #: fails the run rather than standing as a claim about nothing.
 LOCAL = {
-    "backlog", "checkconnected", "errorfrom", "eventslost", "instrumentof", "lastrtt", "lastrttms",
+    "checkconnected", "errorfrom", "eventslost", "instrumentof", "lastrtt", "lastrttms",
     "nextorderid", "nextsharedid", "parsealgoparams", "poll", "questionretired", "refuse", "reset", "run",
     "serverversion", "sessionover", "setconnectoptions",
     "setoptionalcapabilities", "validateattachedordersparameters",

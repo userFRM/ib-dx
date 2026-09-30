@@ -2125,7 +2125,7 @@ fn a_calculation_waits_for_the_model_rather_than_refusing() {
         shared.market.holds_calculation(7),
         "the question was not kept, so the model will arrive with nobody asking",
     );
-    assert_eq!(client.backlog(), 1, "the unanswered calculation is still held");
+    assert_eq!(shared.backlog(), 1, "the unanswered calculation is still held");
 
     // Withdrawn by the caller: the watch goes with it.
     client.cancel_calculate_implied_volatility(7);
@@ -2135,7 +2135,7 @@ fn a_calculation_waits_for_the_model_rather_than_refusing() {
         "the question outlived the caller's interest in it",
     );
     assert!(!rx.engine().md_requests.contains_key(&7), "and the watch it opened went with it");
-    assert_eq!(client.backlog(), 0, "the withdrawal finishes the held question");
+    assert_eq!(shared.backlog(), 0, "the withdrawal finishes the held question");
 }
 
 /// The other direction of the same pair: a price asked for at a stated

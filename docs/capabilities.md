@@ -252,7 +252,6 @@ ib_async's transport, has a method by that name.
 | `algorithms` | venue | · | · | · | ● | ● |
 | `algorithmsFor` | venue | · | · | · | ● | ● |
 | `await_order` | venue | · | · | · | ● | — |
-| `backlog` | this client | · | · | · | ● | ● |
 | `calendarEvents` | venue | · | · | · | ● | ● |
 | `calendarSchema` | venue | · | · | · | ● | ● |
 | `cancelAdjustments` | venue | · | · | · | ● | ● |

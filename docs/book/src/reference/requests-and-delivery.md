@@ -102,13 +102,10 @@ opened while cancellation was underway.
 
 ## Admission and wakeups
 
-`backlog()` counts admitted commands that have not finished, including held
-work and unsent orders. Work kept for `transmit = false` or a model value stays
-counted. A global cancellation is one command even when it covers many
-contracts. Admission uses an unbounded channel; released work and new commands
-share a limit of 64 commands per engine lap. A caller that limits admission
-must still allow the transmitting order or cancellation that releases its
-staged orders.
+Admission uses an unbounded channel: a call hands the engine its command and
+returns, however far behind the loop is. Released work and new commands share a
+limit of 64 commands per engine lap. A caller that limits admission must still
+allow the transmitting order or cancellation that releases its staged orders.
 
 Rust `on_data(Some(hook))` installs a wake hook; `None` removes it. The hook runs
 on the engine thread, outside engine locks, after a record or state change, at
