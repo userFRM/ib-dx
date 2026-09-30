@@ -5934,10 +5934,19 @@ impl ClientCore {
                     }
                 }
             }
-            // A price condition's trigger method, and a margin condition's
-            // percent, are `int`s as the TWS API carries them, and go to the
-            // venue as stated: no gateway refusal of either has been read, so
-            // none is made here.
+            // A price condition's trigger method is an `int` as the TWS API
+            // carries it and goes to the venue as stated: no gateway refusal
+            // of it has been read, so none is made here. A margin condition's
+            // percent a gateway reads strictly inside 0 < percent < 100, and
+            // a value outside that it refuses before anything is sent.
+            if let crate::types::OrderCondition::Margin { percent, .. } = condition
+                && !(1..=99).contains(percent)
+            {
+                return Err(Refusal::stated(REQUEST_NOT_READ, format!(
+                    "Error reading request: The value you have entered {percent} is invalid.\n\
+                     Please enter percent within a range of (0, 100).",
+                )));
+            }
         }
 
         // Reject non-finite and out-of-range numerics up front, before any

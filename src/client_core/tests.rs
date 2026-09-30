@@ -3753,12 +3753,13 @@ fn a_summary_parked_behind_the_download_is_answered_when_the_session_ends() {
 }
 
 
-/// A condition's trigger method and margin percent are the TWS API's `int`s,
-/// and every value goes to the venue as stated: no gateway refusal of either
-/// has been read, so none is made. What the venue answers to a value outside
-/// the methods it names, or to a negative percent, is its own to say.
+/// A condition's trigger method is the TWS API's `int`, and every value goes
+/// to the venue as stated: no gateway refusal of it has been read, so none is
+/// made here. A margin condition's percent a gateway reads strictly inside
+/// 0 < percent < 100, and a value outside that it refuses before anything is
+/// sent — under 320, with its own text.
 #[test]
-fn a_condition_carries_its_trigger_method_and_percent_as_stated() {
+fn a_condition_carries_its_trigger_method_as_stated_and_refuses_a_percent_outside_the_range() {
     let priced = || ApiOrder {
         action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(),
         lmt_price: 100.0, tif: "DAY".into(), ..Default::default()
@@ -3772,13 +3773,30 @@ fn a_condition_carries_its_trigger_method_and_percent_as_stated() {
         ClientCore::validate_order(&order, &crate::client_core::OrderSession::single(""))
             .unwrap_or_else(|e| panic!("condition trigger {tm} refused: {e:?}"));
     }
-    for percent in [-5, 0, 10, i32::MAX] {
+    for percent in [1, 50, 99] {
         let mut order = priced();
         order.conditions.push(crate::types::OrderCondition::Margin {
             percent, is_more: false, is_conjunction_connection: false,
         });
         ClientCore::validate_order(&order, &crate::client_core::OrderSession::single(""))
-            .unwrap_or_else(|e| panic!("margin percent {percent} refused: {e:?}"));
+            .unwrap_or_else(|e| panic!("margin percent {percent} inside the range refused: {e:?}"));
+    }
+    for percent in [-5, 0, 100, 150, i32::MAX] {
+        let mut order = priced();
+        order.conditions.push(crate::types::OrderCondition::Margin {
+            percent, is_more: false, is_conjunction_connection: false,
+        });
+        let why = ClientCore::validate_order(&order, &crate::client_core::OrderSession::single(""))
+            .expect_err("a percent outside the range is refused before anything is sent");
+        assert_eq!(why.code, 320, "refused under the number a gateway uses: {why:?}");
+        assert_eq!(
+            why.message,
+            format!(
+                "Error reading request: The value you have entered {percent} is invalid.\n\
+                 Please enter percent within a range of (0, 100)."
+            ),
+            "the text a gateway states: {why:?}",
+        );
     }
 }
 
