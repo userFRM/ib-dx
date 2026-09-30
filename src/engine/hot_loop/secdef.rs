@@ -33,6 +33,12 @@ pub struct SecDefState {
     meta_pending: Option<(String, u32)>,
     /// The events request on the wire: its own slot.
     events_pending: Option<(String, u32)>,
+    /// The metadata this session has been answered with. A gateway holds the
+    /// calendar metadata in a cache written only by the metadata answer — no
+    /// automatic fetch fills it — and an event request consults the cache
+    /// before anything is built: empty, it is refused under the gateway's
+    /// number rather than sent.
+    meta_answered: Option<String>,
     /// Message types this connection has sent that nothing here reads, named
     /// once each. Reported where somebody looks, rather than dropped.
     unread: std::collections::HashSet<String>,
@@ -117,6 +123,17 @@ impl SecDefState {
         hb: &mut HeartbeatState,
         shared: &SharedState,
     ) {
+        // The metadata answer is consulted before anything is built, as a
+        // gateway consults it: a session no metadata answer reached has no
+        // event path at all.
+        if self.meta_answered.is_none() {
+            shared.reference.push_historical_error(
+                req_id,
+                cal::META_DATA_NOT_REQUESTED,
+                "WSH meta data not requested.".to_string(),
+            );
+            return;
+        }
         // The request is built before the slot is claimed, as a gateway
         // builds it: a request that fails its own validation is refused
         // under that failure, not as a duplicate.
@@ -374,6 +391,9 @@ impl SecDefState {
             return;
         };
         if is_meta {
+            // The cache is written only here: by a metadata answer this
+            // session asked for and got.
+            self.meta_answered = Some(json.clone());
             shared.reference.push_calendar_meta_data(req_id, json.clone());
         } else {
             shared.reference.push_calendar_events(req_id, json.clone());
@@ -424,22 +444,53 @@ mod tests {
         assert_eq!(told[0].1, 504, "no connection is not a malformed request");
     }
 
-    /// Events are asked for whether or not the event types have been.
-    ///
-    /// The venue answers an event request that no metadata request preceded,
-    /// so nothing here stands between the caller and that answer.
+    /// An event request that no metadata answer precedes this session is
+    /// refused as a gateway refuses it, under its number and words, and
+    /// nothing reaches the venue wire. A gateway holds the calendar metadata
+    /// in a cache written only by the metadata answer: there is no automatic
+    /// fetch, and an event request consults the cache before anything is
+    /// built.
     #[test]
-    fn events_need_no_metadata_first() {
+    fn events_before_any_metadata_answer_are_refused() {
         let shared = SharedState::new();
         let mut state = SecDefState::new();
-        let mut conn = Some(Connection::for_test().0);
+        let (conn, _peer) = Connection::for_test();
+        let mut conn = Some(conn);
+        let mut hb = HeartbeatState::new();
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
-        state.send_calendar_events_request(9, &query, &mut conn, &mut HeartbeatState::new(), &shared);
+        state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
+        let told = shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert_eq!((told[0].0, told[0].1), (9, cal::META_DATA_NOT_REQUESTED), "{told:?}");
+        assert_eq!(told[0].2, "WSH meta data not requested.", "{told:?}");
+        assert!(state.events_pending.is_none(), "nothing reaches the wire");
+
+        // A metadata request answered this session is the only thing that
+        // opens the event path; the same request then goes out.
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 7);
+        state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
         assert!(
             shared.reference.drain_historical_errors().is_empty(),
-            "nothing refuses it before it leaves",
+            "an answered metadata request opens the event path",
         );
-        assert!(state.events_pending.is_some(), "and it is outstanding on the wire");
+        assert!(state.events_pending.is_some(), "and the request is on the wire");
+    }
+
+    /// A metadata request answered this session, which is the only way a
+    /// gateway's calendar cache is written.
+    fn answered_metadata(
+        state: &mut SecDefState,
+        conn: &mut Option<Connection>,
+        hb: &mut HeartbeatState,
+        shared: &SharedState,
+        req_id: u32,
+    ) {
+        state.send_calendar_meta_data_request(req_id, conn, hb, shared);
+        let mut reply = std::collections::HashMap::new();
+        reply.insert(cal::TAG_CALENDAR_KEY, format!("MetaDataRequest{req_id}"));
+        reply.insert(96, r#"{"meta_data":{"event_types":[]}}"#.to_string());
+        state.deliver(&reply, false, shared, &None);
+        shared.reference.drain_calendar_meta_data_for_dispatch();
     }
 
     /// The answer names the request this client gave it, which is the only
@@ -495,6 +546,7 @@ mod tests {
         let mut hb = HeartbeatState::new();
         let shared = SharedState::new();
         let mut state = SecDefState::new();
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
         state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
@@ -609,6 +661,7 @@ mod tests {
                 state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
                 state.send_calendar_meta_data_request(8, &mut conn, &mut hb, &shared);
             } else {
+                answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
                 state.send_calendar_events_request(7, &query, &mut conn, &mut hb, &shared);
                 state.send_calendar_events_request(8, &query, &mut conn, &mut hb, &shared);
             }
@@ -629,8 +682,9 @@ mod tests {
         let mut hb = HeartbeatState::new();
         let shared = SharedState::new();
         let mut state = SecDefState::new();
-        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
+        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
         state.send_calendar_events_request(7, &query, &mut conn, &mut hb, &shared);
         assert!(
             shared.reference.drain_historical_errors().is_empty(),
@@ -650,8 +704,9 @@ mod tests {
         let mut hb = HeartbeatState::new();
         let shared = SharedState::new();
         let mut state = SecDefState::new();
-        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
+        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
         let reject = fix::fix_build(&[(fix::TAG_MSG_TYPE, "3"), (58, "refused")], 1);

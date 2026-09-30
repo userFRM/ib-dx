@@ -233,8 +233,10 @@ impl EClient {
 
     /// Ask what event types the corporate-events calendar carries.
     ///
-    /// Independent of the events themselves: neither request needs the other,
-    /// and either may be asked first.
+    /// The events depend on this, not the other way: a gateway keeps the
+    /// calendar metadata in a cache written only by this request's answer,
+    /// and an event request in a session the cache is empty in is refused
+    /// under 10282 rather than sent.
     pub fn req_wsh_meta_data(&self, req_id: i64) {
         if let Err(why) = self.try_req_wsh_meta_data(req_id) {
             self.refuse_request(req_id, &why);
@@ -275,9 +277,14 @@ impl EClient {
 
     /// Ask the corporate-events calendar for events.
     ///
-    /// A caller either names a contract or writes its own filter. The filter
-    /// goes to the venue as written: the venue validates it, and rewriting it
-    /// here would change what was asked.
+    /// Exactly one scope is a request a gateway takes: a named contract —
+    /// any id but the field's unset marker — or a non-empty filter the
+    /// caller wrote. Naming both, or neither, is refused under 10309. The
+    /// filter goes to the venue as written: the venue validates it, and
+    /// rewriting it here would change what was asked.
+    ///
+    /// A metadata request answered this session must precede it; until one
+    /// has been, the request is refused under 10282 rather than sent.
     pub fn req_wsh_event_data(
         &self,
         req_id: i64,

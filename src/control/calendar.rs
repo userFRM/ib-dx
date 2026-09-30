@@ -9,9 +9,10 @@
 //! that envelope too, with the answer under one number and a refusal under
 //! another.
 //!
-//! Neither depends on the other. An event request that no metadata request
-//! preceded is answered — measured on a session, which is why nothing here
-//! stands in front of one.
+//! The events depend on the metadata, not the other way: a gateway holds the
+//! metadata in a cache written only by a metadata answer, and an event
+//! request in a session the cache is empty in is refused under its own
+//! number rather than sent.
 
 // The query a request is built from sits beside the command that carries
 // it. Reachable here because that is the path a program written against this
@@ -71,6 +72,10 @@ pub const DUPLICATE_META_DATA_REQUEST: i32 = 10278;
 /// The number a gateway refuses a second event request under while one is
 /// on the wire.
 pub const DUPLICATE_EVENT_DATA_REQUEST: i32 = 10281;
+
+/// The number a gateway refuses an event request under that no metadata
+/// answer precedes this session.
+pub const META_DATA_NOT_REQUESTED: i32 = 10282;
 
 /// The JSON asking for events.
 ///
