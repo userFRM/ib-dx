@@ -2994,14 +2994,16 @@ impl ClientCore {
     ///
     /// Each is refused as a gateway refuses it, with its reason. An empty
     /// exchange is not read as the smart destination: a gateway asks the
-    /// caller to name one. The description is read as a gateway reads it on
-    /// this surface: a book request describes its contract, so the option and
-    /// futures field checks run on it too.
+    /// caller to name one. The field is judged raw, as a gateway judges it
+    /// here: an exchange of only whitespace passes as stated and rides to
+    /// the lookup, which no exchange matches. The description is read as a
+    /// gateway reads it on this surface: a book request describes its
+    /// contract, so the option and futures field checks run on it too.
     pub fn validate_depth_request(
         con_id: i64, symbol: &str, exchange: &str, sec_type: &str, num_rows: i32,
         expiry: &str, filters: &crate::types::SecDefFilters, zero_strike: bool,
     ) -> Result<(), Refusal> {
-        if exchange.trim().is_empty() {
+        if exchange.is_empty() {
             return Err(Refusal::validation("Please enter exchange."));
         }
         Self::validate_contract_description(
@@ -6760,9 +6762,11 @@ impl ClientCore {
     /// contract as the caller stated it: one naming no venue — a contract
     /// given by id alone included — is refused before anything is looked up
     /// or sent, in the sentence a gateway refuses it in (no trailing period,
-    /// which the book refusal has). Whitespace states no venue either.
+    /// which the book refusal has). The field is judged raw, as a gateway
+    /// judges it on this family: an exchange of only whitespace passes as
+    /// stated and rides to the lookup, which no exchange matches.
     pub fn validate_exchange_stated(exchange: &str) -> Result<(), Refusal> {
-        if exchange.trim().is_empty() {
+        if exchange.is_empty() {
             return Err(Refusal::validation("Please enter exchange"));
         }
         Ok(())

@@ -4692,7 +4692,6 @@ fn a_historical_request_naming_no_exchange_is_refused() {
     for contract in [
         Contract { con_id: 495_512_563, ..Default::default() },
         Contract { symbol: "SPY".into(), sec_type: "STK".into(), ..Default::default() },
-        Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() },
     ] {
         for err in [
             client
@@ -4711,6 +4710,21 @@ fn a_historical_request_naming_no_exchange_is_refused() {
         }
         assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
     }
+
+    // An exchange of only whitespace passes as stated: a gateway judges the
+    // field raw on this family, so the name rides to the lookup, which no
+    // exchange matches, rather than being refused at the door.
+    let padded = Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() };
+    client
+        .try_req_historical_data(5, &padded, "", "1 D", "1 hour", "TRADES", true, 1, false)
+        .expect("a whitespace exchange is a stated one");
+    assert!(matches!(rx.try_recv(), Ok(ControlCommand::FetchHistorical { .. })), "the bars query is sent");
+    client
+        .try_req_historical_data(6, &padded, "", "1 D", "1 day", "SCHEDULE", true, 1, false)
+        .expect("a whitespace exchange is a stated one");
+    assert!(matches!(rx.try_recv(), Ok(ControlCommand::FetchHistoricalSchedule { .. })), "the schedule series is sent");
+    client.try_req_historical_schedule(7, &padded, "", "1 D", true).expect("a whitespace exchange is a stated one");
+    assert!(matches!(rx.try_recv(), Ok(ControlCommand::FetchHistoricalSchedule { .. })), "the schedule query is sent");
 
     // The exact spelling a gateway's lead-futures mode is entered on skips
     // the venue check there: a continuous-futures history naming no venue
@@ -5061,14 +5075,15 @@ fn req_head_time_stamp_sends_fetch() {
 /// A head timestamp request naming no exchange is refused at intake in the
 /// sentence a gateway refuses it in — the exchange read off the contract as
 /// the caller stated it, a contract given by id alone included — before
-/// anything is looked up or sent. Whitespace states no venue either.
+/// anything is looked up or sent. An exchange of only whitespace passes as
+/// stated: a gateway judges the field raw here, and the name rides to the
+/// lookup, which no exchange matches.
 #[test]
 fn a_head_timestamp_request_naming_no_exchange_is_refused() {
     let (client, rx, _shared) = test_client();
     for contract in [
         Contract { con_id: 495_512_563, ..Default::default() },
         Contract { symbol: "SPY".into(), sec_type: "STK".into(), ..Default::default() },
-        Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() },
     ] {
         let err = client
             .try_req_head_time_stamp(6, &contract, "TRADES", true, 1)
@@ -5080,6 +5095,11 @@ fn a_head_timestamp_request_naming_no_exchange_is_refused() {
         );
         assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
     }
+    let padded = Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() };
+    client
+        .try_req_head_time_stamp(6, &padded, "TRADES", true, 1)
+        .expect("a whitespace exchange is a stated one");
+    assert!(matches!(rx.try_recv(), Ok(ControlCommand::FetchHeadTimestamp { .. })), "the query is sent");
 }
 
 /// A ticks request naming no exchange is refused at intake in this
@@ -9485,6 +9505,19 @@ fn a_depth_request_states_the_contract_it_was_given() {
             assert_eq!(contract.sec_type, "", "a security type nobody stated");
             assert_eq!(contract.exchange, "SMART");
             assert_eq!(contract.con_id, 495512563);
+        }
+        other => panic!("expected SubscribeDepth, got {other:?}"),
+    }
+    // An exchange of only whitespace passes as stated: a gateway judges the
+    // field raw on a book request too, so the name rides to the lookup as
+    // the caller wrote it rather than being refused at the door.
+    let padded = crate::types::model::Contract {
+        con_id: 495512563, exchange: "   ".into(), ..Default::default()
+    };
+    crate::api::client::tests::reported(&client, || client.req_mkt_depth(2, &padded, 5, false)).expect("the request is sent");
+    match rx.try_recv().expect("the subscription") {
+        ControlCommand::SubscribeDepth { contract, .. } => {
+            assert_eq!(contract.exchange, "   ", "the venue name as the caller wrote it");
         }
         other => panic!("expected SubscribeDepth, got {other:?}"),
     }
