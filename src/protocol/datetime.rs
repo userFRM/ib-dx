@@ -588,20 +588,24 @@ impl DatetimeFormat {
 /// setting. An operator zone no database answers to publishes on UTC and says
 /// so, rather than naming a clock the stamp was not written on.
 ///
-/// A stamp the current reading refuses falls back to the legacy rendering a
-/// gateway keeps for those — the digits at fixed positions read as GMT,
-/// written on the session's clock with a double space between the date and
-/// the time — and one that leaves no digits at those positions publishes no
-/// time at all, rather than the unreadable string reaching the caller raw.
+/// A stamp the strict reading refuses is still read digit by digit at the
+/// fixed positions — a `T` where the separator belongs, an hour past its
+/// range rolling into the next day — and published in the shape the setting
+/// names, as a gateway publishes it on a session carrying that setting: its
+/// legacy rendering is reached only where the lenient reading finds nothing.
+/// A stamp leaving no digits at those positions publishes no time at all,
+/// rather than the unreadable string reaching the caller raw.
 pub fn published_execution_time(
     raw: &str,
     zone: &str,
     format: DatetimeFormat,
     instrument_zone: Option<&str>,
 ) -> String {
-    let Some(at) = ib_datetime_to_unix(raw).and_then(|secs| jiff::Timestamp::from_second(secs).ok())
+    let Some(at) = ib_datetime_to_unix(raw)
+        .or_else(|| lenient_execution_seconds(raw))
+        .and_then(|secs| jiff::Timestamp::from_second(secs).ok())
     else {
-        return legacy_execution_time(raw, zone);
+        return String::new();
     };
     if format == DatetimeFormat::UtcFormat {
         return unix_to_ib_utc_dash(at.as_second());
@@ -616,28 +620,21 @@ pub fn published_execution_time(
     format!("{} {name}", at.to_zoned(clock).strftime("%Y%m%d %H:%M:%S"))
 }
 
-/// The legacy rendering a gateway falls back to where its current reading of
-/// a stamp returns nothing: the digits at fixed positions — year, month, day,
-/// hour, minute, second, the separators between them whatever the venue
-/// wrote — read as GMT and written on the session's clock as a date and a
-/// time separated by a double space. A field past its range rolls into the
-/// next, as a gateway's lenient calendar rolls it. A stamp with no digits at
-/// those positions publishes no time at all: a gateway leaves the field unset
-/// rather than publishing a string nobody parses.
-fn legacy_execution_time(raw: &str, zone: &str) -> String {
+/// The lenient reading a gateway keeps beside its strict one: the digits at
+/// fixed positions — year, month, day, hour, minute, second, the separators
+/// between them whatever the venue wrote — read as GMT seconds. A field past
+/// its range rolls into the next, as a gateway's lenient calendar rolls it. A
+/// stamp leaving no digits at those positions reads as nothing, and publishes
+/// no time at all.
+fn lenient_execution_seconds(raw: &str) -> Option<i64> {
     let field = |at: std::ops::Range<usize>| raw.get(at)?.parse::<i64>().ok();
     let (
         Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second),
     ) = (field(0..4), field(4..6), field(6..8), field(9..11), field(12..14), field(15..17))
     else {
-        return String::new();
+        return None;
     };
-    let at = jiff::Timestamp::from_second(
-        ymd_to_days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second,
-    );
-    let Ok(at) = at else { return String::new() };
-    let clock = clock_named(zone).unwrap_or(jiff::tz::TimeZone::UTC);
-    at.to_zoned(clock).strftime("%Y%m%d  %H:%M:%S").to_string()
+    Some(ymd_to_days(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
 }
 
 /// The range a bar request named, as stated once its bars have all arrived.
@@ -1087,38 +1084,45 @@ mod venue_clock_tests {
         assert!(ib_datetime_to_unix("20260830-14:30:00").is_some());
     }
 
-    /// A stamp the current reading refuses falls back to the legacy rendering
-    /// a gateway keeps for those — the digits at its fixed positions read as
-    /// GMT and written on the session's clock, a date and a time separated by
-    /// a double space — rather than reaching the caller raw. One that leaves
-    /// no digits at those positions publishes no time at all: a gateway
-    /// leaves the field unset rather than publishing a string nobody parses.
+    /// A stamp the strict reading refuses but the fixed-position digit read
+    /// accepts takes the shape the datetime-format setting names, as it would
+    /// on a modern session of a gateway: the legacy rendering is reached only
+    /// where the lenient reading finds nothing. One that leaves no digits at
+    /// those positions publishes no time at all: a gateway leaves the field
+    /// unset rather than publishing a string nobody parses.
     #[test]
-    fn an_unreadable_stamp_falls_back_to_the_legacy_rendering() {
+    fn a_stamp_only_the_fixed_position_read_accepts_takes_the_settings_shape() {
         let published = |raw: &str| {
             published_execution_time(raw, "Europe/Brussels", DatetimeFormat::OperatorTimezone, None)
         };
-        // A separator the current reading does not split on: the legacy
-        // reader never looked at the separators, only at the digits.
-        assert_eq!(published("20260729T11:00:00"), "20260729  13:00:00");
+        // A separator the strict reading does not split on: the lenient read
+        // never looks at the separators, only at the digits.
+        assert_eq!(published("20260729T11:00:00"), "20260729 13:00:00 Europe/Brussels");
         // A field past its range rolls into the next, as a gateway's lenient
         // calendar rolls it: the twenty-fifth hour of the twenty-ninth is
         // 01:00 on the thirtieth in UTC, 03:00 in July Brussels.
-        assert_eq!(published("20260729-25:00:00"), "20260730  03:00:00");
+        assert_eq!(published("20260729-25:00:00"), "20260730 03:00:00 Europe/Brussels");
         // No digits at the positions, no time published.
         assert_eq!(published("not-a-time"), "");
         assert_eq!(published(""), "");
-        // A stamp the current reading accepts is untouched, single space and
-        // zone id as ever.
+        // A stamp the strict reading accepts is untouched.
         assert_eq!(published("20260729-11:00:00"), "20260729 13:00:00 Europe/Brussels");
-        // The fallback is the one a gateway keeps whatever its setting says:
-        // it fires where the current reading returned nothing, before any
-        // shape was chosen.
+        // The lenient read feeds the setting's shape, so every setting names
+        // the shape these stamps publish in.
         assert_eq!(
             published_execution_time(
                 "20260729T11:00:00", "Europe/Brussels", DatetimeFormat::UtcFormat, None,
             ),
-            "20260729  13:00:00",
+            "20260729-11:00:00",
+        );
+        assert_eq!(
+            published_execution_time(
+                "20260729T11:00:00",
+                "Europe/Brussels",
+                DatetimeFormat::InstrumentTimezone,
+                Some("America/New_York"),
+            ),
+            "20260729 07:00:00 America/New_York",
         );
     }
 }
