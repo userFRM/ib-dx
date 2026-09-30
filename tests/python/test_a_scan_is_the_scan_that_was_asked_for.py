@@ -54,3 +54,29 @@ def test_a_field_left_off_takes_the_default():
     w, c = _client()
     c.req_scanner_subscription(3, Sparse())
     assert w.errors == [], w.errors
+
+
+def test_a_denied_scan_code_is_refused_under_its_own_code():
+    """A login feature flag denying the scan code refuses the subscription at
+    the door, under its own code and in a gateway's words, and the venue is
+    asked nothing."""
+    w, c = _client()
+    c._test_set_enabled_features(["DENY_APISCAN_HOT_BY_VOLUME"])
+    sub = ib_async.ScannerSubscription()
+    sub.scanCode = "HOT_BY_VOLUME"
+    c.req_scanner_subscription(4, sub)
+    c.poll()
+    assert w.errors == [(10359, "Scan code HOT_BY_VOLUME is not allowed")], w.errors
+
+
+def test_a_denied_filter_is_refused_under_its_own_code():
+    """A filter in a flagged group is refused the same way, under its own
+    code, naming the filter tag the subscription carries."""
+    w, c = _client()
+    c._test_set_enabled_features(["DENY_APISCAN_priceAbove"])
+    sub = ib_async.ScannerSubscription()
+    sub.scanCode = "TOP_PERC_GAIN"
+    sub.abovePrice = 10.0
+    c.req_scanner_subscription(5, sub)
+    c.poll()
+    assert w.errors == [(10360, "Scan filter priceAbove is not allowed")], w.errors

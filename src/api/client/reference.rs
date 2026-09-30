@@ -463,8 +463,17 @@ impl EClient {
         scan_code: &str, max_items: u32, filters: &[TagValue], scanner_setting_pairs: &str,
     ) -> Result<(), Refusal> {
         crate::control::scanner::note_setting_pairs(scanner_setting_pairs);
+        // The number is read before anything is validated, as a gateway reads
+        // the request before it checks what it states. A denied code or
+        // filter is refused under its own number before anything is sent.
+        let numbered = wire_req_id(req_id)?;
+        crate::control::scanner::validate_scan_features(
+            scan_code,
+            filters.iter().map(|f| f.tag.as_str()),
+            &self.shared.reference.enabled_features(),
+        )?;
         self.send(ControlCommand::SubscribeScanner {
-            req_id: wire_req_id(req_id)?,
+            req_id: numbered,
             instrument: instrument.into(),
             location_code: location_code.into(),
             scan_code: scan_code.into(),

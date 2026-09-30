@@ -6361,6 +6361,40 @@ fn req_scanner_subscription_sends_subscribe() {
     }
 }
 
+/// A scan code or a filter the login's feature flags deny is refused at the
+/// door under its own code, in a gateway's words, before anything is sent —
+/// and absent flags change nothing.
+#[test]
+fn a_denied_scan_code_or_filter_is_refused_under_its_own_code() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_enabled_features(vec![
+        "DENY_APISCAN_HIGH_OPT_VOLUME_PUT_CALL_RATIO".into(),
+        "DENY_APISCAN_priceAbove".into(),
+    ]);
+    client.req_scanner_subscription(
+        1, "STK", "STK.US.MAJOR", "HIGH_OPT_VOLUME_PUT_CALL_RATIO", 50, &[], "",
+    );
+    client.req_scanner_subscription(
+        2, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50,
+        &[TagValue { tag: "priceAbove".into(), value: "10".into() }], "",
+    );
+    assert!(rx.try_recv().is_err(), "the venue was asked about a denied scan");
+    let refused = shared.drain_refused();
+    assert_eq!(
+        refused.iter().map(|r| (r.0, r.1, r.2.as_str())).collect::<Vec<_>>(),
+        [
+            (1, 10359, "Scan code HIGH_OPT_VOLUME_PUT_CALL_RATIO is not allowed"),
+            (2, 10360, "Scan filter priceAbove is not allowed"),
+        ],
+    );
+    // An allowed code with an unflagged filter is subscribed as before.
+    client.req_scanner_subscription(
+        3, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50,
+        &[TagValue { tag: "volumeAbove".into(), value: "1000".into() }], "",
+    );
+    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::SubscribeScanner { req_id: 3, .. }));
+}
+
 #[test]
 fn cancel_scanner_subscription_sends_cancel() {
     let (client, rx, _shared) = test_client();

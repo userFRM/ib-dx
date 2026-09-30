@@ -309,6 +309,14 @@ impl EClient {
             if let Some(why) = self.options_refused(py, &crate::client_core::SCANNER_OPTIONS, scanner_subscription_options)? {
                 return self.report_refusal(py, req_id, why);
             }
+            // A denied code or filter is refused under its own number before
+            // anything is sent, as a gateway refuses it.
+            let enabled = self.shared_state()?.reference.enabled_features();
+            if let Err(why) = crate::control::scanner::validate_scan_features(
+                &scan_code, filters.iter().map(|(tag, _)| tag.as_str()), &enabled,
+            ) {
+                return self.report_refusal(py, req_id, why);
+            }
             self.send_control(&tx, ControlCommand::SubscribeScanner {
                 req_id: wire_req_id(req_id)?, instrument, location_code, scan_code, max_items, filters,
             }).or_else(|why| Python::attach(|py| self.report_refusal_as(py, super::request_origin(req_id), crate::error_codes::Refusal::not_connected(why.to_string()))))

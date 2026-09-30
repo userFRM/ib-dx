@@ -11,6 +11,41 @@ pub(crate) fn note_setting_pairs(pairs: &str) {
     }
 }
 
+/// The feature-flag prefix a login states to deny a scan code or a filter
+/// group to the session.
+const DENY_APISCAN: &str = "DENY_APISCAN_";
+
+/// What a scan has to state to be subscribable on this session: a code and
+/// filters the login's feature flags do not deny.
+///
+/// A gateway checks the flags the venue stated at logon before anything is
+/// sent, and refuses under the codes' own numbers rather than the standing
+/// validation wrap: a `DENY_APISCAN_<scan code>` flag answers 10359 naming
+/// the code, a `DENY_APISCAN_<filter tag>` flag answers 10360 naming the
+/// filter. Absent flags change nothing.
+pub fn validate_scan_features<'a>(
+    scan_code: &str,
+    filter_tags: impl Iterator<Item = &'a str>,
+    enabled: &[String],
+) -> Result<(), crate::error_codes::Refusal> {
+    let denied = |name: &str| {
+        enabled.iter().any(|f| f.strip_prefix(DENY_APISCAN).is_some_and(|rest| rest == name))
+    };
+    if denied(scan_code) {
+        return Err(crate::error_codes::Refusal::stated(
+            10359, format!("Scan code {scan_code} is not allowed"),
+        ));
+    }
+    for tag in filter_tags {
+        if denied(tag) {
+            return Err(crate::error_codes::Refusal::stated(
+                10360, format!("Scan filter {tag} is not allowed"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// FIX tag 6040: the sub protocol.
 pub const TAG_SUB_PROTOCOL: u32 = 6040;
 
