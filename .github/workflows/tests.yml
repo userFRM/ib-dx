@@ -308,6 +308,15 @@ jobs:
       - name: Nothing points at another project's issue tracker
         run: python scripts/check_no_foreign_tracker_links.py
 
+      # A workflow holding a write permission acts as the repository, and an
+      # action it resolves by moving tag is a version nobody reviewed: the tag
+      # can be repointed between the reading and the running. The publishing
+      # jobs of the release workflow were pinned by commit for this reason;
+      # the docs workflow held pages: write and id-token: write while every
+      # step it ran still resolved by tag.
+      - name: A job holding a write permission resolves no action by tag
+        run: python scripts/check_privileged_steps_pinned.py
+
       # A published line that states what the venue holds internally, what an
       # account is charged, or what a second factor looks like is a claim this
       # client is not in a position to make: none of it crosses the wire it
