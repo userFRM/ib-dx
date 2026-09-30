@@ -3453,7 +3453,10 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
     fn the_historical_family_a_gateway_refuses_is_refused_here_too() {
         Python::initialize();
         Python::attach(|py| {
-            let (client, rx, _shared, w) = wired_client(py);
+            let (client, rx, shared, w) = wired_client(py);
+            shared.reference.set_news_providers(vec![
+                crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+            ]);
             let no_exchange = Py::new(py, Contract { con_id: 756733, ..Default::default() }).unwrap();
             // Named and on a venue, so the legs refusal is what fires: a
             // combination naming no identifier at all is refused for that
@@ -3518,6 +3521,14 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .call_method1(py, "req_histogram_data", (9i64, &described, true, "1 fortnight"))
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for a histogram period no gateway reads");
+            let news = Py::new(py, Contract {
+                con_id: 265598, sec_type: "NEWS".into(), exchange: "ZZZ".into(),
+                ..Default::default()
+            }).unwrap();
+            client
+                .call_method1(py, "req_contract_details", (10i64, &news))
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for contract details on news naming no registered source");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3536,6 +3547,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (7, "Number of ticks must be > 0"),
                 (8, "'BAG' isn't supported for contract data request. Please enter a valid security type"),
                 (9, "Invalid time period"),
+                (10, "The entered news source is invalid. Valid are: [BRFG]"),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }

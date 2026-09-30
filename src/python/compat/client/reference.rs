@@ -172,6 +172,14 @@ impl EClient {
         if let Err(why) = ClientCore::validate_contract_details_sec_type(&contract.sec_type) {
             return self.report_refusal(py, req_id, why);
         }
+        // A NEWS lookup names its source on the exchange field, checked
+        // after the type refusals as on the other surface.
+        let shared = self.shared_state()?;
+        if let Err(why) = ClientCore::validate_news_source(
+            &shared, &contract.sec_type, &contract.exchange,
+        ) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchContractDetails {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,

@@ -198,6 +198,11 @@ impl EClient {
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
         // After the shared contract checks, as a gateway runs them first.
         crate::client_core::ClientCore::validate_contract_details_sec_type(&contract.sec_type)?;
+        // A NEWS lookup names its source on the exchange field, checked
+        // after the type refusals as a gateway's details intake runs them.
+        crate::client_core::ClientCore::validate_news_source(
+            &self.shared, &contract.sec_type, &contract.exchange,
+        )?;
         self.send(ControlCommand::FetchContractDetails {
             contract: contract.into(),
             req_id: wire_req_id(req_id)?,

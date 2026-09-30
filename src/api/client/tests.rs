@@ -5233,6 +5233,51 @@ fn a_contract_details_request_on_a_combination_is_refused_in_a_gateways_words() 
     }
 }
 
+/// A contract-details request on NEWS runs the same news-source gate a
+/// market-data subscription does: the source is read off the exchange field
+/// as a gateway reads it, and one the venue's registry does not hold is
+/// refused at intake with the registered codes listed, nothing sent.
+#[test]
+fn a_contract_details_request_on_news_naming_no_registered_source_is_refused() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+    for exchange in ["ZZZ", ""] {
+        let contract = Contract {
+            symbol: "BRFG".into(), sec_type: "NEWS".into(), exchange: exchange.into(),
+            ..Default::default()
+        };
+        let err = client
+            .try_req_contract_details(7, &contract)
+            .expect_err("a source the registry does not hold was asked of the venue");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (
+                Refusal::VALIDATION,
+                "The entered news source is invalid. Valid are: [BRFG]",
+            ),
+            "{exchange:?}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {exchange:?}");
+    }
+    // A registered source proceeds, in the two-part shape as well, which
+    // names its source in the second part.
+    for exchange in ["BRFG", "DJNL:BRFG"] {
+        let contract = Contract {
+            symbol: "BRFG".into(), sec_type: "NEWS".into(), exchange: exchange.into(),
+            ..Default::default()
+        };
+        client
+            .try_req_contract_details(7, &contract)
+            .unwrap_or_else(|why| panic!("'{exchange}' was refused: {why:?}"));
+        assert!(
+            matches!(rx.try_recv().unwrap(), ControlCommand::FetchContractDetails { .. }),
+            "'{exchange}' asked nothing",
+        );
+    }
+}
+
 #[test]
 fn req_contract_details_forwards_filter_fields() {
     // /: a by-symbol lookup must carry the disambiguation
