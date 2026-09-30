@@ -1872,7 +1872,7 @@ pub fn req_matching_symbols(&self, req_id: i64, pattern: &str)
 
 #### `req_wsh_meta_data`
 
-Ask what event types the corporate-events calendar carries. Independent of the events themselves: neither request needs the other, and either may be asked first.
+Ask what event types the corporate-events calendar carries. The events depend on this, not the other way: a gateway keeps the calendar metadata in a cache written only by this request's answer, and an event request in a session the cache is empty in is refused under 10282 rather than sent. A second metadata request in a session the cache is full in is answered from it at once rather than sent.
 
 ```rust
 pub fn req_wsh_meta_data(&self, req_id: i64)
@@ -1886,7 +1886,7 @@ pub fn req_wsh_meta_data(&self, req_id: i64)
 
 #### `cancel_wsh_meta_data`
 
-Stop waiting on the event types. The query is one message and one answer, so there is nothing at the venue to withdraw: what is withdrawn is the answer, which would otherwise reach a caller who has said they are done with it. A cancel naming no waiting request says so rather than returning as though it acted.
+Stop waiting on the event types. Both cancels do the same thing, a gateway quirk this client keeps: either frees a metadata request that is on the wire — silently, whatever number it names — and says nothing at all. Neither touches a pending events request, whose answer still reaches the caller, and an answer for the freed metadata request is dropped when it arrives. The venue is never told: the query is one message and one answer.
 
 ```rust
 pub fn cancel_wsh_meta_data(&self, req_id: i64)
@@ -1900,7 +1900,7 @@ pub fn cancel_wsh_meta_data(&self, req_id: i64)
 
 #### `cancel_wsh_event_data`
 
-Stop waiting on the calendar's events. As above.
+Stop waiting on the calendar's events. As above: frees the metadata slot, not the events request — the gateway's quirk, kept as it is.
 
 ```rust
 pub fn cancel_wsh_event_data(&self, req_id: i64)
@@ -1914,7 +1914,7 @@ pub fn cancel_wsh_event_data(&self, req_id: i64)
 
 #### `req_wsh_event_data`
 
-Ask the corporate-events calendar for events. A caller either names a contract or writes its own filter. The filter goes to the venue as written: the venue validates it, and rewriting it here would change what was asked.
+Ask the corporate-events calendar for events. Exactly one scope is a request a gateway takes: a named contract — any id but the field's unset marker — or a non-empty filter the caller wrote. Naming both, or neither, is refused under 10309. The filter goes to the venue as written: the venue validates it, and rewriting it here would change what was asked. A metadata request answered this session must precede it; until one has been, the request is refused under 10282 rather than sent.
 
 ```rust
 pub fn req_wsh_event_data( &self, req_id: i64, query: crate::types::CalendarQuery, )
