@@ -1254,19 +1254,33 @@ impl Decimal {
         Some(Decimal { mantissa: digits.parse().ok()?, scale: fraction.len() as u32 })
     }
 
+    /// The power of ten at this decimal's places, where the digits of a power
+    /// reach them. The mantissa always holds fewer digits, so a decimal whose
+    /// places are past the power's reach has no whole digit and its whole
+    /// mantissa for its fraction.
+    fn power(&self) -> Option<i128> {
+        10_i128.checked_pow(self.scale)
+    }
+
+    /// This decimal's mantissa scaled by `places`, where the scaling fits the
+    /// digits an i128 holds.
+    fn scaled(&self, places: u32) -> Option<i128> {
+        10_i128.checked_pow(places).and_then(|factor| self.mantissa.checked_mul(factor))
+    }
+
     fn whole(&self) -> String {
-        (self.mantissa / 10_i128.pow(self.scale)).to_string()
+        match self.power() {
+            Some(power) => (self.mantissa / power).to_string(),
+            None => 0.to_string(),
+        }
     }
 
     fn fraction(&self) -> String {
         if self.scale == 0 {
             return String::new();
         }
-        format!(
-            "{:0>width$}",
-            (self.mantissa % 10_i128.pow(self.scale)).abs(),
-            width = self.scale as usize
-        )
+        let rest = self.power().map_or(self.mantissa, |power| self.mantissa % power);
+        format!("{:0>width$}", rest.abs(), width = self.scale as usize)
     }
 
     /// As a gateway writes an increment: its digits, no trailing zeros.
@@ -1278,10 +1292,15 @@ impl Decimal {
         self.text().parse().unwrap_or(0.0)
     }
 
-    /// The product, to sixteen significant digits rounded half to even.
+    /// The product, to sixteen significant digits rounded half to even. A
+    /// product whose digits pass what the fixed point holds falls back to
+    /// doubles: a gateway's sixteen-digit context never overflows on one
+    /// finite amount, and one large amount neither wraps nor ends a sizing.
     fn times(&self, other: &Decimal) -> Decimal {
-        let mut product =
-            Decimal { mantissa: self.mantissa * other.mantissa, scale: self.scale + other.scale };
+        let mut product = match self.mantissa.checked_mul(other.mantissa) {
+            Some(mantissa) => Decimal { mantissa, scale: self.scale + other.scale },
+            None => Decimal::of(self.value() * other.value(), (self.scale + other.scale) as usize),
+        };
         while product.mantissa.abs() >= 10_i128.pow(16) && product.scale > 0 {
             product = product.over(&Decimal::unit(), product.scale - 1);
         }
@@ -1290,16 +1309,29 @@ impl Decimal {
 
     /// The quotient to `places`, rounded half to even. A divisor that rounds
     /// to nought — a price finer than the places it is read to — converts no
-    /// amount, and the quotient is nought.
+    /// amount, and the quotient is nought. A quotient whose scaling passes
+    /// what the fixed point holds falls back to doubles, the way the product
+    /// does: a gateway's sixteen-digit context never overflows on one finite
+    /// amount, and one large amount neither wraps nor ends a sizing.
     fn over(&self, divisor: &Decimal, places: u32) -> Decimal {
         if divisor.mantissa == 0 {
             return Decimal { mantissa: 0, scale: places };
         }
-        let numerator = self.mantissa * 10_i128.pow(divisor.scale + places);
-        let denominator = divisor.mantissa * 10_i128.pow(self.scale);
+        let (Some(numerator), Some(denominator)) =
+            (self.scaled(divisor.scale + places), divisor.scaled(self.scale))
+        else {
+            return Decimal::of(self.value() / divisor.value(), places as usize);
+        };
         let (quotient, remainder) = (numerator / denominator, numerator % denominator);
-        let twice = (remainder * 2).abs();
-        let up = twice > denominator.abs() || (twice == denominator.abs() && quotient % 2 != 0);
+        let up = match remainder.checked_mul(2) {
+            Some(twice) => {
+                let twice = twice.abs();
+                twice > denominator.abs() || (twice == denominator.abs() && quotient % 2 != 0)
+            }
+            // Twice a remainder no doubling holds is past half any divisor
+            // that does.
+            None => true,
+        };
         let sign = if (numerator < 0) != (denominator < 0) { -1 } else { 1 };
         Decimal { mantissa: quotient + if up { sign } else { 0 }, scale: places }
     }
@@ -1320,13 +1352,22 @@ impl Decimal {
         }
     }
 
-    /// Whether this is a whole number of `step`s.
+    /// Whether this is a whole number of `step`s. A test whose scaling passes
+    /// what the fixed point holds falls back to doubles, the way the quotient
+    /// does: the amount is a whole number of steps where the quotient of the
+    /// two is a whole number.
     // ponytail: exact rational test; a gateway divides to sixteen significant
     // digits, which differs only past sixteen digits of quotient.
     fn multiple_of(&self, step: &Decimal) -> bool {
-        step.mantissa != 0
-            && (self.mantissa * 10_i128.pow(step.scale)) % (step.mantissa * 10_i128.pow(self.scale))
-                == 0
+        if step.mantissa == 0 {
+            return false;
+        }
+        let (Some(scaled), Some(divisor)) = (self.scaled(step.scale), step.scaled(self.scale))
+        else {
+            let quotient = self.value() / step.value();
+            return quotient.is_finite() && quotient == quotient.round();
+        };
+        scaled % divisor == 0
     }
 }
 

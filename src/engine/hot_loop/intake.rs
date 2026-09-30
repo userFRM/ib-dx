@@ -2241,6 +2241,9 @@ mod tests {
             market: Option<(f64, f64, f64)>,
             /// The fund's least amount, where it states one.
             tick: Option<&'static str>,
+            /// The least amount the currency states, where a row states its
+            /// own.
+            increment: Option<&'static str>,
             /// The least size the contract states, where it states one.
             min_size: Option<&'static str>,
             /// The margin percentage the account's preset states, where one
@@ -2274,6 +2277,7 @@ mod tests {
             size_places: None,
             market: None,
             tick: None,
+            increment: None,
             min_size: None,
             percent: None,
             model: "",
@@ -2367,6 +2371,40 @@ mod tests {
                 what: "a rule stating a least size of nought sizes to nought",
                 min_size: Some("0"),
                 held_at: Some(0.0),
+                ..share.clone()
+            },
+            Row {
+                what: "an amount past the exact quotient's reach sizes in doubles",
+                features: &[], cash: 1e15, limit: 1.23456789, finest: Some(1e-18),
+                size: Some("92233720368.54775807"), held_at: Some(1012500009213750.0),
+                ..share.clone()
+            },
+            Row {
+                what: "an amount past the exact product's reach sizes in doubles",
+                features: &["NOCASHQTYPRECISION"], cash: 1e37, limit: 1.23456789,
+                finest: Some(1e-18),
+                size: Some("92233720368.54775807"), held_at: Some(1.0125000092137501e37),
+                ..share.clone()
+            },
+            Row {
+                what: "an amount past the exact increment test's reach is not refused",
+                features: &[], cash: 1e37, limit: 1.23456789, finest: Some(1e-18),
+                size: Some("92233720368.54775807"), held_at: Some(1.0125000092137501e37),
+                ..share.clone()
+            },
+            Row {
+                what: "an increment finer than a power of ten holds is not refused",
+                features: &[], cash: 1e15, limit: 1.23456789, finest: Some(1e-18),
+                increment: Some("0.00000000000000000000000000000000000000000001"),
+                size: Some("92233720368.54775807"), held_at: Some(1012500009213750.0),
+                ..share.clone()
+            },
+            Row {
+                what: "an increment past the exact test's reach refuses an amount it does not divide",
+                cash: 0.123456,
+                increment: Some("1234567890123456789012345678901234.5678"),
+                refused: &[10317],
+                text: "The Cash Quantity size of 0.123456 does not conform to minimum variation of 1234567890123456789012345678901234.5678 for this contract",
                 ..share.clone()
             },
             Row {
@@ -2469,7 +2507,8 @@ mod tests {
             shared.reference.set_enabled_features(row.features.iter().map(|f| f.to_string()).collect());
             shared.reference.set_money_orders(crate::bridge::MoneyOrderTerms {
                 order_types: row.order_types.unwrap_or("ALLOC,DAY,GTC,LMT,MKT,STP,STPLMT").into(),
-                product_defaults: "CASH,USD,25000,1000000,0.01".into(),
+                product_defaults:
+                    format!("CASH,USD,25000,1000000,{}", row.increment.unwrap_or("0.01")),
                 fixed_rates: "GBX:0.0132,USD:1".into(),
                 ..Default::default()
             });
