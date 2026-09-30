@@ -103,6 +103,14 @@ pub fn event_data_request(
         // The caller's own filter, as written.
         query.filter.clone()
     };
+    // On the contract-named path a gateway forces all three fill flags false
+    // in the document, whatever the caller set; the caller's flags are
+    // consumed only on the filter path.
+    let (fill_watchlist, fill_portfolio, fill_competitors) = if named.is_some() {
+        (false, false, false)
+    } else {
+        (query.fill_watchlist, query.fill_portfolio, query.fill_competitors)
+    };
 
     let mut parts = vec![format!(r#""sources":["{CALENDAR_SOURCE}"]"#)];
 
@@ -121,9 +129,9 @@ pub fn event_data_request(
 
     parts.push(format!(r#""filters":{filter}"#));
     parts.push(r#""api":true"#.to_string());
-    parts.push(format!(r#""fill_watchlist":{}"#, query.fill_watchlist));
-    parts.push(format!(r#""fill_portfolio":{}"#, query.fill_portfolio));
-    parts.push(format!(r#""fill_competitors":{}"#, query.fill_competitors));
+    parts.push(format!(r#""fill_watchlist":{fill_watchlist}"#));
+    parts.push(format!(r#""fill_portfolio":{fill_portfolio}"#));
+    parts.push(format!(r#""fill_competitors":{fill_competitors}"#));
     parts.push(r#""mode":"chronological""#.to_string());
     if let Some(limit) = query.total_limit {
         // Stated as text. A bare number is a different document.
@@ -172,6 +180,32 @@ mod tests {
         assert!(json.contains(r#""filters":{"watchlist":["265598"]}"#), "{json}");
         assert!(json.contains(r#""T":101"#), "{json}");
         assert!(json.contains(r#""sources":["WSHE"]"#), "{json}");
+    }
+
+    /// On the contract-named path a gateway forces all three fill flags
+    /// false in the document, whatever the caller set; the caller's flags
+    /// are consumed only on the filter path.
+    #[test]
+    fn a_named_contract_asks_with_no_fills() {
+        let json = event_data_request(&CalendarQuery {
+            con_id: Some(8314),
+            fill_watchlist: true,
+            fill_portfolio: true,
+            fill_competitors: true,
+            ..Default::default()
+        })
+        .expect("a named contract is a scope");
+        for flag in ["fill_watchlist", "fill_portfolio", "fill_competitors"] {
+            assert!(json.contains(&format!(r#""{flag}":false"#)), "{flag}: {json}");
+        }
+
+        let filtered = event_data_request(&CalendarQuery {
+            filter: r#"{"earnings":true}"#.into(),
+            fill_portfolio: true,
+            ..Default::default()
+        })
+        .expect("a filter is a scope");
+        assert!(filtered.contains(r#""fill_portfolio":true"#), "{filtered}");
     }
 
     /// A caller's own filter goes as written. The venue validates it, not this
