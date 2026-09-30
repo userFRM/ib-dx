@@ -66,9 +66,9 @@ pub(crate) struct HmdsState {
     /// every later subscription that drew a number off it.
     pub(crate) tbt_withdrawn: std::collections::HashMap<u64, TbtType>,
     /// Streams withdrawn before the venue had numbered them, by the name this
-    /// client asked under. A late acknowledgement is withdrawn by its
-    /// stream number as well.
-    pub(crate) tbt_withdrawn_unnumbered: std::collections::HashMap<String, (InstrumentId, TbtType)>,
+    /// client asked under, with the size filter the query carried. A late
+    /// acknowledgement is withdrawn by its stream number as well.
+    pub(crate) tbt_withdrawn_unnumbered: std::collections::HashMap<String, (InstrumentId, TbtType, bool)>,
     /// Streams already spoken about, so each is spoken about once.
     pub(crate) tbt_reported: std::collections::HashSet<u64>,
     pub(crate) next_hmds_query_id: u32,
@@ -1085,7 +1085,7 @@ impl HmdsState {
                     if let Some(ack) = parse_tick_subscription_ack(xml_tag) {
                         // A late acknowledgement of a withdrawn query is
                         // withdrawn by its stream number as well.
-                        if let Some((instrument, kind)) = self.tbt_withdrawn_unnumbered.remove(&ack.query_id) {
+                        if let Some((instrument, kind, ignores)) = self.tbt_withdrawn_unnumbered.remove(&ack.query_id) {
                             // The rule the withdrawal below keeps, which this
                             // branch did not: two callers on one contract and
                             // kind are served under one number, so a cancel
@@ -1096,9 +1096,13 @@ impl HmdsState {
                             // table, silent for the rest of the session, and
                             // told nothing.
                             // A sibling awaiting its acknowledgement still
-                            // asks for this contract and wire kind.
+                            // asks for this contract, wire kind and size
+                            // filter: the flag is on the wire query, so a
+                            // sibling differing only in it holds a query of
+                            // its own that this number is not.
                             if self.tbt_subscriptions.iter().any(|sub| sub.venue_id == ack.venue_id
-                                || (sub.instrument == instrument && Self::tbt_wire_kind(sub.kind) == Self::tbt_wire_kind(kind)))
+                                || (sub.instrument == instrument && Self::tbt_wire_kind(sub.kind) == Self::tbt_wire_kind(kind)
+                                    && sub.ignore_size == ignores))
                             {
                                 log::info!(
                                     "TBT stream {} is still read by another caller; the                                      withdrawal that was waiting for its number leaves it running",
@@ -2356,9 +2360,13 @@ fn build_tbt_query(
         // number, so the withdrawal goes out when the last of them leaves;
         // sent by the first, it stopped the stream the other was still
         // reading. A sibling still waiting for its number holds the same
-        // stream by the contract and kind it asked for.
+        // stream by the contract, kind and size filter it asked for: the
+        // flag is on the wire query, so a sibling differing only in it holds
+        // a query of its own, and matching without it left that query
+        // running for the session with no holder left to read it.
         if gone.venue_id != 0 && self.tbt_subscriptions.iter().any(|sub| sub.venue_id == gone.venue_id
-            || (sub.instrument == gone.instrument && Self::tbt_wire_kind(sub.kind) == Self::tbt_wire_kind(gone.kind)))
+            || (sub.instrument == gone.instrument && Self::tbt_wire_kind(sub.kind) == Self::tbt_wire_kind(gone.kind)
+                && sub.ignore_size == gone.ignore_size))
         {
             log::info!(
                 "TBT stream {} is still read by another caller; left running for it",
@@ -2378,7 +2386,7 @@ fn build_tbt_query(
         let ticker_id = if gone.venue_id != 0 {
             format!("rtTicker:{}", gone.venue_id)
         } else {
-            self.tbt_withdrawn_unnumbered.insert(gone.query_id.clone(), (gone.instrument, gone.kind));
+            self.tbt_withdrawn_unnumbered.insert(gone.query_id.clone(), (gone.instrument, gone.kind, gone.ignore_size));
             gone.query_id
         };
         log::info!("Withdrawing TBT stream: instrument={instrument} ticker_id={ticker_id}");

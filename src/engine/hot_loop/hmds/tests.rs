@@ -2247,16 +2247,22 @@ mod withdrawing_one_stream_tests {
     }
 
     fn withdrawal_while_a_sibling_is_unnumbered(deferred: bool) {
-        for (gone_kind, kept_kind, kept_instrument, shares) in [
-            (TbtType::Last, TbtType::Last, 7, true),
-            (TbtType::BidAsk, TbtType::BidAsk, 7, true),
+        for (gone_kind, kept_kind, kept_instrument, gone_ignores, kept_ignores, shares) in [
+            (TbtType::Last, TbtType::Last, 7, false, false, true),
+            (TbtType::BidAsk, TbtType::BidAsk, 7, false, false, true),
             // The venue answers each name as a query of its own, so two
             // callers who asked by different names hold two streams and
             // neither withdrawal touches the other's.
-            (TbtType::Last, TbtType::AllLast, 7, false),
-            (TbtType::AllLast, TbtType::Last, 7, false),
-            (TbtType::Last, TbtType::BidAsk, 7, false),
-            (TbtType::Last, TbtType::Last, 8, false),
+            (TbtType::Last, TbtType::AllLast, 7, false, false, false),
+            (TbtType::AllLast, TbtType::Last, 7, false, false, false),
+            (TbtType::Last, TbtType::BidAsk, 7, false, false, false),
+            (TbtType::Last, TbtType::Last, 8, false, false, false),
+            // And each size filter as a query of its own: the wire query
+            // carries the flag only when it is set, so two streams differing
+            // only in it are two queries the venue numbers separately, and
+            // one caller's withdrawal releases the query it actually owns.
+            (TbtType::BidAsk, TbtType::BidAsk, 7, true, false, false),
+            (TbtType::BidAsk, TbtType::BidAsk, 7, true, true, true),
         ] {
             let mut hmds = HmdsState::new();
             let shared = crate::bridge::SharedState::new();
@@ -2266,9 +2272,11 @@ mod withdrawing_one_stream_tests {
             let mut hb = HeartbeatState::new();
             let mut gone = stream(1, 7, gone_kind);
             gone.venue_id = if deferred { 0 } else { 41 };
+            gone.ignore_size = gone_ignores;
             hmds.tbt_subscriptions.push(gone);
             let mut kept = stream(2, kept_instrument, kept_kind);
             kept.venue_id = 0;
+            kept.ignore_size = kept_ignores;
             hmds.tbt_subscriptions.push(kept);
 
             hmds.send_tbt_unsubscribe(1, 7, &mut conn, &mut hb);
@@ -3327,7 +3335,7 @@ fn a_withdrawal_waiting_for_its_number_leaves_a_shared_stream_running() {
         min_tick: 0, size_tick: 0.0, running: Default::default(),
     });
     // And one that left before its own acknowledgement arrived.
-    hmds.tbt_withdrawn_unnumbered.insert("tbt_gone".to_string(), (0, TbtType::Last));
+    hmds.tbt_withdrawn_unnumbered.insert("tbt_gone".to_string(), (0, TbtType::Last, false));
 
     let ack = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ResultSetTickerId>\
         <id>tbt_gone</id><rtTickerId>55</rtTickerId><minTick>0.01</minTick>\
