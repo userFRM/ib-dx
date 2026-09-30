@@ -78,9 +78,17 @@ def test_a_host_the_wire_cannot_carry_is_said_under_579():
     w = Errors()
     c = ibkr_dx.EClient(w)
     c._test_connect("T")
+    # The bounds are pinned: the last character the wire can carry is
+    # refused nowhere along the host's length, and the first one it cannot
+    # is refused like any other.
     assert c.validateInvalidSymbols("host.name") is None
     assert c.validateInvalidSymbols("host\tname") is None
+    assert c.validateInvalidSymbols("host~name") is None
     assert not w.seen, w.seen
     c.validateInvalidSymbols("hé")
+    c.validateInvalidSymbols("host\x7fname")
     c.poll()
-    assert w.seen == [(579, "Invalid symbol in string - hé")], w.seen
+    assert w.seen == [
+        (579, "Invalid symbol in string - hé"),
+        (579, "Invalid symbol in string - host\x7fname"),
+    ], w.seen
