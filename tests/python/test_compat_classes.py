@@ -97,7 +97,7 @@ def test_order_kwargs():
 def test_order_aux_price_kwarg():
     o = Order(order_id=1, action="SELL", total_quantity=10, order_type="STP", aux_price=150.0)
     assert o.aux_price == 150.0
-    assert "auxPrice=150" in repr(o)
+    assert o.auxPrice == 150.0
 
 
 def test_order_camel_case_aliases():

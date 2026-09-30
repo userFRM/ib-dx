@@ -736,11 +736,6 @@ impl Order {
         Ok(made)
     }
 
-    fn __repr__(&self) -> String {
-        format!("Order(orderId={}, action='{}', totalQuantity={}, orderType='{}', lmtPrice={}, auxPrice={})",
-            self.order_id, self.action, self.total_quantity, self.order_type, self.lmt_price, self.aux_price)
-    }
-
     // ── Existing camelCase aliases ──
     #[getter(auxPrice)]
     fn get_aux_price_alias(&self) -> f64 { self.aux_price }
@@ -1313,10 +1308,6 @@ impl OrderComboLegPy {
     fn new(price: f64) -> Self {
         Self { price }
     }
-
-    fn __repr__(&self) -> String {
-        format!("OrderComboLeg(price={})", self.price)
-    }
 }
 
 /// The tag-value pairs a list holds, read as the reference client sends
@@ -1388,10 +1379,6 @@ impl OrderAllocation {
     #[new]
     #[pyo3(signature = ())]
     fn new() -> Self { Self::default() }
-
-    fn __repr__(&self) -> String {
-        format!("OrderAllocation(account='{}', position={})", self.account, self.position)
-    }
 }
 
 impl OrderAllocation {
@@ -1588,10 +1575,6 @@ impl OrderState {
     #[pyo3(signature = ())]
     fn new() -> Self {
         Self::default()
-    }
-
-    fn __repr__(&self) -> String {
-        format!("OrderState(status='{}')", self.status)
     }
 }
 

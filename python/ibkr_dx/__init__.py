@@ -313,6 +313,13 @@ from . import _condition_shapes as _condition_shapes_module  # noqa: E402
 _condition_shapes_module.install(globals())
 del _condition_shapes_module
 
+# The record classes print the reference client's own sentences, with unset
+# values blank rather than as this client's markers.
+from . import _record_shapes as _record_shapes_module  # noqa: E402
+
+_record_shapes_module.install(globals())
+del _record_shapes_module
+
 # The reference client's own module names, laid over what this package
 # publishes, so its import lines resolve under the one rename a person would
 # guess at. Bound as attributes as well as registered, because a program writes

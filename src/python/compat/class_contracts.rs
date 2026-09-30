@@ -390,11 +390,6 @@ impl Contract {
         Ok(made)
     }
 
-    fn __repr__(&self) -> String {
-        format!("Contract(conId={}, symbol='{}', secType='{}', exchange='{}')",
-            self.con_id, self.symbol, self.sec_type, self.exchange)
-    }
-
     // ibapi camelCase aliases
     #[getter(conId)]
     fn get_con_id_alias(&self) -> i64 { self.con_id }
@@ -452,10 +447,6 @@ impl TagValue {
         };
         Ok(Self { tag: text(tag)?, value: text(value)? })
     }
-
-    fn __repr__(&self) -> String {
-        format!("TagValue(tag='{}', value='{}')", self.tag, self.value)
-    }
 }
 
 impl TagValue {
@@ -497,10 +488,6 @@ impl IneligibilityReason {
             Ok(given.str()?.to_cow()?.into_owned())
         };
         Ok(Self { id_: text(id_)?, description: text(description)? })
-    }
-
-    fn __repr__(&self) -> String {
-        format!("IneligibilityReason(id='{}', description='{}')", self.id_, self.description)
     }
 }
 
@@ -566,13 +553,6 @@ impl ComboLeg {
     fn new() -> Self {
         Self::default()
     }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "ComboLeg(conId={}, ratio={}, action='{}', exchange='{}')",
-            self.con_id, self.ratio, self.action, self.exchange,
-        )
-    }
 }
 
 impl ComboLeg {
@@ -616,10 +596,6 @@ impl DeltaNeutralContractPy {
         let made = Py::new(py, Self { con_id, delta, price })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        format!("DeltaNeutralContract(conId={}, delta={}, price={})", self.con_id, self.delta, self.price)
     }
 }
 
@@ -923,11 +899,6 @@ impl ContractDetails {
     #[pyo3(signature = ())]
     fn py_new(py: Python<'_>) -> Self {
         Self::new_default(py)
-    }
-
-    fn __repr__(&self, py: Python<'_>) -> String {
-        format!("ContractDetails(symbol='{}', longName='{}')",
-            self.contract.borrow(py).symbol, self.long_name)
     }
 
     fn __traverse__(&self, visit: pyo3::PyVisit<'_>) -> Result<(), pyo3::PyTraverseError> {

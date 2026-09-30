@@ -60,11 +60,6 @@ impl BarData {
     pub fn new(date: String, open: f64, high: f64, low: f64, close: f64, volume: DecimalField, wap: DecimalField, bar_count: i32) -> Self {
         Self { date, open, high, low, close, volume, wap, bar_count }
     }
-
-    fn __repr__(&self) -> String {
-        format!("BarData(date='{}', O={}, H={}, L={}, C={}, V={})",
-            self.date, self.open, self.high, self.low, self.close, self.volume)
-    }
 }
 
 /// ibapi-compatible Execution class (used in exec_details callback).
