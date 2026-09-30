@@ -77,6 +77,16 @@ pub const DUPLICATE_EVENT_DATA_REQUEST: i32 = 10281;
 /// answer precedes this session.
 pub const META_DATA_NOT_REQUESTED: i32 = 10282;
 
+/// The number a gateway refuses any calendar request under in a session the
+/// venue stated no news feed for.
+pub const NEWS_FEED_NOT_ALLOWED: i32 = 10276;
+
+/// The number a gateway reports a metadata request it could not send under.
+pub const FAILED_META_DATA_REQUEST: i32 = 10279;
+
+/// The number a gateway reports an event request it could not send under.
+pub const FAILED_EVENT_DATA_REQUEST: i32 = 10283;
+
 /// The JSON asking for events.
 ///
 /// Exactly one scope is a request a gateway takes: a named contract, or a

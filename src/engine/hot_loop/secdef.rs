@@ -91,9 +91,8 @@ impl SecDefState {
         let Some(conn) = conn.as_mut() else {
             shared.reference.push_historical_error(
                 req_id,
-                crate::error_codes::Refusal::NOT_CONNECTED,
-                "the calendar is carried on a connection this session does not have"
-                    .to_string(),
+                cal::FAILED_META_DATA_REQUEST,
+                "Failed to request WSH meta data.".to_string(),
             );
             return;
         };
@@ -108,7 +107,11 @@ impl SecDefState {
             (cal::TAG_CALENDAR_REQUEST_KIND, &cal::CALENDAR_META_DATA.to_string()),
             (cal::TAG_CALENDAR_JSON, &json),
         ]) {
-            shared.reference.push_historical_error(req_id, 504, format!("not sent: {e}"));
+            // A gateway joins the fixed text and the failure directly, as
+            // this one ends in a full stop.
+            shared.reference.push_historical_error(
+                req_id, cal::FAILED_META_DATA_REQUEST, format!("Failed to request WSH meta data.{e}"),
+            );
             return;
         }
         hb.last_secdef_sent = Instant::now();
@@ -157,9 +160,8 @@ impl SecDefState {
         let Some(conn) = conn.as_mut() else {
             shared.reference.push_historical_error(
                 req_id,
-                crate::error_codes::Refusal::NOT_CONNECTED,
-                "the calendar is carried on a connection this session does not have"
-                    .to_string(),
+                cal::FAILED_EVENT_DATA_REQUEST,
+                "Failed to request WSH event data.".to_string(),
             );
             return;
         };
@@ -173,7 +175,10 @@ impl SecDefState {
             (cal::TAG_CALENDAR_REQUEST_KIND, &cal::CALENDAR_EVENT_DATA.to_string()),
             (cal::TAG_CALENDAR_JSON, &json),
         ]) {
-            shared.reference.push_historical_error(req_id, 504, format!("not sent: {e}"));
+            // Joined directly, as the fixed text ends in a full stop.
+            shared.reference.push_historical_error(
+                req_id, cal::FAILED_EVENT_DATA_REQUEST, format!("Failed to request WSH event data.{e}"),
+            );
             return;
         }
         hb.last_secdef_sent = Instant::now();
@@ -218,15 +223,15 @@ impl SecDefState {
         crate::engine::hot_loop::announce_venue_data(
             shared, event_tx, crate::bridge::VenueDataConnection::SecurityDefinition, false,
         );
+        log::warn!("The calendar connection went ({why}); the requests it carried are reported as failed sends");
+        // Each kind is reported under the gateway's number and words for
+        // a request it could not send.
         let waiting = self.meta_pending.take().into_iter()
-            .chain(self.events_pending.take())
-            .map(|(_, req_id)| req_id);
-        for req_id in waiting {
-            shared.reference.push_historical_error(
-                req_id,
-                504,
-                format!("the connection carrying the calendar went: {why}"),
-            );
+            .map(|(_, req_id)| (req_id, cal::FAILED_META_DATA_REQUEST, "Failed to request WSH meta data."))
+            .chain(self.events_pending.take().into_iter()
+                .map(|(_, req_id)| (req_id, cal::FAILED_EVENT_DATA_REQUEST, "Failed to request WSH event data.")));
+        for (req_id, code, text) in waiting {
+            shared.reference.push_historical_error(req_id, code, text.to_string());
         }
     }
 
@@ -434,16 +439,20 @@ mod tests {
     }
 
     /// A session the venue stated no route for has no such connection, and a
-    /// caller is told that rather than left waiting.
+    /// caller is told under the gateway's number and words that the
+    /// request could not be sent, rather than left waiting.
     #[test]
     fn without_the_connection_a_caller_is_told() {
         let shared = SharedState::new();
         let mut state = SecDefState::new();
         state.send_calendar_meta_data_request(7, &mut None, &mut HeartbeatState::new(), &shared);
         let told = shared.reference.drain_historical_errors();
-        assert_eq!(told.len(), 1);
-        assert!(told[0].2.contains("does not have"), "{:?}", told[0]);
-        assert_eq!(told[0].1, 504, "no connection is not a malformed request");
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert_eq!(
+            (told[0].0, told[0].1), (7, cal::FAILED_META_DATA_REQUEST),
+            "no connection is a failed send, not a malformed request: {told:?}",
+        );
+        assert_eq!(told[0].2, "Failed to request WSH meta data.", "{told:?}");
     }
 
     /// An event request that no metadata answer precedes this session is
@@ -559,7 +568,9 @@ mod tests {
         // named for, where the dead connection is still installed.
         assert!(conn.is_none(), "the dead connection was put down");
         let told = shared.reference.drain_historical_errors();
-        assert!(!told.is_empty(), "the caller was left waiting on a dead socket");
+        assert_eq!(told.len(), 1, "the caller was told rather than left waiting: {told:?}");
+        assert_eq!((told[0].0, told[0].1), (7, cal::FAILED_META_DATA_REQUEST), "{told:?}");
+        assert_eq!(told[0].2, "Failed to request WSH meta data.", "{told:?}");
     }
 
     /// The venue can answer either calendar query after 45 seconds while the
@@ -664,10 +675,10 @@ mod tests {
 
         assert!(conn.is_none(), "the connection is put down, so another can be built");
         assert!(state.events_pending.is_none(), "and nothing is left waiting on it");
-        assert!(
-            !shared.reference.drain_historical_errors().is_empty(),
-            "the caller is told rather than left waiting",
-        );
+        let told = shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 1, "the caller is told rather than left waiting: {told:?}");
+        assert_eq!((told[0].0, told[0].1), (77, cal::FAILED_EVENT_DATA_REQUEST), "{told:?}");
+        assert_eq!(told[0].2, "Failed to request WSH event data.", "{told:?}");
     }
 
     /// A second request of a kind while the first is on the wire is refused

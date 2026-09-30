@@ -1306,6 +1306,25 @@ impl HotLoop {
         self.hmds.disconnect(&mut self.hmds_conn, &self.shared, &self.event_tx);
     }
 
+    /// Whether the venue stated a farm route for the calendar at logon. No
+    /// stated route means no news feed to ask, and none appears later in the
+    /// session: it is a property of the logon, not of the connection.
+    fn calendar_farm_stated(&self) -> bool {
+        self.reconnect_auth
+            .as_ref()
+            .is_some_and(|a| !a.secdef_host.is_empty() && !a.secdef_farm.is_empty())
+    }
+
+    /// Refuse under the gateway's number and words for a session the venue
+    /// stated no news feed for.
+    fn refuse_no_news_feed(&self, req_id: u32) {
+        self.shared.reference.push_historical_error(
+            req_id,
+            crate::control::calendar::NEWS_FEED_NOT_ALLOWED,
+            "News feed is not allowed.".to_string(),
+        );
+    }
+
     fn poll_control_commands(&mut self) {
         let mut left = COMMANDS_PER_LAP;
         order_builder::drain_and_send_orders(
@@ -1763,14 +1782,22 @@ impl HotLoop {
                     self.ccp.ask_matching_symbols(req_id, &pattern, &mut self.ccp_conn, &mut self.hb, &self.shared);
                 }
                 ControlCommand::FetchCalendarMetaData { req_id } => {
-                    self.secdef.send_calendar_meta_data_request(
-                        req_id, &mut self.secdef_conn, &mut self.hb, &self.shared,
-                    );
+                    if self.calendar_farm_stated() {
+                        self.secdef.send_calendar_meta_data_request(
+                            req_id, &mut self.secdef_conn, &mut self.hb, &self.shared,
+                        );
+                    } else {
+                        self.refuse_no_news_feed(req_id);
+                    }
                 }
                 ControlCommand::FetchCalendarEvents { req_id, query } => {
-                    self.secdef.send_calendar_events_request(
-                        req_id, &query, &mut self.secdef_conn, &mut self.hb, &self.shared,
-                    );
+                    if self.calendar_farm_stated() {
+                        self.secdef.send_calendar_events_request(
+                            req_id, &query, &mut self.secdef_conn, &mut self.hb, &self.shared,
+                        );
+                    } else {
+                        self.refuse_no_news_feed(req_id);
+                    }
                 }
                 ControlCommand::CancelCalendar { .. } => {
                     // Both cancels do the same thing, and neither speaks:
@@ -1881,7 +1908,14 @@ impl HotLoop {
                     }
                 }
                 ControlCommand::FetchFundamentalData { req_id, contract, report_type, .. } => {
-                    if self.hmds_conn.is_none() {
+                    // The calendar report rides the news feed, not the data
+                    // farm: a session the venue stated no feed route for is
+                    // refused as the calendar requests are.
+                    if matches!(report_type.as_str(), "CalendarReport" | "calendar")
+                        && !self.calendar_farm_stated()
+                    {
+                        self.refuse_no_news_feed(req_id);
+                    } else if self.hmds_conn.is_none() {
                         self.emit_hmds_unavailable(req_id, false);
                     } else {
                         self.hmds.send_fundamental_data_request(req_id, contract.con_id as u32, &report_type, &self.shared, &mut self.hmds_conn, &mut self.hb);
@@ -8805,6 +8839,83 @@ mod tests {
         assert!(told.is_empty(), "a withdrawal never speaks: {told:?}");
         let queued = shared.reference.drain_calendar_meta_data();
         assert_eq!(queued.len(), 1, "the queued answer belongs to the caller: {queued:?}");
+    }
+
+    /// A session the venue stated no calendar farm route for at logon has no
+    /// news feed to ask: both calendar kinds — and a fundamentals request
+    /// for the calendar report, which rides the same feed — are refused
+    /// under the gateway's number and words before anything is built.
+    #[test]
+    fn a_calendar_no_venue_route_was_stated_for_is_refused_under_10276() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(8);
+        hl.set_control_rx(rx);
+        tx.send(ControlCommand::FetchCalendarMetaData { req_id: 7 }).unwrap();
+        tx.send(ControlCommand::FetchCalendarEvents {
+            req_id: 8,
+            query: Box::new(crate::types::CalendarQuery {
+                con_id: Some(265598), ..Default::default()
+            }),
+        }).unwrap();
+        tx.send(ControlCommand::FetchFundamentalData {
+            req_id: 9, contract: stock(265598, "AAPL"),
+            report_type: "CalendarReport".into(), filters: Default::default(),
+        }).unwrap();
+        hl.poll_control_commands();
+        let told = shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 3, "{told:?}");
+        for one in &told {
+            assert_eq!(one.1, 10276, "{told:?}");
+            assert_eq!(one.2, "News feed is not allowed.", "{told:?}");
+        }
+        let ids: Vec<u32> = told.iter().map(|t| t.0).collect();
+        assert_eq!(ids, [7, 8, 9], "{told:?}");
+    }
+
+    /// A stated route with no live connection to carry the request reports
+    /// the failed send under the gateway's number and words for the
+    /// kind — not an invented sentence.
+    #[test]
+    fn a_calendar_route_with_no_live_connection_reports_the_failed_send() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        hl.set_reconnect_auth(crate::gateway::ReconnectAuth {
+            token_published: Default::default(),
+            account_id: String::new(),
+            trading_port: None,
+            hmds_port: None,
+            secdef_port: None,
+            logged_in_at: String::new(),
+            alternate_hosts: Vec::new(),
+            settings: Default::default(),
+            host: "gw.example".into(),
+            username: "u".into(),
+            password: zeroize::Zeroizing::new(String::new()),
+            paper: true,
+            code_provider: None,
+            ib_key_timeout_secs: crate::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
+            ib_key_token_sub_type: crate::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
+            session_key: Default::default(),
+            session_token: Default::default(),
+            server_session_id: String::new(),
+            hw_info: String::new(),
+            encoded: String::new(),
+            hmds_host: "hmds.example".into(),
+            hmds_farm: "hfarm".into(),
+            trading_host: "trade.example".into(),
+            trading_farm: "tfarm".into(),
+            secdef_host: "secdef.example".into(),
+            secdef_farm: "secdefil".into(),
+        });
+        tx.send(ControlCommand::FetchCalendarMetaData { req_id: 10 }).unwrap();
+        hl.poll_control_commands();
+        let told = shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert_eq!((told[0].0, told[0].1), (10, 10279), "{told:?}");
+        assert_eq!(told[0].2, "Failed to request WSH meta data.", "{told:?}");
     }
 
     fn stock(con_id: i64, symbol: &str) -> ContractRef {
