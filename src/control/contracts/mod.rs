@@ -445,10 +445,11 @@ pub struct ContractDefinition {
     /// the definition, not derived: a contract whose value follows something
     /// other than its own price is priced wrongly without it.
     pub ev_rule: String,
-    /// What that evaluation is multiplied by. Stated as a number in the tag
-    /// beside the rule; a rule without its multiplier values the contract by
-    /// the wrong factor, which is not a rounding error.
-    pub ev_multiplier: f64,
+    /// What that evaluation is multiplied by. Stated as a whole number in
+    /// the tag beside the rule, which the reference client decodes as an
+    /// int; a rule without its multiplier values the contract by the wrong
+    /// factor, which is not a rounding error.
+    pub ev_multiplier: i64,
     /// What the venue notes about a bond.
     pub bond_notes: String,
     /// What it appends to the description.
@@ -646,7 +647,7 @@ impl Default for ContractDefinition {
             contract_month: String::new(),
             under_sec_type: String::new(),
             ev_rule: String::new(),
-            ev_multiplier: 0.0,
+            ev_multiplier: 0,
             bond_notes: String::new(),
             desc_append: String::new(),
             bond_type: String::new(),
@@ -2457,7 +2458,7 @@ impl crate::types::model::ContractDetails {
             market_rule_ids: def.market_rule_ids.clone(),
             stock_type: def.stock_type.clone(),
             ev_rule: def.ev_rule.clone(),
-            ev_multiplier: def.ev_multiplier,
+            ev_multiplier: def.ev_multiplier as f64,
             coupon: def.coupon,
             contract_month: def.contract_month.clone(),
             under_sec_type: def.under_sec_type.clone(),

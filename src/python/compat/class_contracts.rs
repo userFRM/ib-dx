@@ -748,9 +748,10 @@ pub struct ContractDetails {
     #[pyo3(get, set)]
     pub ev_rule: String,
     /// What that evaluation is multiplied by. A rule without its multiplier
-    /// values the contract by the wrong factor.
+    /// values the contract by the wrong factor. An integer, as the reference
+    /// client defaults and decodes it.
     #[pyo3(get, set)]
-    pub ev_multiplier: f64,
+    pub ev_multiplier: i64,
     #[pyo3(get, set)]
     pub under_con_id: u32,
     #[pyo3(get, set)]
@@ -1076,7 +1077,7 @@ impl ContractDetails {
             contract_month: String::new(),
             under_sec_type: String::new(),
             ev_rule: String::new(),
-            ev_multiplier: 0.0,
+            ev_multiplier: 0,
             under_con_id: 0,
             under_symbol: String::new(),
             last_trade_time: String::new(),

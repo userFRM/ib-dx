@@ -1467,10 +1467,16 @@ mod industry_tests {
     /// nowhere, so a caller pricing such a contract had nothing to price it by.
     #[test]
     fn the_economic_value_rule_is_read_from_the_definition() {
-        let def = parse_secdef_response(&secdef("6858=IND-FUT-CASH\u{1}6859=0.25\u{1}"), true)
+        let def = parse_secdef_response(&secdef("6858=IND-FUT-CASH\u{1}6859=25\u{1}"), true)
             .expect("the definition parses");
         assert_eq!(def.ev_rule, "IND-FUT-CASH");
-        assert_eq!(def.ev_multiplier, 0.25, "a rule without its multiplier values the contract wrongly");
+        assert_eq!(def.ev_multiplier, 25, "a rule without its multiplier values the contract wrongly");
+        // The reference decodes the field as an int, which raises on a
+        // fractional text: a venue states a whole number, and a fraction is
+        // refused rather than truncated into a wrong factor.
+        let def = parse_secdef_response(&secdef("6858=IND-FUT-CASH\u{1}6859=25.5\u{1}"), true)
+            .expect("the definition parses");
+        assert_eq!(def.ev_multiplier, 0, "a fractional multiplier is refused, not truncated");
     }
 
     /// The venue states what the issuer does as one field with bars between,
@@ -1721,10 +1727,10 @@ mod unnamed_field_tests {
     /// A field that is named is read into its own place, not left as a number.
     #[test]
     fn a_field_this_client_names_does_not_also_appear_unnamed() {
-        let def = parse_secdef_response(&frame("6858=IND-FUT-CASH\u{1}6859=0.25\u{1}"), true)
+        let def = parse_secdef_response(&frame("6858=IND-FUT-CASH\u{1}6859=25\u{1}"), true)
             .expect("the definition parses");
         assert_eq!(def.ev_rule, "IND-FUT-CASH");
-        assert_eq!(def.ev_multiplier, 0.25, "a rule without its multiplier values the contract wrongly");
+        assert_eq!(def.ev_multiplier, 25, "a rule without its multiplier values the contract wrongly");
         for named in [TAG_EV_RULE, TAG_EV_MULTIPLIER] {
             assert!(!def.unnamed_fields.iter().any(|(t, _)| *t == named), "tag {named} is named");
         }

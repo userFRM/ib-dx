@@ -65,6 +65,10 @@ def test_the_fields_start_unstated():
     assert d.minAlgoSize == UNSET_DECIMAL
     assert d.lastPricePrecision == UNSET_DECIMAL
     assert d.lastSizePrecision == UNSET_DECIMAL
+    # Its evaluation multiplier defaults to an integer nought, and its
+    # decoder reads the wire field as an int.
+    assert d.evMultiplier == 0
+    assert type(d.evMultiplier) is int
     assert (d.eventContract1, d.eventContractDescription1, d.eventContractDescription2) == ("", "", "")
 
 
