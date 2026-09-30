@@ -60,35 +60,48 @@ pub fn meta_data_request() -> String {
     )
 }
 
+/// The number a gateway refuses an event request under that names both
+/// scopes, or neither.
+pub const INVALID_EVENT_REQUEST: i32 = 10309;
+
 /// The JSON asking for events.
 ///
-/// A caller either writes a filter or names a contract. Naming a contract
-/// becomes a watchlist of one, with the contract written as text inside an
-/// array, which is how the venue reads it.
+/// Exactly one scope is a request a gateway takes: a named contract, or a
+/// filter the caller wrote. Naming both, or neither, is refused under the
+/// gateway's number before anything is built, and emptiness is judged on
+/// the filter as written, which is how a gateway judges it.
+///
+/// Naming a contract becomes a watchlist of one, with the contract written
+/// as text inside an array, which is how the venue reads it.
 ///
 /// Nothing is stated where a caller stated nothing: a key with an empty value
 /// is left out rather than sent empty.
-pub fn event_data_request(query: &CalendarQuery) -> Result<String, String> {
-    let filter = if !query.filter.trim().is_empty() {
-        query.filter.trim().to_string()
-    } else if let Some(con_id) = query.con_id {
+pub fn event_data_request(
+    query: &CalendarQuery,
+) -> Result<String, crate::error_codes::Refusal> {
+    use crate::error_codes::Refusal;
+    let named = query.con_id;
+    let filtered = !query.filter.is_empty();
+    if named.is_some() == filtered {
+        return Err(Refusal::stated(
+            INVALID_EVENT_REQUEST,
+            "Invalid WSH event data request.",
+        ));
+    }
+    let filter = if let Some(con_id) = named {
         // A contract the venue does not number is not a scope. Written into
         // the watchlist as text, "0" asked the calendar about nothing the
         // venue can find, where the same id is refused for a headline.
         if con_id <= 0 {
-            return Err(format!(
+            return Err(Refusal::validation(format!(
                 "contract {con_id} is not one the venue numbers, and the calendar is asked \
                  about a contract by the venue's id: qualify it first",
-            ));
+            )));
         }
         format!(r#"{{"watchlist":["{con_id}"]}}"#)
     } else {
-        // Neither stated. The document is still a document — a request scoped
-        // by the portfolio or by competitors states neither — and what the
-        // venue answers a request with no scope is for the venue to say. It
-        // was refused here on a prediction of that answer, which made those
-        // requests unreachable from this client.
-        String::from("{}")
+        // The caller's own filter, as written.
+        query.filter.clone()
     };
 
     let mut parts = vec![format!(r#""sources":["{CALENDAR_SOURCE}"]"#)];
@@ -137,8 +150,6 @@ mod tests {
             let query = CalendarQuery { con_id: Some(id), ..Default::default() };
             assert!(event_data_request(&query).is_err(), "contract {id} is not a scope");
         }
-        let unscoped = CalendarQuery { con_id: None, ..Default::default() };
-        assert!(event_data_request(&unscoped).is_ok(), "no contract named is a request with no scope");
     }
 
     /// The metadata request carries no filters. The answer is the same for
@@ -199,23 +210,24 @@ mod tests {
         assert!(bounded.contains(r#""total_limit":"50""#), "{bounded}");
     }
 
-    /// A request that names neither a filter nor a contract is still a request.
-    ///
-    /// It was refused here on what the venue would answer — everything, or
-    /// nothing — which is a prediction of a reply nobody had asked for. The
-    /// scopes that name neither, the portfolio and the competitors, were
-    /// unreachable from this client for as long as it stood.
+    /// A request naming both scopes, or neither, is refused under the
+    /// gateway's number and words, and nothing is built for the venue.
     #[test]
-    fn a_request_that_names_no_scope_is_still_asked() {
-        let asked = event_data_request(&CalendarQuery::default())
-            .expect("the venue is asked, and the venue answers");
-        assert!(asked.contains(r#""filters":{}"#), "{asked}");
-
-        let portfolio = event_data_request(&CalendarQuery {
-            fill_portfolio: true,
-            ..Default::default()
-        })
-        .expect("a portfolio-scoped request names no filter and no contract");
-        assert!(portfolio.contains(r#""fill_portfolio":true"#), "{portfolio}");
+    fn a_scope_of_both_or_neither_is_refused_as_a_gateway_refuses_it() {
+        let both = CalendarQuery {
+            con_id: Some(8314), filter: "earnings".into(), ..Default::default()
+        };
+        let neither = CalendarQuery::default();
+        // Emptiness is judged on the filter as written: whitespace is a
+        // filter, so this names both scopes.
+        let whitespace = CalendarQuery {
+            con_id: Some(8314), filter: " ".into(), ..Default::default()
+        };
+        for query in [both, neither, whitespace] {
+            let err = event_data_request(&query).unwrap_err();
+            let said = format!("{err:?}");
+            assert!(said.contains("10309"), "{said}");
+            assert!(said.contains("Invalid WSH event data request."), "{said}");
+        }
     }
 }

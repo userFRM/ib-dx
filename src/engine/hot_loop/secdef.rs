@@ -242,7 +242,7 @@ impl SecDefState {
             return;
         }
         if let Err(why) = cal::event_data_request(query) {
-            shared.reference.push_historical_error(req_id, 321, why);
+            shared.reference.push_historical_error(req_id, why.code, why.message);
             return;
         }
         if conn.is_none() {
@@ -273,7 +273,7 @@ impl SecDefState {
         let json = match cal::event_data_request(query) {
             Ok(json) => json,
             Err(why) => {
-                shared.reference.push_historical_error(req_id, 321, why);
+                shared.reference.push_historical_error(req_id, why.code, why.message);
                 return;
             }
         };
