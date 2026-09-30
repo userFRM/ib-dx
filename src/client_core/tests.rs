@@ -4991,3 +4991,50 @@ fn contract_expiry_accepts_the_months_dates_and_empty_values_a_gateway_takes() {
 
     }
 }
+
+/// A plain snapshot is counted against the pacing a gateway keeps: the
+/// 101st inside one wall-clock second is refused under the validation
+/// wrap, stating the count and the window it exceeded, and the next
+/// second counts afresh. A regulatory snapshot and a stream are counted
+/// by nothing and refused by nothing — the pacing covers the chargeable
+/// plain-snapshot burst alone.
+#[test]
+fn plain_snapshots_are_paced_a_hundred_to_the_second() {
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let core = ClientCore::new();
+    let shared = SharedState::new();
+    let ask = |id: i64, snapshot: bool, regulatory: bool| {
+        core.register_mkt_data(
+            &shared, &tx, id, id, "SPY", "SMART", "STK", "USD", &Default::default(),
+            false, snapshot, regulatory, "", 0, None, None, false,
+        )
+    };
+    // The window is a wall-clock second wide; run inside one by starting
+    // just after its edge.
+    let second = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    };
+    let edge = second();
+    while second() == edge {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    for id in 1..=100 {
+        assert!(ask(id, true, false).is_ok(), "the first hundred of the second pass");
+    }
+    let why = ask(101, true, false).unwrap_err();
+    assert_eq!(why.code, 321, "refused under the validation wrap");
+    assert_eq!(
+        why.message, "Snapshot requests limitation exceeded:100 per 1 second(s)",
+    );
+    assert!(ask(102, true, true).is_ok(), "a regulatory burst is not paced, however it is flagged");
+    assert!(ask(103, false, false).is_ok(), "nor is a stream");
+    // The next wall-clock second counts afresh.
+    let edge = second();
+    while second() == edge {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(ask(104, true, false).is_ok(), "the next second is a fresh window");
+}

@@ -1653,6 +1653,10 @@ pub struct ClientCore {
     /// Snapshots being waited on: when each was asked for, and which of the
     /// kinds one is made of the venue has stated so far.
     pub snapshot_reqs: Mutex<HashMap<i64, SnapshotWait>>,
+    /// The plain-snapshot pacing: the wall-clock second being counted, in
+    /// the upper half, and how many of it the session has taken, in the
+    /// lower one.
+    snapshot_pacing: std::sync::atomic::AtomicU64,
     /// The requests that asked for the venue's one-shot snapshot.
     ///
     /// One of those is a request of its own and not a stream: the venue
@@ -1992,6 +1996,7 @@ impl ClientCore {
             pending_group_events: Mutex::new(Vec::new()),
             last_quotes: Mutex::new(HashMap::new()),
             snapshot_reqs: Mutex::new(HashMap::new()),
+            snapshot_pacing: std::sync::atomic::AtomicU64::new(0),
             chargeable_snapshot_reqs: Mutex::new(std::collections::HashSet::new()),
             series_by_req: Mutex::new(HashMap::new()),
             slot_taken_on: Mutex::new(HashMap::new()),
@@ -2387,6 +2392,40 @@ impl ClientCore {
     /// serve, are refused there. Nothing waits here. `spread_scan` rides the
     /// request where it is a spread scan, and `calculation` where it is opened
     /// to bring a calculation its model.
+    /// Whether one more plain snapshot is past the session's pacing.
+    ///
+    /// A gateway counts its plain snapshots in a wall-clock second's window
+    /// and refuses the hundred and first; a refused request is counted by
+    /// nothing, and the next second counts afresh.
+    // ponytail: the 100-per-second default stands — a gateway's window and
+    // limit are configurable at its logon, which this session never sees.
+    fn snapshot_pace_exceeded(&self) -> bool {
+        const LIMIT: u64 = 100;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_secs())
+            .unwrap_or(0);
+        loop {
+            let held = self.snapshot_pacing.load(Ordering::Relaxed);
+            let (window, count) = (held >> 32, held & 0xffff_ffff);
+            let next = if window == now {
+                if count >= LIMIT {
+                    return true;
+                }
+                held + 1
+            } else {
+                (now << 32) | 1
+            };
+            if self
+                .snapshot_pacing
+                .compare_exchange_weak(held, next, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return false;
+            }
+        }
+    }
+
     pub fn register_mkt_data(
         &self,
         shared: &SharedState,
@@ -2499,6 +2538,16 @@ impl ClientCore {
             return Err(Refusal::not_connected(format!(
                 "market data is unavailable for the rest of this session: {why}",
             )));
+        }
+        // A gateway paces the plain-snapshot burst: past a hundred inside one
+        // wall-clock second, the request is refused under the validation wrap
+        // before anything is subscribed. The regulatory burst is not covered,
+        // and a request refused by any check above is counted by nothing — the
+        // count advances only on one that reached here and passes.
+        if snapshot && !regulatory_snapshot && self.snapshot_pace_exceeded() {
+            return Err(Refusal::validation(
+                "Snapshot requests limitation exceeded:100 per 1 second(s)",
+            ));
         }
         // The chargeable snapshot is one burst by construction, so it ends the
         // way an ordinary snapshot does and the caller hears the same end.
