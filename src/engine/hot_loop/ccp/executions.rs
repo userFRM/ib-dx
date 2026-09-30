@@ -534,6 +534,13 @@ fn stated_contract(
         other => other,
     }.to_string();
     let (symbol, currency, local_symbol) = (stated(55), stated(15), stated(6035));
+    // The multiplier and the trading class the report itself carries. The
+    // venue states both on every report about a contract that has them, and a
+    // gateway reads them off each report — a definition only fills what the
+    // report left unstated — so the contract it publishes states them whether
+    // or not the session ever asked for the definition.
+    let multiplier = parsed.get(&231).cloned().unwrap_or_default();
+    let trading_class = parsed.get(&6058).cloned().unwrap_or_default();
     match (con_id != 0).then(|| shared.reference.get_contract(con_id)).flatten() {
         Some(mut cached) => {
             if !symbol.is_empty() { cached.symbol = symbol; }
@@ -541,10 +548,13 @@ fn stated_contract(
             if !exchange.is_empty() { cached.exchange = exchange; }
             if !currency.is_empty() { cached.currency = currency; }
             if !local_symbol.is_empty() { cached.local_symbol = local_symbol; }
+            if !multiplier.is_empty() { cached.multiplier = multiplier; }
+            if !trading_class.is_empty() { cached.trading_class = trading_class; }
             cached
         }
         None => api::Contract {
-            con_id, symbol, sec_type, exchange, currency, local_symbol, ..Default::default()
+            con_id, symbol, sec_type, exchange, currency, local_symbol,
+            multiplier, trading_class, ..Default::default()
         },
     }
 }
@@ -1288,6 +1298,11 @@ impl CcpState {
             currency: kept(parsed.get(&15), was.map(|w| w.contract.currency.as_str())),
             exchange: kept(parsed.get(&100), was.map(|w| w.contract.exchange.as_str())),
             local_symbol: kept(parsed.get(&6035), was.map(|w| w.contract.local_symbol.as_str())),
+            // Stated on the report itself, as a gateway reads them: the
+            // session that recovers a finished order has fetched no
+            // definition, and the report is all there is to tell from.
+            multiplier: kept(parsed.get(&231), was.map(|w| w.contract.multiplier.as_str())),
+            trading_class: kept(parsed.get(&6058), was.map(|w| w.contract.trading_class.as_str())),
             last_trade_date_or_contract_month: kept(
                 parsed.get(&541).or_else(|| parsed.get(&200)),
                 was.map(|w| w.contract.last_trade_date_or_contract_month.as_str()),
@@ -3154,10 +3169,10 @@ impl CcpState {
 
             if con_id != 0 {
                 // An execution report states a subset of a definition: it names
-                // the contract, not its long name, its trading class or the
-                // venues it may trade on. Caching it whole replaced a definition
-                // already fetched with a poorer one, leaving a later reader a
-                // contract missing fields. Fill, do not replace.
+                // the contract, not its long name or the venues it may trade on.
+                // Caching it whole replaced a definition already fetched with a
+                // poorer one, leaving a later reader a contract missing fields.
+                // Fill, do not replace.
                 let merged = match shared.reference.get_contract(con_id) {
                     Some(mut known) => {
                         if !contract.symbol.is_empty() { known.symbol = contract.symbol.clone(); }

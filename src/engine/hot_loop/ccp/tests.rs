@@ -1257,6 +1257,66 @@ fn a_finished_option_order_names_its_right_as_a_letter() {
     assert_eq!(contract.right, "C", "a call is published as one");
 }
 
+/// The multiplier and trading class a report carries ride on the contract
+/// published with it, whether or not this session ever fetched the
+/// definition.
+///
+/// The venue states both on every report about a contract that has them —
+/// the multiplier on tag 231 and the class on tag 6058 — and a gateway
+/// reads them off the report, its definition cache filling only what the
+/// report left unstated. Taken from the cache alone, both arrived empty on
+/// an order recovered at the start of a session and on an execution heard
+/// for an order placed elsewhere, though the report stated them.
+#[test]
+fn a_contract_published_off_a_report_states_the_multiplier_and_class_it_carries() {
+    // The execution surface: a report restating an execution on an order
+    // this session never placed, answered from the report alone with the
+    // definition cache cold.
+    let mut ccp = CcpState::new();
+    let mut context = Context::new();
+    let shared = SharedState::new();
+    let mut frame = std::collections::HashMap::new();
+    for (tag, val) in [
+        (11u32, "78"), (150, "F"), (39, "2"), (97, "Y"), (54, "1"),
+        (17, "OLD-EXEC"), (32, "10"), (14, "10"), (31, "100.0"),
+        (55, "SPY"), (167, "OPT"), (15, "USD"), (6008, "756733"),
+        (231, "100"), (6058, "SPY"),
+    ] {
+        frame.insert(tag, val.to_string());
+    }
+    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    let filed = shared.orders.drain_restated_executions();
+    assert_eq!(filed.len(), 1, "the execution is on record");
+    let (exec_multiplier, exec_class) =
+        (filed[0].0.multiplier.clone(), filed[0].0.trading_class.clone());
+
+    // The completed-order surface: a finished order recovered from the
+    // venue's answer, filed off reports the cache has never seen.
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    ccp.completed_orders_open = true;
+    let mut frame = exec_report_frame(&[
+        (39, "2"), (150, "F"), (32, "1"), (31, "5.00"), (14, "1"), (151, "0"),
+        (54, "1"), (38, "1"), (55, "SPY"), (167, "OPT"), (15, "USD"), (6008, "9999"),
+        (40, "2"), (44, "5.00"), (1, "DU111111"), (231, "100"), (6058, "SPY"),
+    ]);
+    frame.insert(11, "555".to_string());
+    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+    ccp.deliver_finished_orders(&shared);
+    let filed = shared.orders.drain_completed_orders();
+    let row = filed.iter().find(|o| o.order_id == 555).expect("the order is filed as finished");
+    let (contract, _, _) = row.stated.as_deref().expect("with the record a caller reads back");
+    assert_eq!(
+        (
+            exec_multiplier.as_str(),
+            exec_class.as_str(),
+            contract.multiplier.as_str(),
+            contract.trading_class.as_str(),
+        ),
+        ("100", "SPY", "100", "SPY"),
+        "the multiplier and class the report states, on the execution and the completed order",
+    );
+}
+
 /// The price an adjustable stop converts at is read back.
 ///
 /// This client writes the whole group and read every field of it but this one,
