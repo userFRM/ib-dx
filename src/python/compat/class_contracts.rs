@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::sync::OnceLock;
 
-use super::{camel_aliases_copy, camel_aliases_owned};
+use super::{camel_aliases_copy, camel_aliases_owned, nil_aware_copy, nil_aware_owned};
 
 /// A list a Python program holds by reference.
 ///
@@ -107,48 +107,36 @@ impl FromPyObject<'_, '_> for ListField {
 /// ibapi-compatible Contract class.
 #[pyclass(from_py_object)]
 pub struct Contract {
-    #[pyo3(get, set)]
     pub con_id: i64,
-    #[pyo3(get, set)]
     pub symbol: String,
-    #[pyo3(get, set)]
     pub sec_type: String,
-    #[pyo3(get, set)]
     pub exchange: String,
-    #[pyo3(get, set)]
     pub currency: String,
-    #[pyo3(get, set)]
     pub last_trade_date_or_contract_month: String,
-    #[pyo3(get, set)]
     pub last_trade_date: String,
-    #[pyo3(get, set)]
     pub strike: f64,
-    #[pyo3(get, set)]
     pub right: String,
-    #[pyo3(get, set)]
     pub multiplier: String,
-    #[pyo3(get, set)]
     pub local_symbol: String,
-    #[pyo3(get, set)]
     pub primary_exchange: String,
-    #[pyo3(get, set)]
     pub trading_class: String,
-    #[pyo3(get, set)]
     pub include_expired: bool,
-    #[pyo3(get, set)]
     pub sec_id_type: String,
-    #[pyo3(get, set)]
     pub sec_id: String,
-    #[pyo3(get, set)]
     pub description: String,
-    #[pyo3(get, set)]
     pub issuer_id: String,
-    #[pyo3(get, set)]
     pub combo_legs_descrip: String,
     #[pyo3(get, set)]
     pub combo_legs: ListField,
     #[pyo3(get, set)]
     pub delta_neutral_contract: Option<Py<PyAny>>,
+    /// The fields presently stated as None, by Rust name. The typed
+    /// value stays as it was — the reference class holds the None
+    /// itself, and here the name stands in for it — so a read on the
+    /// Rust side sees the last stated value and the send path checks
+    /// this list before it encodes, refusing as the reference's
+    /// encoder refuses at a None.
+    pub(crate) nil: Vec<&'static str>,
 }
 
 impl Clone for Contract {
@@ -177,6 +165,7 @@ impl Clone for Contract {
             // The same object, as Python assignment shares it.
             delta_neutral_contract: self.delta_neutral_contract.as_ref()
                 .map(|d| Python::attach(|py| d.clone_ref(py))),
+            nil: self.nil.clone(),
         }
     }
 }
@@ -213,7 +202,26 @@ impl Default for Contract {
             combo_legs_descrip: String::new(),
             combo_legs: ListField::new(),
             delta_neutral_contract: None,
+            nil: Vec::new(),
         }
+    }
+}
+
+impl Contract {
+    /// The first field presently held as None, by its Rust name.
+    ///
+    /// The reference client's classes are plain Python and hold the None
+    /// itself; here the typed value stays and the name stands in for it.
+    pub(crate) fn nil_field(&self) -> Option<&'static str> {
+        self.nil.first().copied()
+    }
+
+    /// The refusal of a send this contract cannot go on, for a field held as
+    /// None: under the request's own sending-error number, with the sentence
+    /// the reference client's encoder raises. `None` where every field holds
+    /// a value and the send goes.
+    pub(crate) fn none_refusal(&self, fail_send: (i32, &str)) -> Option<crate::error_codes::Refusal> {
+        self.nil_field().map(|_| crate::error_codes::none_to_tws(fail_send))
     }
 }
 
@@ -316,6 +324,7 @@ impl Contract {
                 Some(d) => Some(Py::new(py, DeltaNeutralContractPy::from_api(d))?.into_any()),
                 None => None,
             },
+            nil: Vec::new(),
         })
     }
 
@@ -353,36 +362,49 @@ impl Contract {
 #[pymethods]
 impl Contract {
     #[new]
-    #[pyo3(signature = (con_id=0, symbol="".to_string(), sec_type="".to_string(), exchange="".to_string(), currency="".to_string(), last_trade_date_or_contract_month="".to_string(), strike=f64::MAX, right="".to_string(), multiplier="".to_string(), local_symbol="".to_string(), primary_exchange="".to_string(), trading_class="".to_string(), **keywords))]
+    #[pyo3(signature = (con_id=Some(0), symbol=Some(String::new()), sec_type=Some(String::new()), exchange=Some(String::new()), currency=Some(String::new()), last_trade_date_or_contract_month=Some(String::new()), strike=Some(f64::MAX), right=Some(String::new()), multiplier=Some(String::new()), local_symbol=Some(String::new()), primary_exchange=Some(String::new()), trading_class=Some(String::new()), **keywords))]
     fn new(
-        con_id: i64,
-        symbol: String,
-        sec_type: String,
-        exchange: String,
-        currency: String,
-        last_trade_date_or_contract_month: String,
-        strike: f64,
-        right: String,
-        multiplier: String,
-        local_symbol: String,
-        primary_exchange: String,
-        trading_class: String,
+        con_id: Option<i64>,
+        symbol: Option<String>,
+        sec_type: Option<String>,
+        exchange: Option<String>,
+        currency: Option<String>,
+        last_trade_date_or_contract_month: Option<String>,
+        strike: Option<f64>,
+        right: Option<String>,
+        multiplier: Option<String>,
+        local_symbol: Option<String>,
+        primary_exchange: Option<String>,
+        trading_class: Option<String>,
         keywords: Option<&Bound<'_, pyo3::types::PyDict>>,
         py: Python<'_>,
     ) -> PyResult<Py<Self>> {
+        // A None stated by position is held as an assigned one is: the
+        // default stands in the field and the name goes on the nil list, as
+        // the reference class holds the None itself.
+        let mut nil: Vec<&'static str> = Vec::new();
+        macro_rules! stated {
+            ($given:expr, $default:expr, $name:literal) => {
+                match $given {
+                    Some(v) => v,
+                    None => { nil.push($name); $default }
+                }
+            };
+        }
         let made = Py::new(py, Self {
-            con_id,
-            symbol,
-            sec_type,
-            exchange,
-            currency,
-            last_trade_date_or_contract_month,
-            strike,
-            right,
-            multiplier,
-            local_symbol,
-            primary_exchange,
-            trading_class,
+            con_id: stated!(con_id, 0, "con_id"),
+            symbol: stated!(symbol, String::new(), "symbol"),
+            sec_type: stated!(sec_type, String::new(), "sec_type"),
+            exchange: stated!(exchange, String::new(), "exchange"),
+            currency: stated!(currency, String::new(), "currency"),
+            last_trade_date_or_contract_month: stated!(last_trade_date_or_contract_month, String::new(), "last_trade_date_or_contract_month"),
+            strike: stated!(strike, f64::MAX, "strike"),
+            right: stated!(right, String::new(), "right"),
+            multiplier: stated!(multiplier, String::new(), "multiplier"),
+            local_symbol: stated!(local_symbol, String::new(), "local_symbol"),
+            primary_exchange: stated!(primary_exchange, String::new(), "primary_exchange"),
+            trading_class: stated!(trading_class, String::new(), "trading_class"),
+            nil,
             ..Default::default()
         })?;
         // And whatever else the caller named, under either spelling.
@@ -391,10 +413,6 @@ impl Contract {
     }
 
     // ibapi camelCase aliases
-    #[getter(conId)]
-    fn get_con_id_alias(&self) -> i64 { self.con_id }
-    #[setter(conId)]
-    fn set_con_id_alias(&mut self, v: i64) { self.con_id = v; }
     // The list the contract holds, itself, under the name the reference client
     // uses: read by that name a combination reported no legs, and handed back
     // as a copy it lost every leg appended to it.
@@ -1870,12 +1888,6 @@ for cls in [Contract, ContractDetails, ContractDescription]:
 }
 
 camel_aliases_copy! {
-    Contract {
-        get_include_expired_alias set_include_expired_alias includeExpired include_expired bool;
-    }
-}
-
-camel_aliases_copy! {
     ComboLeg {
         get_con_id_alias set_con_id_alias conId con_id i64;
         get_open_close_alias set_open_close_alias openClose open_close i32;
@@ -1890,17 +1902,44 @@ camel_aliases_owned! {
     }
 }
 
-camel_aliases_owned! {
+
+nil_aware_copy! {
     Contract {
+        get_con_id set_con_id con_id con_id i64;
+        get_con_id_alias set_con_id_alias conId con_id i64;
+        get_strike set_strike strike strike f64;
+        get_include_expired set_include_expired include_expired include_expired bool;
+        get_include_expired_alias set_include_expired_alias includeExpired include_expired bool;
+    }
+}
+
+nil_aware_owned! {
+    Contract {
+        get_symbol set_symbol symbol symbol String;
+        get_sec_type set_sec_type sec_type sec_type String;
         get_sec_type_alias set_sec_type_alias secType sec_type String;
-        get_ltdocm_alias set_ltdocm_alias lastTradeDateOrContractMonth last_trade_date_or_contract_month String;
-        get_ltd_alias set_ltd_alias lastTradeDate last_trade_date String;
+        get_exchange set_exchange exchange exchange String;
+        get_currency set_currency currency currency String;
+        get_last_trade_date_or_contract_month set_last_trade_date_or_contract_month last_trade_date_or_contract_month last_trade_date_or_contract_month String;
+        get_last_trade_date_or_contract_month_alias set_last_trade_date_or_contract_month_alias lastTradeDateOrContractMonth last_trade_date_or_contract_month String;
+        get_last_trade_date set_last_trade_date last_trade_date last_trade_date String;
+        get_last_trade_date_alias set_last_trade_date_alias lastTradeDate last_trade_date String;
+        get_right set_right right right String;
+        get_multiplier set_multiplier multiplier multiplier String;
+        get_local_symbol set_local_symbol local_symbol local_symbol String;
         get_local_symbol_alias set_local_symbol_alias localSymbol local_symbol String;
+        get_primary_exchange set_primary_exchange primary_exchange primary_exchange String;
         get_primary_exchange_alias set_primary_exchange_alias primaryExchange primary_exchange String;
+        get_trading_class set_trading_class trading_class trading_class String;
         get_trading_class_alias set_trading_class_alias tradingClass trading_class String;
+        get_sec_id_type set_sec_id_type sec_id_type sec_id_type String;
         get_sec_id_type_alias set_sec_id_type_alias secIdType sec_id_type String;
+        get_sec_id set_sec_id sec_id sec_id String;
         get_sec_id_alias set_sec_id_alias secId sec_id String;
+        get_description set_description description description String;
+        get_issuer_id set_issuer_id issuer_id issuer_id String;
         get_issuer_id_alias set_issuer_id_alias issuerId issuer_id String;
+        get_combo_legs_descrip set_combo_legs_descrip combo_legs_descrip combo_legs_descrip String;
         get_combo_legs_descrip_alias set_combo_legs_descrip_alias comboLegsDescrip combo_legs_descrip String;
     }
 }

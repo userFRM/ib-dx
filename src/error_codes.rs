@@ -129,6 +129,60 @@ pub const BAD_MESSAGE: i32 = 508;
 /// reports one that fails under this number, naming the string.
 pub const INVALID_SYMBOL: i32 = 579;
 
+/// The sending errors the reference client reports when its encoder meets a
+/// `None`: a number per request, and the sentence that number carries. Its
+/// `comm.make_field` raises "Cannot send None to TWS" on a field holding
+/// `None`, and the sending function says the raise on the error callback
+/// under its own number. Only the requests this client serves that carry a
+/// data class are named here.
+///
+/// A market-data request carrying a field stated as None. The reference
+/// client reports an exercise of options under this number too — its
+/// `exerciseOptions` names the market-data error, not one of its own.
+pub const FAIL_SEND_REQMKT: (i32, &str) = (510, "Request Market Data Sending Error - ");
+
+/// An order placement carrying a field stated as None.
+pub const FAIL_SEND_ORDER: (i32, &str) = (512, "Order Sending Error - ");
+
+/// A contract-details request carrying a field stated as None.
+pub const FAIL_SEND_REQCONTRACT: (i32, &str) = (518, "Request Contract Data Sending Error - ");
+
+/// A book request carrying a field stated as None.
+pub const FAIL_SEND_REQMKTDEPTH: (i32, &str) = (519, "Request Market Depth Sending Error - ");
+
+/// A history request carrying a field stated as None.
+pub const FAIL_SEND_REQHISTDATA: (i32, &str) = (527, "Request Historical Data Sending Error - ");
+
+/// A live bar request carrying a field stated as None.
+pub const FAIL_SEND_REQRTBARS: (i32, &str) = (529, "Request Real-time Bar Data Sending Error - ");
+
+/// An implied-volatility calculation carrying a field stated as None.
+pub const FAIL_SEND_REQCALCIMPLIEDVOLAT: (i32, &str) =
+    (534, "Request Calculate Implied Volatility Sending Error - ");
+
+/// An option-price calculation carrying a field stated as None.
+pub const FAIL_SEND_REQCALCOPTIONPRICE: (i32, &str) =
+    (535, "Request Calculate Option Price Sending Error - ");
+
+/// A head-timestamp request carrying a field stated as None.
+pub const FAIL_SEND_REQHEADTIMESTAMP: (i32, &str) = (566, "Request Head Time Stamp Sending Error - ");
+
+/// A histogram request carrying a field stated as None.
+pub const FAIL_SEND_REQHISTOGRAMDATA: (i32, &str) = (567, "Request Histogram Data Sending Error - ");
+
+/// A historical-ticks request carrying a field stated as None.
+pub const FAIL_SEND_REQHISTORICALTICKS: (i32, &str) = (575, "Request Historical Ticks Error - ");
+
+/// A tick-by-tick request carrying a field stated as None.
+pub const FAIL_SEND_REQTICKBYTICKDATA: (i32, &str) = (576, "Request Tick-By-Tick Data Sending Error - ");
+
+/// The refusal of a send that carries a field stated as None, under one of
+/// the sending-error numbers above: the sentence the reference client's
+/// encoder raises, behind the prefix the number carries.
+pub fn none_to_tws(fail_send: (i32, &str)) -> Refusal {
+    Refusal::stated(fail_send.0, format!("{}Cannot send None to TWS", fail_send.1))
+}
+
 /// The code a second connection asked for while a session is up is answered
 /// under.
 ///

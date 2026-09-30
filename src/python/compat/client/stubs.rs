@@ -126,6 +126,9 @@ impl EClient {
         under_price: f64, implied_vol_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(_tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQCALCIMPLIEDVOLAT) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Some(why) = self.options_refused(py, &crate::client_core::IMPL_VOL_OPTIONS, implied_vol_options)? {
             return self.report_refusal(py, req_id, why);
         }
@@ -175,6 +178,9 @@ impl EClient {
         under_price: f64, opt_prc_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(_tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQCALCOPTIONPRICE) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Some(why) = self.options_refused(py, &crate::client_core::OPT_PRC_OPTIONS, opt_prc_options)? {
             return self.report_refusal(py, req_id, why);
         }

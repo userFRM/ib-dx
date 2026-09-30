@@ -34,6 +34,9 @@ impl EClient {
         chart_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQHISTDATA) {
+            return self.report_refusal(py, req_id, why);
+        }
         // The contract is read as the caller stated it and refused before
         // anything is looked up or sent, as a gateway refuses it — a contract
         // given by id alone included, and the schedule series below rides the
@@ -119,6 +122,9 @@ impl EClient {
         format_date: i32,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQHEADTIMESTAMP) {
+            return self.report_refusal(py, req_id, why);
+        }
         // The exchange is read off the contract as the caller stated it and
         // refused empty before anything is looked up or sent, as a gateway
         // refuses it — a contract given by id alone included. What such a
@@ -156,6 +162,9 @@ impl EClient {
     /// Request contract details.
     pub(crate) fn req_contract_details(&self, py: Python<'_>, req_id: i64, contract: &Contract) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQCONTRACT) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
@@ -585,6 +594,9 @@ impl EClient {
     ) -> PyResult<()> {
         let _ = fundamental_data_options;
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if contract.nil_field().is_some() {
+            return self.report_refusal(py, req_id, crate::error_codes::Refusal::validation("Cannot send None to TWS"));
+        }
         if let Err(why) = ClientCore::validate_fundamentals_type(&contract.sec_type) {
             return self.report_refusal(py, req_id, why);
         }
@@ -638,6 +650,9 @@ impl EClient {
         misc_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQHISTORICALTICKS) {
+            return self.report_refusal(py, req_id, why);
+        }
         // What a gateway reads off this request before anything else, in its
         // own sentence for it; the engine still names the contract's type by
         // id where the caller stated none.
@@ -743,6 +758,9 @@ impl EClient {
     #[pyo3(signature = (req_id, contract, use_rth, time_period))]
     pub(crate) fn req_histogram_data(&self, py: Python<'_>, req_id: i64, contract: &Contract, use_rth: bool, time_period: &str) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQHISTOGRAMDATA) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
@@ -781,6 +799,9 @@ impl EClient {
         end_date_time: &str, duration_str: &str, use_rth: bool,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if contract.nil_field().is_some() {
+            return self.report_refusal(py, req_id, crate::error_codes::Refusal::validation("Cannot send None to TWS"));
+        }
         // The schedule rides the historical request's own gateway parser, so
         // the contract is read as the caller stated it and refused as that
         // parser refuses it.

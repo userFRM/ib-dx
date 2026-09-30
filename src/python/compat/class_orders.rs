@@ -7,337 +7,196 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::sync::OnceLock;
 
-use super::{camel_aliases_copy, camel_aliases_owned};
+use super::{camel_aliases_copy, nil_aware_copy, nil_aware_owned};
 use crate::types::*;
 
 /// ibapi-compatible Order class.
 #[pyclass(from_py_object)]
 pub struct Order {
     // ── Original fields ──
-    #[pyo3(get, set)]
     pub order_id: i64,
-    #[pyo3(get, set)]
     pub action: String,
-    #[pyo3(get, set)]
     pub total_quantity: DecimalField,
-    #[pyo3(get, set)]
     pub order_type: String,
-    #[pyo3(get, set)]
     pub lmt_price: f64,
-    #[pyo3(get, set)]
     pub aux_price: f64,
-    #[pyo3(get, set)]
     pub tif: String,
-    #[pyo3(get, set)]
     pub outside_rth: bool,
-    #[pyo3(get, set)]
     pub display_size: i32,
-    #[pyo3(get, set)]
     pub min_qty: i32,
-    #[pyo3(get, set)]
     pub hidden: bool,
-    #[pyo3(get, set)]
     pub good_after_time: String,
-    #[pyo3(get, set)]
     pub good_till_date: String,
-    #[pyo3(get, set)]
     pub oca_group: String,
-    #[pyo3(get, set)]
     pub trailing_percent: f64,
-    #[pyo3(get, set)]
     pub algo_strategy: String,
     #[pyo3(get, set)]
     pub algo_params: ListField,
-    #[pyo3(get, set)]
     pub what_if: bool,
-    #[pyo3(get, set)]
     pub cash_qty: f64,
-    #[pyo3(get, set)]
     pub parent_id: i64,
-    #[pyo3(get, set)]
     pub transmit: bool,
-    #[pyo3(get, set)]
     pub discretionary_amt: f64,
-    #[pyo3(get, set)]
     pub sweep_to_fill: bool,
-    #[pyo3(get, set)]
     pub e_trade_only: bool,
-    #[pyo3(get, set)]
     pub firm_quote_only: bool,
-    #[pyo3(get, set)]
     pub nbbo_price_cap: f64,
-    #[pyo3(get, set)]
     pub all_or_none: bool,
-    #[pyo3(get, set)]
     pub trigger_method: i32,
-    #[pyo3(get, set)]
     pub adjusted_order_type: String,
-    #[pyo3(get, set)]
     pub trigger_price: f64,
-    #[pyo3(get, set)]
     pub adjusted_stop_price: f64,
-    #[pyo3(get, set)]
     pub adjusted_stop_limit_price: f64,
     #[pyo3(get, set)]
     pub conditions: ListField,
-    #[pyo3(get, set)]
     pub conditions_ignore_rth: bool,
-    #[pyo3(get, set)]
     pub conditions_cancel_order: bool,
-    #[pyo3(get, set)]
     pub conditions_include_overnight: bool,
 
     // ── New fields (ibapi ground truth) ──
-    #[pyo3(get, set)]
     pub account: String,
-    #[pyo3(get, set)]
     pub active_start_time: String,
-    #[pyo3(get, set)]
     pub active_stop_time: String,
-    #[pyo3(get, set)]
     pub adjustable_trailing_unit: i32,
-    #[pyo3(get, set)]
     pub adjusted_trailing_amount: f64,
-    #[pyo3(get, set)]
     pub advanced_error_override: String,
-    #[pyo3(get, set)]
     pub algo_id: String,
-    #[pyo3(get, set)]
     pub allow_pre_open: bool,
-    #[pyo3(get, set)]
     pub auction_strategy: i32,
-    #[pyo3(get, set)]
     pub auto_cancel_date: String,
-    #[pyo3(get, set)]
     pub auto_cancel_parent: bool,
-    #[pyo3(get, set)]
     pub basis_points: f64,
-    #[pyo3(get, set)]
     pub basis_points_type: i32,
-    #[pyo3(get, set)]
     pub block_order: bool,
-    #[pyo3(get, set)]
     pub bond_accrued_interest: String,
-    #[pyo3(get, set)]
     pub clearing_account: String,
-    #[pyo3(get, set)]
     pub clearing_intent: String,
-    #[pyo3(get, set)]
     pub client_id: i32,
-    #[pyo3(get, set)]
     pub compete_against_best_offset: f64,
-    #[pyo3(get, set)]
     pub continuous_update: bool,
-    #[pyo3(get, set)]
     pub customer_account: String,
-    #[pyo3(get, set)]
     pub deactivate: bool,
     /// Stand the order down if the connection goes, rather than leaving it
     /// working with nobody watching it.
-    #[pyo3(get, set)]
     pub deactivate_on_disconnect: bool,
-    #[pyo3(get, set)]
     pub delta: f64,
-    #[pyo3(get, set)]
     pub delta_neutral_aux_price: f64,
-    #[pyo3(get, set)]
     pub delta_neutral_clearing_account: String,
-    #[pyo3(get, set)]
     pub delta_neutral_clearing_intent: String,
-    #[pyo3(get, set)]
     pub delta_neutral_con_id: i32,
-    #[pyo3(get, set)]
     pub delta_neutral_designated_location: String,
-    #[pyo3(get, set)]
     pub delta_neutral_open_close: String,
-    #[pyo3(get, set)]
     pub delta_neutral_order_type: String,
-    #[pyo3(get, set)]
     pub delta_neutral_settling_firm: String,
-    #[pyo3(get, set)]
     pub delta_neutral_short_sale: bool,
-    #[pyo3(get, set)]
     pub delta_neutral_short_sale_slot: i32,
-    #[pyo3(get, set)]
     pub designated_location: String,
-    #[pyo3(get, set)]
     pub discretionary_up_to_limit_price: bool,
-    #[pyo3(get, set)]
     pub dont_use_auto_price_for_hedge: bool,
-    #[pyo3(get, set)]
     pub duration: i32,
-    #[pyo3(get, set)]
     pub exempt_code: i32,
-    #[pyo3(get, set)]
     pub ext_operator: String,
-    #[pyo3(get, set)]
     pub fa_group: String,
-    #[pyo3(get, set)]
     pub fa_method: String,
-    #[pyo3(get, set)]
     pub fa_percentage: String,
-    #[pyo3(get, set)]
     pub filled_quantity: DecimalField,
-    #[pyo3(get, set)]
     pub hedge_max_size: i32,
-    #[pyo3(get, set)]
     pub hedge_param: String,
-    #[pyo3(get, set)]
     pub hedge_type: String,
-    #[pyo3(get, set)]
     pub ignore_open_auction: bool,
-    #[pyo3(get, set)]
     pub imbalance_only: bool,
-    #[pyo3(get, set)]
     pub include_overnight: bool,
-    #[pyo3(get, set)]
     pub is_oms_container: bool,
-    #[pyo3(get, set)]
     pub is_pegged_change_amount_decrease: bool,
-    #[pyo3(get, set)]
     pub lmt_price_offset: f64,
-    #[pyo3(get, set)]
     pub manual_order_indicator: i32,
-    #[pyo3(get, set)]
     pub manual_order_time: String,
-    #[pyo3(get, set)]
     pub mid_offset_at_half: f64,
-    #[pyo3(get, set)]
     pub mid_offset_at_whole: f64,
-    #[pyo3(get, set)]
     pub mifid2_decision_algo: String,
-    #[pyo3(get, set)]
     pub mifid2_decision_maker: String,
-    #[pyo3(get, set)]
     pub mifid2_execution_algo: String,
-    #[pyo3(get, set)]
     pub mifid2_execution_trader: String,
-    #[pyo3(get, set)]
     pub min_compete_size: i32,
-    #[pyo3(get, set)]
     pub min_trade_qty: i32,
-    #[pyo3(get, set)]
     pub model_code: String,
-    #[pyo3(get, set)]
     pub not_held: bool,
-    #[pyo3(get, set)]
     pub oca_type: i32,
-    #[pyo3(get, set)]
     pub open_close: String,
-    #[pyo3(get, set)]
     pub opt_out_smart_routing: bool,
     #[pyo3(get, set)]
     pub order_combo_legs: ListField,
     #[pyo3(get, set)]
     pub order_misc_options: ListField,
-    #[pyo3(get, set)]
     pub order_ref: String,
-    #[pyo3(get, set)]
     pub origin: i32,
-    #[pyo3(get, set)]
     pub override_percentage_constraints: bool,
-    #[pyo3(get, set)]
     pub parent_perm_id: i64,
-    #[pyo3(get, set)]
     pub pegged_change_amount: f64,
-    #[pyo3(get, set)]
     pub percent_offset: f64,
-    #[pyo3(get, set)]
     pub perm_id: i64,
-    #[pyo3(get, set)]
     pub post_only: bool,
-    #[pyo3(get, set)]
     pub post_to_ats: i32,
-    #[pyo3(get, set)]
     pub professional_customer: bool,
-    #[pyo3(get, set)]
     pub pt_order_id: i64,
-    #[pyo3(get, set)]
     pub pt_order_type: String,
-    #[pyo3(get, set)]
     pub randomize_price: bool,
-    #[pyo3(get, set)]
     pub randomize_size: bool,
-    #[pyo3(get, set)]
     pub ref_futures_con_id: i32,
-    #[pyo3(get, set)]
     pub reference_change_amount: f64,
-    #[pyo3(get, set)]
     pub reference_contract_id: i32,
-    #[pyo3(get, set)]
     pub reference_exchange_id: String,
-    #[pyo3(get, set)]
     pub reference_price_type: i32,
     /// Unstated until set, as the reference client holds it; the submit
     /// writes a stated one only.
     #[pyo3(get, set)]
     pub route_marketable_to_bbo: Option<bool>,
-    #[pyo3(get, set)]
     pub rule80a: String,
-    #[pyo3(get, set)]
     pub scale_auto_reset: bool,
-    #[pyo3(get, set)]
     pub scale_init_fill_qty: i32,
-    #[pyo3(get, set)]
     pub scale_init_level_size: i32,
-    #[pyo3(get, set)]
     pub scale_init_position: i32,
-    #[pyo3(get, set)]
     pub scale_price_adjust_interval: i32,
-    #[pyo3(get, set)]
     pub scale_price_adjust_value: f64,
-    #[pyo3(get, set)]
     pub scale_price_increment: f64,
-    #[pyo3(get, set)]
     pub scale_profit_offset: f64,
-    #[pyo3(get, set)]
     pub scale_random_percent: bool,
-    #[pyo3(get, set)]
     pub scale_subs_level_size: i32,
-    #[pyo3(get, set)]
     pub scale_table: String,
     /// Unstated until set, as the reference client holds it; the submit
     /// writes a stated one only.
     #[pyo3(get, set)]
     pub seek_price_improvement: Option<bool>,
-    #[pyo3(get, set)]
     pub settling_firm: String,
-    #[pyo3(get, set)]
     pub shareholder: String,
-    #[pyo3(get, set)]
     pub short_sale_slot: i32,
-    #[pyo3(get, set)]
     pub sl_order_id: i64,
-    #[pyo3(get, set)]
     pub sl_order_type: String,
     #[pyo3(get, set)]
     pub smart_combo_routing_params: ListField,
     #[pyo3(get, set)]
     pub soft_dollar_tier: TierField,
-    #[pyo3(get, set)]
     pub solicited: bool,
-    #[pyo3(get, set)]
     pub starting_price: f64,
-    #[pyo3(get, set)]
     pub stock_range_lower: f64,
-    #[pyo3(get, set)]
     pub stock_range_upper: f64,
-    #[pyo3(get, set)]
     pub stock_ref_price: f64,
-    #[pyo3(get, set)]
     pub submitter: String,
-    #[pyo3(get, set)]
     pub trail_stop_price: f64,
     /// Unstated until set, as the reference client holds it; the submit
     /// writes a stated one only.
     #[pyo3(get, set)]
     pub use_price_mgmt_algo: Option<i32>,
-    #[pyo3(get, set)]
     pub volatility: f64,
-    #[pyo3(get, set)]
     pub volatility_type: i32,
-    #[pyo3(get, set)]
     pub what_if_type: i32,
+    /// The fields presently stated as None, by Rust name. The typed
+    /// value stays as it was — the reference class holds the None
+    /// itself, and here the name stands in for it — so a read on the
+    /// Rust side sees the last stated value and the send path checks
+    /// this list before it encodes, refusing as the reference's
+    /// encoder refuses at a None.
+    pub(crate) nil: Vec<&'static str>,
 }
 
 impl Clone for Order {
@@ -502,6 +361,7 @@ impl Clone for Order {
             volatility: self.volatility,
             volatility_type: self.volatility_type,
             what_if_type: self.what_if_type,
+            nil: self.nil.clone(),
         }
     }
 }
@@ -669,7 +529,26 @@ impl Default for Order {
             volatility: f64::MAX,
             volatility_type: i32::MAX,
             what_if_type: i32::MAX,
+            nil: Vec::new(),
         }
+    }
+}
+
+impl Order {
+    /// The first field presently held as None, by its Rust name.
+    ///
+    /// The reference client's classes are plain Python and hold the None
+    /// itself; here the typed value stays and the name stands in for it.
+    pub(crate) fn nil_field(&self) -> Option<&'static str> {
+        self.nil.first().copied()
+    }
+
+    /// The refusal of a send this order cannot go on, for a field held as
+    /// None: under the request's own sending-error number, with the sentence
+    /// the reference client's encoder raises. `None` where every field holds
+    /// a value and the send goes.
+    pub(crate) fn none_refusal(&self, fail_send: (i32, &str)) -> Option<crate::error_codes::Refusal> {
+        self.nil_field().map(|_| crate::error_codes::none_to_tws(fail_send))
     }
 }
 
@@ -736,17 +615,7 @@ impl Order {
         Ok(made)
     }
 
-    // ── Existing camelCase aliases ──
-    #[getter(auxPrice)]
-    fn get_aux_price_alias(&self) -> f64 { self.aux_price }
-    #[setter(auxPrice)]
-    fn set_aux_price_alias(&mut self, v: f64) { self.aux_price = v; }
 
-    // ── New camelCase aliases ──
-    #[getter(activeStartTime)]
-    fn get_active_start_time_alias(&self) -> String { self.active_start_time.clone() }
-    #[setter(activeStartTime)]
-    fn set_active_start_time_alias(&mut self, v: String) { self.active_start_time = v; }
     // Each list the order holds, itself, under the name the reference client
     // uses. Handed back as a copy, every parameter, leg price and option
     // appended by that name was lost, and the order went out without it.
@@ -1103,6 +972,7 @@ impl Order {
             volatility: a.volatility,
             volatility_type: a.volatility_type,
             what_if_type: a.what_if_type,
+            nil: Vec::new(),
         })
     }
 
@@ -1947,147 +1817,9 @@ mod unstated_figure_tests {
 
 camel_aliases_copy! {
     Order {
-        get_lmt_price_alias set_lmt_price_alias lmtPrice lmt_price f64;
-        get_order_id_alias set_order_id_alias orderId order_id i64;
-        get_adjustable_trailing_unit_alias set_adjustable_trailing_unit_alias adjustableTrailingUnit adjustable_trailing_unit i32;
-        get_adjusted_trailing_amount_alias set_adjusted_trailing_amount_alias adjustedTrailingAmount adjusted_trailing_amount f64;
-        get_adjusted_stop_price_alias set_adjusted_stop_price_alias adjustedStopPrice adjusted_stop_price f64;
-        get_adjusted_stop_limit_price_alias set_adjusted_stop_limit_price_alias adjustedStopLimitPrice adjusted_stop_limit_price f64;
-        get_all_or_none_alias set_all_or_none_alias allOrNone all_or_none bool;
-        get_allow_pre_open_alias set_allow_pre_open_alias allowPreOpen allow_pre_open bool;
-        get_auction_strategy_alias set_auction_strategy_alias auctionStrategy auction_strategy i32;
-        get_auto_cancel_parent_alias set_auto_cancel_parent_alias autoCancelParent auto_cancel_parent bool;
-        get_basis_points_alias set_basis_points_alias basisPoints basis_points f64;
-        get_basis_points_type_alias set_basis_points_type_alias basisPointsType basis_points_type i32;
-        get_block_order_alias set_block_order_alias blockOrder block_order bool;
-        get_cash_qty_alias set_cash_qty_alias cashQty cash_qty f64;
-        get_client_id_alias set_client_id_alias clientId client_id i32;
-        get_compete_against_best_offset_alias set_compete_against_best_offset_alias competeAgainstBestOffset compete_against_best_offset f64;
-        get_conditions_cancel_order_alias set_conditions_cancel_order_alias conditionsCancelOrder conditions_cancel_order bool;
-        get_conditions_ignore_rth_alias set_conditions_ignore_rth_alias conditionsIgnoreRth conditions_ignore_rth bool;
-        get_conditions_include_overnight_alias set_conditions_include_overnight_alias conditionsIncludeOvernight conditions_include_overnight bool;
-        get_continuous_update_alias set_continuous_update_alias continuousUpdate continuous_update bool;
-        get_deactivate_on_disconnect_alias set_deactivate_on_disconnect_alias deactivateOnDisconnect deactivate_on_disconnect bool;
-        get_delta_neutral_aux_price_alias set_delta_neutral_aux_price_alias deltaNeutralAuxPrice delta_neutral_aux_price f64;
-        get_delta_neutral_con_id_alias set_delta_neutral_con_id_alias deltaNeutralConId delta_neutral_con_id i32;
-        get_delta_neutral_short_sale_alias set_delta_neutral_short_sale_alias deltaNeutralShortSale delta_neutral_short_sale bool;
-        get_delta_neutral_short_sale_slot_alias set_delta_neutral_short_sale_slot_alias deltaNeutralShortSaleSlot delta_neutral_short_sale_slot i32;
-        get_discretionary_amt_alias set_discretionary_amt_alias discretionaryAmt discretionary_amt f64;
-        get_discretionary_up_to_limit_price_alias set_discretionary_up_to_limit_price_alias discretionaryUpToLimitPrice discretionary_up_to_limit_price bool;
-        get_display_size_alias set_display_size_alias displaySize display_size i32;
-        get_dont_use_auto_price_for_hedge_alias set_dont_use_auto_price_for_hedge_alias dontUseAutoPriceForHedge dont_use_auto_price_for_hedge bool;
-        get_exempt_code_alias set_exempt_code_alias exemptCode exempt_code i32;
-        get_hedge_max_size_alias set_hedge_max_size_alias hedgeMaxSize hedge_max_size i32;
-        get_ignore_open_auction_alias set_ignore_open_auction_alias ignoreOpenAuction ignore_open_auction bool;
-        get_imbalance_only_alias set_imbalance_only_alias imbalanceOnly imbalance_only bool;
-        get_include_overnight_alias set_include_overnight_alias includeOvernight include_overnight bool;
-        get_is_oms_container_alias set_is_oms_container_alias isOmsContainer is_oms_container bool;
-        get_is_pegged_change_amount_decrease_alias set_is_pegged_change_amount_decrease_alias isPeggedChangeAmountDecrease is_pegged_change_amount_decrease bool;
-        get_lmt_price_offset_alias set_lmt_price_offset_alias lmtPriceOffset lmt_price_offset f64;
-        get_manual_order_indicator_alias set_manual_order_indicator_alias manualOrderIndicator manual_order_indicator i32;
-        get_mid_offset_at_half_alias set_mid_offset_at_half_alias midOffsetAtHalf mid_offset_at_half f64;
-        get_mid_offset_at_whole_alias set_mid_offset_at_whole_alias midOffsetAtWhole mid_offset_at_whole f64;
-        get_min_compete_size_alias set_min_compete_size_alias minCompeteSize min_compete_size i32;
-        get_min_qty_alias set_min_qty_alias minQty min_qty i32;
-        get_min_trade_qty_alias set_min_trade_qty_alias minTradeQty min_trade_qty i32;
-        get_not_held_alias set_not_held_alias notHeld not_held bool;
-        get_oca_type_alias set_oca_type_alias ocaType oca_type i32;
-        get_opt_out_smart_routing_alias set_opt_out_smart_routing_alias optOutSmartRouting opt_out_smart_routing bool;
-        get_outside_rth_alias set_outside_rth_alias outsideRth outside_rth bool;
-        get_override_percentage_constraints_alias set_override_percentage_constraints_alias overridePercentageConstraints override_percentage_constraints bool;
-        get_parent_id_alias set_parent_id_alias parentId parent_id i64;
-        get_parent_perm_id_alias set_parent_perm_id_alias parentPermId parent_perm_id i64;
-        get_pegged_change_amount_alias set_pegged_change_amount_alias peggedChangeAmount pegged_change_amount f64;
-        get_percent_offset_alias set_percent_offset_alias percentOffset percent_offset f64;
-        get_perm_id_alias set_perm_id_alias permId perm_id i64;
-        get_post_only_alias set_post_only_alias postOnly post_only bool;
-        get_post_to_ats_alias set_post_to_ats_alias postToAts post_to_ats i32;
-        get_professional_customer_alias set_professional_customer_alias professionalCustomer professional_customer bool;
-        get_pt_order_id_alias set_pt_order_id_alias ptOrderId pt_order_id i64;
-        get_randomize_price_alias set_randomize_price_alias randomizePrice randomize_price bool;
-        get_randomize_size_alias set_randomize_size_alias randomizeSize randomize_size bool;
-        get_ref_futures_con_id_alias set_ref_futures_con_id_alias refFuturesConId ref_futures_con_id i32;
-        get_reference_change_amount_alias set_reference_change_amount_alias referenceChangeAmount reference_change_amount f64;
-        get_reference_contract_id_alias set_reference_contract_id_alias referenceContractId reference_contract_id i32;
-        get_reference_price_type_alias set_reference_price_type_alias referencePriceType reference_price_type i32;
         get_route_marketable_to_bbo_alias set_route_marketable_to_bbo_alias routeMarketableToBbo route_marketable_to_bbo Option<bool>;
-        get_scale_auto_reset_alias set_scale_auto_reset_alias scaleAutoReset scale_auto_reset bool;
-        get_scale_init_fill_qty_alias set_scale_init_fill_qty_alias scaleInitFillQty scale_init_fill_qty i32;
-        get_scale_init_level_size_alias set_scale_init_level_size_alias scaleInitLevelSize scale_init_level_size i32;
-        get_scale_init_position_alias set_scale_init_position_alias scaleInitPosition scale_init_position i32;
-        get_scale_price_adjust_interval_alias set_scale_price_adjust_interval_alias scalePriceAdjustInterval scale_price_adjust_interval i32;
-        get_scale_price_adjust_value_alias set_scale_price_adjust_value_alias scalePriceAdjustValue scale_price_adjust_value f64;
-        get_scale_price_increment_alias set_scale_price_increment_alias scalePriceIncrement scale_price_increment f64;
-        get_scale_profit_offset_alias set_scale_profit_offset_alias scaleProfitOffset scale_profit_offset f64;
-        get_scale_random_percent_alias set_scale_random_percent_alias scaleRandomPercent scale_random_percent bool;
-        get_scale_subs_level_size_alias set_scale_subs_level_size_alias scaleSubsLevelSize scale_subs_level_size i32;
         get_seek_price_improvement_alias set_seek_price_improvement_alias seekPriceImprovement seek_price_improvement Option<bool>;
-        get_short_sale_slot_alias set_short_sale_slot_alias shortSaleSlot short_sale_slot i32;
-        get_sl_order_id_alias set_sl_order_id_alias slOrderId sl_order_id i64;
-        get_starting_price_alias set_starting_price_alias startingPrice starting_price f64;
-        get_stock_range_lower_alias set_stock_range_lower_alias stockRangeLower stock_range_lower f64;
-        get_stock_range_upper_alias set_stock_range_upper_alias stockRangeUpper stock_range_upper f64;
-        get_stock_ref_price_alias set_stock_ref_price_alias stockRefPrice stock_ref_price f64;
-        get_sweep_to_fill_alias set_sweep_to_fill_alias sweepToFill sweep_to_fill bool;
-        get_e_trade_only_alias set_e_trade_only_alias eTradeOnly e_trade_only bool;
-        get_firm_quote_only_alias set_firm_quote_only_alias firmQuoteOnly firm_quote_only bool;
-        get_nbbo_price_cap_alias set_nbbo_price_cap_alias nbboPriceCap nbbo_price_cap f64;
-        get_trail_stop_price_alias set_trail_stop_price_alias trailStopPrice trail_stop_price f64;
-        get_trailing_percent_alias set_trailing_percent_alias trailingPercent trailing_percent f64;
-        get_trigger_method_alias set_trigger_method_alias triggerMethod trigger_method i32;
-        get_trigger_price_alias set_trigger_price_alias triggerPrice trigger_price f64;
         get_use_price_mgmt_algo_alias set_use_price_mgmt_algo_alias usePriceMgmtAlgo use_price_mgmt_algo Option<i32>;
-        get_volatility_type_alias set_volatility_type_alias volatilityType volatility_type i32;
-        get_what_if_alias set_what_if_alias whatIf what_if bool;
-        get_what_if_type_alias set_what_if_type_alias whatIfType what_if_type i32;
-    }
-}
-
-camel_aliases_owned! {
-    Order {
-        get_total_quantity_alias set_total_quantity_alias totalQuantity total_quantity DecimalField;
-        get_filled_quantity_alias set_filled_quantity_alias filledQuantity filled_quantity DecimalField;
-        get_order_type_alias set_order_type_alias orderType order_type String;
-        get_active_stop_time_alias set_active_stop_time_alias activeStopTime active_stop_time String;
-        get_adjusted_order_type_alias set_adjusted_order_type_alias adjustedOrderType adjusted_order_type String;
-        get_advanced_error_override_alias set_advanced_error_override_alias advancedErrorOverride advanced_error_override String;
-        get_algo_id_alias set_algo_id_alias algoId algo_id String;
-        get_algo_strategy_alias set_algo_strategy_alias algoStrategy algo_strategy String;
-        get_auto_cancel_date_alias set_auto_cancel_date_alias autoCancelDate auto_cancel_date String;
-        get_bond_accrued_interest_alias set_bond_accrued_interest_alias bondAccruedInterest bond_accrued_interest String;
-        get_clearing_account_alias set_clearing_account_alias clearingAccount clearing_account String;
-        get_clearing_intent_alias set_clearing_intent_alias clearingIntent clearing_intent String;
-        get_customer_account_alias set_customer_account_alias customerAccount customer_account String;
-        get_delta_neutral_clearing_account_alias set_delta_neutral_clearing_account_alias deltaNeutralClearingAccount delta_neutral_clearing_account String;
-        get_delta_neutral_clearing_intent_alias set_delta_neutral_clearing_intent_alias deltaNeutralClearingIntent delta_neutral_clearing_intent String;
-        get_delta_neutral_designated_location_alias set_delta_neutral_designated_location_alias deltaNeutralDesignatedLocation delta_neutral_designated_location String;
-        get_delta_neutral_open_close_alias set_delta_neutral_open_close_alias deltaNeutralOpenClose delta_neutral_open_close String;
-        get_delta_neutral_order_type_alias set_delta_neutral_order_type_alias deltaNeutralOrderType delta_neutral_order_type String;
-        get_delta_neutral_settling_firm_alias set_delta_neutral_settling_firm_alias deltaNeutralSettlingFirm delta_neutral_settling_firm String;
-        get_designated_location_alias set_designated_location_alias designatedLocation designated_location String;
-        get_ext_operator_alias set_ext_operator_alias extOperator ext_operator String;
-        get_fa_group_alias set_fa_group_alias faGroup fa_group String;
-        get_fa_method_alias set_fa_method_alias faMethod fa_method String;
-        get_fa_percentage_alias set_fa_percentage_alias faPercentage fa_percentage String;
-        get_good_after_time_alias set_good_after_time_alias goodAfterTime good_after_time String;
-        get_good_till_date_alias set_good_till_date_alias goodTillDate good_till_date String;
-        get_hedge_param_alias set_hedge_param_alias hedgeParam hedge_param String;
-        get_hedge_type_alias set_hedge_type_alias hedgeType hedge_type String;
-        get_manual_order_time_alias set_manual_order_time_alias manualOrderTime manual_order_time String;
-        get_mifid2_decision_algo_alias set_mifid2_decision_algo_alias mifid2DecisionAlgo mifid2_decision_algo String;
-        get_mifid2_decision_maker_alias set_mifid2_decision_maker_alias mifid2DecisionMaker mifid2_decision_maker String;
-        get_mifid2_execution_algo_alias set_mifid2_execution_algo_alias mifid2ExecutionAlgo mifid2_execution_algo String;
-        get_mifid2_execution_trader_alias set_mifid2_execution_trader_alias mifid2ExecutionTrader mifid2_execution_trader String;
-        get_model_code_alias set_model_code_alias modelCode model_code String;
-        get_oca_group_alias set_oca_group_alias ocaGroup oca_group String;
-        get_open_close_alias set_open_close_alias openClose open_close String;
-        get_order_ref_alias set_order_ref_alias orderRef order_ref String;
-        get_pt_order_type_alias set_pt_order_type_alias ptOrderType pt_order_type String;
-        get_reference_exchange_id_alias set_reference_exchange_id_alias referenceExchangeId reference_exchange_id String;
-        get_rule80a_alias set_rule80a_alias rule80A rule80a String;
-        get_scale_table_alias set_scale_table_alias scaleTable scale_table String;
-        get_settling_firm_alias set_settling_firm_alias settlingFirm settling_firm String;
-        get_sl_order_type_alias set_sl_order_type_alias slOrderType sl_order_type String;
     }
 }
 
@@ -2105,5 +1837,298 @@ camel_aliases_copy! {
         get_init_margin_after_outside_rth_alias set_init_margin_after_outside_rth_alias initMarginAfterOutsideRTH init_margin_after_outside_rth f64;
         get_maint_margin_after_outside_rth_alias set_maint_margin_after_outside_rth_alias maintMarginAfterOutsideRTH maint_margin_after_outside_rth f64;
         get_equity_with_loan_after_outside_rth_alias set_equity_with_loan_after_outside_rth_alias equityWithLoanAfterOutsideRTH equity_with_loan_after_outside_rth f64;
+    }
+}
+
+nil_aware_copy! {
+    Order {
+        get_order_id set_order_id order_id order_id i64;
+        get_order_id_alias set_order_id_alias orderId order_id i64;
+        get_lmt_price set_lmt_price lmt_price lmt_price f64;
+        get_lmt_price_alias set_lmt_price_alias lmtPrice lmt_price f64;
+        get_aux_price set_aux_price aux_price aux_price f64;
+        get_aux_price_alias set_aux_price_alias auxPrice aux_price f64;
+        get_outside_rth set_outside_rth outside_rth outside_rth bool;
+        get_outside_rth_alias set_outside_rth_alias outsideRth outside_rth bool;
+        get_display_size set_display_size display_size display_size i32;
+        get_display_size_alias set_display_size_alias displaySize display_size i32;
+        get_min_qty set_min_qty min_qty min_qty i32;
+        get_min_qty_alias set_min_qty_alias minQty min_qty i32;
+        get_hidden set_hidden hidden hidden bool;
+        get_trailing_percent set_trailing_percent trailing_percent trailing_percent f64;
+        get_trailing_percent_alias set_trailing_percent_alias trailingPercent trailing_percent f64;
+        get_what_if set_what_if what_if what_if bool;
+        get_what_if_alias set_what_if_alias whatIf what_if bool;
+        get_cash_qty set_cash_qty cash_qty cash_qty f64;
+        get_cash_qty_alias set_cash_qty_alias cashQty cash_qty f64;
+        get_parent_id set_parent_id parent_id parent_id i64;
+        get_parent_id_alias set_parent_id_alias parentId parent_id i64;
+        get_transmit set_transmit transmit transmit bool;
+        get_discretionary_amt set_discretionary_amt discretionary_amt discretionary_amt f64;
+        get_discretionary_amt_alias set_discretionary_amt_alias discretionaryAmt discretionary_amt f64;
+        get_sweep_to_fill set_sweep_to_fill sweep_to_fill sweep_to_fill bool;
+        get_sweep_to_fill_alias set_sweep_to_fill_alias sweepToFill sweep_to_fill bool;
+        get_e_trade_only set_e_trade_only e_trade_only e_trade_only bool;
+        get_e_trade_only_alias set_e_trade_only_alias eTradeOnly e_trade_only bool;
+        get_firm_quote_only set_firm_quote_only firm_quote_only firm_quote_only bool;
+        get_firm_quote_only_alias set_firm_quote_only_alias firmQuoteOnly firm_quote_only bool;
+        get_nbbo_price_cap set_nbbo_price_cap nbbo_price_cap nbbo_price_cap f64;
+        get_nbbo_price_cap_alias set_nbbo_price_cap_alias nbboPriceCap nbbo_price_cap f64;
+        get_all_or_none set_all_or_none all_or_none all_or_none bool;
+        get_all_or_none_alias set_all_or_none_alias allOrNone all_or_none bool;
+        get_trigger_method set_trigger_method trigger_method trigger_method i32;
+        get_trigger_method_alias set_trigger_method_alias triggerMethod trigger_method i32;
+        get_trigger_price set_trigger_price trigger_price trigger_price f64;
+        get_trigger_price_alias set_trigger_price_alias triggerPrice trigger_price f64;
+        get_adjusted_stop_price set_adjusted_stop_price adjusted_stop_price adjusted_stop_price f64;
+        get_adjusted_stop_price_alias set_adjusted_stop_price_alias adjustedStopPrice adjusted_stop_price f64;
+        get_adjusted_stop_limit_price set_adjusted_stop_limit_price adjusted_stop_limit_price adjusted_stop_limit_price f64;
+        get_adjusted_stop_limit_price_alias set_adjusted_stop_limit_price_alias adjustedStopLimitPrice adjusted_stop_limit_price f64;
+        get_conditions_ignore_rth set_conditions_ignore_rth conditions_ignore_rth conditions_ignore_rth bool;
+        get_conditions_ignore_rth_alias set_conditions_ignore_rth_alias conditionsIgnoreRth conditions_ignore_rth bool;
+        get_conditions_cancel_order set_conditions_cancel_order conditions_cancel_order conditions_cancel_order bool;
+        get_conditions_cancel_order_alias set_conditions_cancel_order_alias conditionsCancelOrder conditions_cancel_order bool;
+        get_conditions_include_overnight set_conditions_include_overnight conditions_include_overnight conditions_include_overnight bool;
+        get_conditions_include_overnight_alias set_conditions_include_overnight_alias conditionsIncludeOvernight conditions_include_overnight bool;
+        get_adjustable_trailing_unit set_adjustable_trailing_unit adjustable_trailing_unit adjustable_trailing_unit i32;
+        get_adjustable_trailing_unit_alias set_adjustable_trailing_unit_alias adjustableTrailingUnit adjustable_trailing_unit i32;
+        get_adjusted_trailing_amount set_adjusted_trailing_amount adjusted_trailing_amount adjusted_trailing_amount f64;
+        get_adjusted_trailing_amount_alias set_adjusted_trailing_amount_alias adjustedTrailingAmount adjusted_trailing_amount f64;
+        get_allow_pre_open set_allow_pre_open allow_pre_open allow_pre_open bool;
+        get_allow_pre_open_alias set_allow_pre_open_alias allowPreOpen allow_pre_open bool;
+        get_auction_strategy set_auction_strategy auction_strategy auction_strategy i32;
+        get_auction_strategy_alias set_auction_strategy_alias auctionStrategy auction_strategy i32;
+        get_auto_cancel_parent set_auto_cancel_parent auto_cancel_parent auto_cancel_parent bool;
+        get_auto_cancel_parent_alias set_auto_cancel_parent_alias autoCancelParent auto_cancel_parent bool;
+        get_basis_points set_basis_points basis_points basis_points f64;
+        get_basis_points_alias set_basis_points_alias basisPoints basis_points f64;
+        get_basis_points_type set_basis_points_type basis_points_type basis_points_type i32;
+        get_basis_points_type_alias set_basis_points_type_alias basisPointsType basis_points_type i32;
+        get_block_order set_block_order block_order block_order bool;
+        get_block_order_alias set_block_order_alias blockOrder block_order bool;
+        get_client_id set_client_id client_id client_id i32;
+        get_client_id_alias set_client_id_alias clientId client_id i32;
+        get_compete_against_best_offset set_compete_against_best_offset compete_against_best_offset compete_against_best_offset f64;
+        get_compete_against_best_offset_alias set_compete_against_best_offset_alias competeAgainstBestOffset compete_against_best_offset f64;
+        get_continuous_update set_continuous_update continuous_update continuous_update bool;
+        get_continuous_update_alias set_continuous_update_alias continuousUpdate continuous_update bool;
+        get_deactivate set_deactivate deactivate deactivate bool;
+        get_deactivate_on_disconnect set_deactivate_on_disconnect deactivate_on_disconnect deactivate_on_disconnect bool;
+        get_deactivate_on_disconnect_alias set_deactivate_on_disconnect_alias deactivateOnDisconnect deactivate_on_disconnect bool;
+        get_delta set_delta delta delta f64;
+        get_delta_neutral_aux_price set_delta_neutral_aux_price delta_neutral_aux_price delta_neutral_aux_price f64;
+        get_delta_neutral_aux_price_alias set_delta_neutral_aux_price_alias deltaNeutralAuxPrice delta_neutral_aux_price f64;
+        get_delta_neutral_con_id set_delta_neutral_con_id delta_neutral_con_id delta_neutral_con_id i32;
+        get_delta_neutral_con_id_alias set_delta_neutral_con_id_alias deltaNeutralConId delta_neutral_con_id i32;
+        get_delta_neutral_short_sale set_delta_neutral_short_sale delta_neutral_short_sale delta_neutral_short_sale bool;
+        get_delta_neutral_short_sale_alias set_delta_neutral_short_sale_alias deltaNeutralShortSale delta_neutral_short_sale bool;
+        get_delta_neutral_short_sale_slot set_delta_neutral_short_sale_slot delta_neutral_short_sale_slot delta_neutral_short_sale_slot i32;
+        get_delta_neutral_short_sale_slot_alias set_delta_neutral_short_sale_slot_alias deltaNeutralShortSaleSlot delta_neutral_short_sale_slot i32;
+        get_discretionary_up_to_limit_price set_discretionary_up_to_limit_price discretionary_up_to_limit_price discretionary_up_to_limit_price bool;
+        get_discretionary_up_to_limit_price_alias set_discretionary_up_to_limit_price_alias discretionaryUpToLimitPrice discretionary_up_to_limit_price bool;
+        get_dont_use_auto_price_for_hedge set_dont_use_auto_price_for_hedge dont_use_auto_price_for_hedge dont_use_auto_price_for_hedge bool;
+        get_dont_use_auto_price_for_hedge_alias set_dont_use_auto_price_for_hedge_alias dontUseAutoPriceForHedge dont_use_auto_price_for_hedge bool;
+        get_duration set_duration duration duration i32;
+        get_exempt_code set_exempt_code exempt_code exempt_code i32;
+        get_exempt_code_alias set_exempt_code_alias exemptCode exempt_code i32;
+        get_hedge_max_size set_hedge_max_size hedge_max_size hedge_max_size i32;
+        get_hedge_max_size_alias set_hedge_max_size_alias hedgeMaxSize hedge_max_size i32;
+        get_ignore_open_auction set_ignore_open_auction ignore_open_auction ignore_open_auction bool;
+        get_ignore_open_auction_alias set_ignore_open_auction_alias ignoreOpenAuction ignore_open_auction bool;
+        get_imbalance_only set_imbalance_only imbalance_only imbalance_only bool;
+        get_imbalance_only_alias set_imbalance_only_alias imbalanceOnly imbalance_only bool;
+        get_include_overnight set_include_overnight include_overnight include_overnight bool;
+        get_include_overnight_alias set_include_overnight_alias includeOvernight include_overnight bool;
+        get_is_oms_container set_is_oms_container is_oms_container is_oms_container bool;
+        get_is_oms_container_alias set_is_oms_container_alias isOmsContainer is_oms_container bool;
+        get_is_pegged_change_amount_decrease set_is_pegged_change_amount_decrease is_pegged_change_amount_decrease is_pegged_change_amount_decrease bool;
+        get_is_pegged_change_amount_decrease_alias set_is_pegged_change_amount_decrease_alias isPeggedChangeAmountDecrease is_pegged_change_amount_decrease bool;
+        get_lmt_price_offset set_lmt_price_offset lmt_price_offset lmt_price_offset f64;
+        get_lmt_price_offset_alias set_lmt_price_offset_alias lmtPriceOffset lmt_price_offset f64;
+        get_manual_order_indicator set_manual_order_indicator manual_order_indicator manual_order_indicator i32;
+        get_manual_order_indicator_alias set_manual_order_indicator_alias manualOrderIndicator manual_order_indicator i32;
+        get_mid_offset_at_half set_mid_offset_at_half mid_offset_at_half mid_offset_at_half f64;
+        get_mid_offset_at_half_alias set_mid_offset_at_half_alias midOffsetAtHalf mid_offset_at_half f64;
+        get_mid_offset_at_whole set_mid_offset_at_whole mid_offset_at_whole mid_offset_at_whole f64;
+        get_mid_offset_at_whole_alias set_mid_offset_at_whole_alias midOffsetAtWhole mid_offset_at_whole f64;
+        get_min_compete_size set_min_compete_size min_compete_size min_compete_size i32;
+        get_min_compete_size_alias set_min_compete_size_alias minCompeteSize min_compete_size i32;
+        get_min_trade_qty set_min_trade_qty min_trade_qty min_trade_qty i32;
+        get_min_trade_qty_alias set_min_trade_qty_alias minTradeQty min_trade_qty i32;
+        get_not_held set_not_held not_held not_held bool;
+        get_not_held_alias set_not_held_alias notHeld not_held bool;
+        get_oca_type set_oca_type oca_type oca_type i32;
+        get_oca_type_alias set_oca_type_alias ocaType oca_type i32;
+        get_opt_out_smart_routing set_opt_out_smart_routing opt_out_smart_routing opt_out_smart_routing bool;
+        get_opt_out_smart_routing_alias set_opt_out_smart_routing_alias optOutSmartRouting opt_out_smart_routing bool;
+        get_origin set_origin origin origin i32;
+        get_override_percentage_constraints set_override_percentage_constraints override_percentage_constraints override_percentage_constraints bool;
+        get_override_percentage_constraints_alias set_override_percentage_constraints_alias overridePercentageConstraints override_percentage_constraints bool;
+        get_parent_perm_id set_parent_perm_id parent_perm_id parent_perm_id i64;
+        get_parent_perm_id_alias set_parent_perm_id_alias parentPermId parent_perm_id i64;
+        get_pegged_change_amount set_pegged_change_amount pegged_change_amount pegged_change_amount f64;
+        get_pegged_change_amount_alias set_pegged_change_amount_alias peggedChangeAmount pegged_change_amount f64;
+        get_percent_offset set_percent_offset percent_offset percent_offset f64;
+        get_percent_offset_alias set_percent_offset_alias percentOffset percent_offset f64;
+        get_perm_id set_perm_id perm_id perm_id i64;
+        get_perm_id_alias set_perm_id_alias permId perm_id i64;
+        get_post_only set_post_only post_only post_only bool;
+        get_post_only_alias set_post_only_alias postOnly post_only bool;
+        get_post_to_ats set_post_to_ats post_to_ats post_to_ats i32;
+        get_post_to_ats_alias set_post_to_ats_alias postToAts post_to_ats i32;
+        get_professional_customer set_professional_customer professional_customer professional_customer bool;
+        get_professional_customer_alias set_professional_customer_alias professionalCustomer professional_customer bool;
+        get_pt_order_id set_pt_order_id pt_order_id pt_order_id i64;
+        get_pt_order_id_alias set_pt_order_id_alias ptOrderId pt_order_id i64;
+        get_randomize_price set_randomize_price randomize_price randomize_price bool;
+        get_randomize_price_alias set_randomize_price_alias randomizePrice randomize_price bool;
+        get_randomize_size set_randomize_size randomize_size randomize_size bool;
+        get_randomize_size_alias set_randomize_size_alias randomizeSize randomize_size bool;
+        get_ref_futures_con_id set_ref_futures_con_id ref_futures_con_id ref_futures_con_id i32;
+        get_ref_futures_con_id_alias set_ref_futures_con_id_alias refFuturesConId ref_futures_con_id i32;
+        get_reference_change_amount set_reference_change_amount reference_change_amount reference_change_amount f64;
+        get_reference_change_amount_alias set_reference_change_amount_alias referenceChangeAmount reference_change_amount f64;
+        get_reference_contract_id set_reference_contract_id reference_contract_id reference_contract_id i32;
+        get_reference_contract_id_alias set_reference_contract_id_alias referenceContractId reference_contract_id i32;
+        get_reference_price_type set_reference_price_type reference_price_type reference_price_type i32;
+        get_reference_price_type_alias set_reference_price_type_alias referencePriceType reference_price_type i32;
+        get_scale_auto_reset set_scale_auto_reset scale_auto_reset scale_auto_reset bool;
+        get_scale_auto_reset_alias set_scale_auto_reset_alias scaleAutoReset scale_auto_reset bool;
+        get_scale_init_fill_qty set_scale_init_fill_qty scale_init_fill_qty scale_init_fill_qty i32;
+        get_scale_init_fill_qty_alias set_scale_init_fill_qty_alias scaleInitFillQty scale_init_fill_qty i32;
+        get_scale_init_level_size set_scale_init_level_size scale_init_level_size scale_init_level_size i32;
+        get_scale_init_level_size_alias set_scale_init_level_size_alias scaleInitLevelSize scale_init_level_size i32;
+        get_scale_init_position set_scale_init_position scale_init_position scale_init_position i32;
+        get_scale_init_position_alias set_scale_init_position_alias scaleInitPosition scale_init_position i32;
+        get_scale_price_adjust_interval set_scale_price_adjust_interval scale_price_adjust_interval scale_price_adjust_interval i32;
+        get_scale_price_adjust_interval_alias set_scale_price_adjust_interval_alias scalePriceAdjustInterval scale_price_adjust_interval i32;
+        get_scale_price_adjust_value set_scale_price_adjust_value scale_price_adjust_value scale_price_adjust_value f64;
+        get_scale_price_adjust_value_alias set_scale_price_adjust_value_alias scalePriceAdjustValue scale_price_adjust_value f64;
+        get_scale_price_increment set_scale_price_increment scale_price_increment scale_price_increment f64;
+        get_scale_price_increment_alias set_scale_price_increment_alias scalePriceIncrement scale_price_increment f64;
+        get_scale_profit_offset set_scale_profit_offset scale_profit_offset scale_profit_offset f64;
+        get_scale_profit_offset_alias set_scale_profit_offset_alias scaleProfitOffset scale_profit_offset f64;
+        get_scale_random_percent set_scale_random_percent scale_random_percent scale_random_percent bool;
+        get_scale_random_percent_alias set_scale_random_percent_alias scaleRandomPercent scale_random_percent bool;
+        get_scale_subs_level_size set_scale_subs_level_size scale_subs_level_size scale_subs_level_size i32;
+        get_scale_subs_level_size_alias set_scale_subs_level_size_alias scaleSubsLevelSize scale_subs_level_size i32;
+        get_short_sale_slot set_short_sale_slot short_sale_slot short_sale_slot i32;
+        get_short_sale_slot_alias set_short_sale_slot_alias shortSaleSlot short_sale_slot i32;
+        get_sl_order_id set_sl_order_id sl_order_id sl_order_id i64;
+        get_sl_order_id_alias set_sl_order_id_alias slOrderId sl_order_id i64;
+        get_solicited set_solicited solicited solicited bool;
+        get_starting_price set_starting_price starting_price starting_price f64;
+        get_starting_price_alias set_starting_price_alias startingPrice starting_price f64;
+        get_stock_range_lower set_stock_range_lower stock_range_lower stock_range_lower f64;
+        get_stock_range_lower_alias set_stock_range_lower_alias stockRangeLower stock_range_lower f64;
+        get_stock_range_upper set_stock_range_upper stock_range_upper stock_range_upper f64;
+        get_stock_range_upper_alias set_stock_range_upper_alias stockRangeUpper stock_range_upper f64;
+        get_stock_ref_price set_stock_ref_price stock_ref_price stock_ref_price f64;
+        get_stock_ref_price_alias set_stock_ref_price_alias stockRefPrice stock_ref_price f64;
+        get_trail_stop_price set_trail_stop_price trail_stop_price trail_stop_price f64;
+        get_trail_stop_price_alias set_trail_stop_price_alias trailStopPrice trail_stop_price f64;
+        get_volatility set_volatility volatility volatility f64;
+        get_volatility_type set_volatility_type volatility_type volatility_type i32;
+        get_volatility_type_alias set_volatility_type_alias volatilityType volatility_type i32;
+        get_what_if_type set_what_if_type what_if_type what_if_type i32;
+        get_what_if_type_alias set_what_if_type_alias whatIfType what_if_type i32;
+    }
+}
+
+nil_aware_owned! {
+    Order {
+        get_action set_action action action String;
+        get_total_quantity set_total_quantity total_quantity total_quantity DecimalField;
+        get_total_quantity_alias set_total_quantity_alias totalQuantity total_quantity DecimalField;
+        get_order_type set_order_type order_type order_type String;
+        get_order_type_alias set_order_type_alias orderType order_type String;
+        get_tif set_tif tif tif String;
+        get_good_after_time set_good_after_time good_after_time good_after_time String;
+        get_good_after_time_alias set_good_after_time_alias goodAfterTime good_after_time String;
+        get_good_till_date set_good_till_date good_till_date good_till_date String;
+        get_good_till_date_alias set_good_till_date_alias goodTillDate good_till_date String;
+        get_oca_group set_oca_group oca_group oca_group String;
+        get_oca_group_alias set_oca_group_alias ocaGroup oca_group String;
+        get_algo_strategy set_algo_strategy algo_strategy algo_strategy String;
+        get_algo_strategy_alias set_algo_strategy_alias algoStrategy algo_strategy String;
+        get_adjusted_order_type set_adjusted_order_type adjusted_order_type adjusted_order_type String;
+        get_adjusted_order_type_alias set_adjusted_order_type_alias adjustedOrderType adjusted_order_type String;
+        get_account set_account account account String;
+        get_active_start_time set_active_start_time active_start_time active_start_time String;
+        get_active_start_time_alias set_active_start_time_alias activeStartTime active_start_time String;
+        get_active_stop_time set_active_stop_time active_stop_time active_stop_time String;
+        get_active_stop_time_alias set_active_stop_time_alias activeStopTime active_stop_time String;
+        get_advanced_error_override set_advanced_error_override advanced_error_override advanced_error_override String;
+        get_advanced_error_override_alias set_advanced_error_override_alias advancedErrorOverride advanced_error_override String;
+        get_algo_id set_algo_id algo_id algo_id String;
+        get_algo_id_alias set_algo_id_alias algoId algo_id String;
+        get_auto_cancel_date set_auto_cancel_date auto_cancel_date auto_cancel_date String;
+        get_auto_cancel_date_alias set_auto_cancel_date_alias autoCancelDate auto_cancel_date String;
+        get_bond_accrued_interest set_bond_accrued_interest bond_accrued_interest bond_accrued_interest String;
+        get_bond_accrued_interest_alias set_bond_accrued_interest_alias bondAccruedInterest bond_accrued_interest String;
+        get_clearing_account set_clearing_account clearing_account clearing_account String;
+        get_clearing_account_alias set_clearing_account_alias clearingAccount clearing_account String;
+        get_clearing_intent set_clearing_intent clearing_intent clearing_intent String;
+        get_clearing_intent_alias set_clearing_intent_alias clearingIntent clearing_intent String;
+        get_customer_account set_customer_account customer_account customer_account String;
+        get_customer_account_alias set_customer_account_alias customerAccount customer_account String;
+        get_delta_neutral_clearing_account set_delta_neutral_clearing_account delta_neutral_clearing_account delta_neutral_clearing_account String;
+        get_delta_neutral_clearing_account_alias set_delta_neutral_clearing_account_alias deltaNeutralClearingAccount delta_neutral_clearing_account String;
+        get_delta_neutral_clearing_intent set_delta_neutral_clearing_intent delta_neutral_clearing_intent delta_neutral_clearing_intent String;
+        get_delta_neutral_clearing_intent_alias set_delta_neutral_clearing_intent_alias deltaNeutralClearingIntent delta_neutral_clearing_intent String;
+        get_delta_neutral_designated_location set_delta_neutral_designated_location delta_neutral_designated_location delta_neutral_designated_location String;
+        get_delta_neutral_designated_location_alias set_delta_neutral_designated_location_alias deltaNeutralDesignatedLocation delta_neutral_designated_location String;
+        get_delta_neutral_open_close set_delta_neutral_open_close delta_neutral_open_close delta_neutral_open_close String;
+        get_delta_neutral_open_close_alias set_delta_neutral_open_close_alias deltaNeutralOpenClose delta_neutral_open_close String;
+        get_delta_neutral_order_type set_delta_neutral_order_type delta_neutral_order_type delta_neutral_order_type String;
+        get_delta_neutral_order_type_alias set_delta_neutral_order_type_alias deltaNeutralOrderType delta_neutral_order_type String;
+        get_delta_neutral_settling_firm set_delta_neutral_settling_firm delta_neutral_settling_firm delta_neutral_settling_firm String;
+        get_delta_neutral_settling_firm_alias set_delta_neutral_settling_firm_alias deltaNeutralSettlingFirm delta_neutral_settling_firm String;
+        get_designated_location set_designated_location designated_location designated_location String;
+        get_designated_location_alias set_designated_location_alias designatedLocation designated_location String;
+        get_ext_operator set_ext_operator ext_operator ext_operator String;
+        get_ext_operator_alias set_ext_operator_alias extOperator ext_operator String;
+        get_fa_group set_fa_group fa_group fa_group String;
+        get_fa_group_alias set_fa_group_alias faGroup fa_group String;
+        get_fa_method set_fa_method fa_method fa_method String;
+        get_fa_method_alias set_fa_method_alias faMethod fa_method String;
+        get_fa_percentage set_fa_percentage fa_percentage fa_percentage String;
+        get_fa_percentage_alias set_fa_percentage_alias faPercentage fa_percentage String;
+        get_filled_quantity set_filled_quantity filled_quantity filled_quantity DecimalField;
+        get_filled_quantity_alias set_filled_quantity_alias filledQuantity filled_quantity DecimalField;
+        get_hedge_param set_hedge_param hedge_param hedge_param String;
+        get_hedge_param_alias set_hedge_param_alias hedgeParam hedge_param String;
+        get_hedge_type set_hedge_type hedge_type hedge_type String;
+        get_hedge_type_alias set_hedge_type_alias hedgeType hedge_type String;
+        get_manual_order_time set_manual_order_time manual_order_time manual_order_time String;
+        get_manual_order_time_alias set_manual_order_time_alias manualOrderTime manual_order_time String;
+        get_mifid2_decision_algo set_mifid2_decision_algo mifid2_decision_algo mifid2_decision_algo String;
+        get_mifid2_decision_algo_alias set_mifid2_decision_algo_alias mifid2DecisionAlgo mifid2_decision_algo String;
+        get_mifid2_decision_maker set_mifid2_decision_maker mifid2_decision_maker mifid2_decision_maker String;
+        get_mifid2_decision_maker_alias set_mifid2_decision_maker_alias mifid2DecisionMaker mifid2_decision_maker String;
+        get_mifid2_execution_algo set_mifid2_execution_algo mifid2_execution_algo mifid2_execution_algo String;
+        get_mifid2_execution_algo_alias set_mifid2_execution_algo_alias mifid2ExecutionAlgo mifid2_execution_algo String;
+        get_mifid2_execution_trader set_mifid2_execution_trader mifid2_execution_trader mifid2_execution_trader String;
+        get_mifid2_execution_trader_alias set_mifid2_execution_trader_alias mifid2ExecutionTrader mifid2_execution_trader String;
+        get_model_code set_model_code model_code model_code String;
+        get_model_code_alias set_model_code_alias modelCode model_code String;
+        get_open_close set_open_close open_close open_close String;
+        get_open_close_alias set_open_close_alias openClose open_close String;
+        get_order_ref set_order_ref order_ref order_ref String;
+        get_order_ref_alias set_order_ref_alias orderRef order_ref String;
+        get_pt_order_type set_pt_order_type pt_order_type pt_order_type String;
+        get_pt_order_type_alias set_pt_order_type_alias ptOrderType pt_order_type String;
+        get_reference_exchange_id set_reference_exchange_id reference_exchange_id reference_exchange_id String;
+        get_reference_exchange_id_alias set_reference_exchange_id_alias referenceExchangeId reference_exchange_id String;
+        get_rule80a set_rule80a rule80a rule80a String;
+        get_rule80a_alias set_rule80a_alias rule80A rule80a String;
+        get_scale_table set_scale_table scale_table scale_table String;
+        get_scale_table_alias set_scale_table_alias scaleTable scale_table String;
+        get_settling_firm set_settling_firm settling_firm settling_firm String;
+        get_settling_firm_alias set_settling_firm_alias settlingFirm settling_firm String;
+        get_shareholder set_shareholder shareholder shareholder String;
+        get_sl_order_type set_sl_order_type sl_order_type sl_order_type String;
+        get_sl_order_type_alias set_sl_order_type_alias slOrderType sl_order_type String;
+        get_submitter set_submitter submitter submitter String;
     }
 }

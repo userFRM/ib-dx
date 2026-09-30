@@ -84,6 +84,17 @@ impl EClient {
             return self.refuse_placement(py, order_id, Refusal::validation(why));
         }
         let Some(tx) = self.tx_or_report_for_trading(self.placement_origin(order_id))? else { return Ok(()) };
+        // A field holding None is refused as the reference client's encoder
+        // refuses it at send time: under the placement's own number, with
+        // nothing gone to the venue.
+        //
+        // ponytail: any nil field refuses the send; the reference skips a
+        // few of its own guarded fields (algoParams and friends) instead.
+        if let Some(why) = order.none_refusal(crate::error_codes::FAIL_SEND_ORDER)
+            .or_else(|| contract.none_refusal(crate::error_codes::FAIL_SEND_ORDER))
+        {
+            return self.refuse_placement(py, order_id, why);
+        }
 
         let session = self.order_session();
         let mut api_order = order.to_api();
@@ -303,6 +314,11 @@ impl EClient {
         // to send, and the caller is told that rather than told about its
         // account.
         let Some(tx) = self.tx_or_report_for_trading(exercising)? else { return Ok(()) };
+        // The reference client's exercise says a None in what it encodes
+        // under the market-data number — its own spelling, kept.
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQMKT) {
+            return self.report_refusal_as(py, exercising, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal_as(py, exercising, why);
         }

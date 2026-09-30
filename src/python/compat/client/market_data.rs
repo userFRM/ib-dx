@@ -134,6 +134,9 @@ impl EClient {
         // venue lets run past what a request id can hold — had this stream's
         // refusals reported against somebody else's request.
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQTICKBYTICKDATA) {
+            return self.report_refusal(py, req_id, why);
+        }
         wire_req_id(req_id)?;
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
@@ -249,6 +252,9 @@ impl EClient {
         // only an id was subscribed here to a US stock on SMART: a book for an
         // instrument nobody asked about, under their own request id.
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQMKTDEPTH) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Some(why) = self.options_refused(py, &crate::client_core::MKT_DEPTH_OPTIONS, mkt_depth_options)? {
             return self.report_refusal(py, req_id, why);
         }
@@ -365,6 +371,9 @@ impl EClient {
         real_time_bars_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQRTBARS) {
+            return self.report_refusal(py, req_id, why);
+        }
         let shared = self.shared_state()?;
         // The base description refusals, which a gateway runs on this request
         // kind too — without the field checks: a live bar request goes by the
@@ -940,6 +949,11 @@ impl EClient {
         delayed_allowed: bool,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // A field holding None is refused before the slot is taken, as the
+        // reference client's encoder refuses it at send time.
+        if let Some(why) = contract.none_refusal(crate::error_codes::FAIL_SEND_REQMKT) {
+            return self.report_refusal(py, req_id, why);
+        }
         // As on the other surface: a number every other request refuses is
         // refused here too, and a negative one is read as a gateway reads it.
         if req_id >= 0 {
