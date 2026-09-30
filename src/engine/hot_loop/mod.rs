@@ -1153,6 +1153,18 @@ impl HotLoop {
         push_hmds_unavailable(&self.shared, req_id, from_historical);
     }
 
+    /// What the venue last said of the API's access to a contract's quote,
+    /// as the number and text a live stream request on that contract is
+    /// refused under — before anything is asked of the venue, as a gateway
+    /// refuses a tick-by-tick or live bar request from that state.
+    fn refused_api_access(&self, con_id: i64) -> Option<(i32, String)> {
+        let instrument = self.context.market.instrument_by_con_id(con_id)?;
+        match self.farm.quote_access.get(&instrument)? {
+            true => Some((10089, API_SUBSCRIPTION_NEEDED.to_string())),
+            false => Some((354, "Requested market data is not subscribed.".to_string())),
+        }
+    }
+
     /// Take a bar request in: refuse what is refuseable on the spot, and
     /// stand the rest in the order they arrived. A gateway answers at most
     /// fifty bar requests at once and holds the rest, starting each held one
@@ -1546,6 +1558,14 @@ impl HotLoop {
                     // begin only if a reconnect re-sent it, and nothing said so.
                     if self.hmds_conn.is_none() {
                         self.emit_hmds_unavailable(req_id.max(0) as u32, false);
+                        continue;
+                    }
+                    // A contract whose quote the venue refused the API is no
+                    // stream either: refused now, under the same access,
+                    // before anything is asked of the venue.
+                    if let Some((code, text)) = self.refused_api_access(con_id) {
+                        log::error!("tick-by-tick {req_id} refused: {text}");
+                        push_hmds_refusal(&self.shared, req_id.max(0) as u32, code, text, false);
                         continue;
                     }
                     // Registered with what the contract is, so the slot carries
@@ -2028,6 +2048,10 @@ impl HotLoop {
                             "Duplicate ticker id".to_string(),
                             false,
                         );
+                    } else if let Some((code, text)) = self.refused_api_access(con_id) {
+                        // As the tick stream beside this: a contract whose
+                        // quote the venue refused the API streams no bars.
+                        push_hmds_refusal(&self.shared, req_id, code, text, false);
                     } else {
                         self.hmds.send_realtime_bar_subscribe(req_id, con_id, &symbol, &sec_type, &exchange, &what_to_show, use_rth, &mut self.hmds_conn, &mut self.hb, &self.shared);
                     }
@@ -8421,6 +8445,120 @@ mod tests {
         assert_eq!(
             hl.hmds.tbt_subscriptions.len(), 1,
             "the second stream under that number is not taken",
+        );
+    }
+
+    /// A live stream asked on a contract whose quote the venue refused is
+    /// refused at request time.
+    ///
+    /// A gateway answers a tick-by-tick or live bar request from the same
+    /// access state its quote refusals write: where the API owes a
+    /// subscription of its own it says so under the long sentence of 10089,
+    /// and otherwise under the short one of 354 — before anything is asked
+    /// of the venue. Taken anyway, the caller held a stream that could
+    /// never tick, told nothing. A fresh acknowledgement clears the state:
+    /// what the venue says now outruns what it said before.
+    #[test]
+    fn a_live_stream_on_a_quote_the_venue_refused_is_refused_at_request_time() {
+        let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(8);
+        hl.set_control_rx(rx);
+        let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+        hl.hmds_conn = Some(conn);
+
+        let instrument = hl.context.market.register(265_598);
+        hl.farm.instrument_md_reqs.push((instrument, crate::engine::hot_loop::farm::MdReqRecord {
+            con_id: 265_598, sec_type: "CS".into(), mode_9887: 0,
+            entries: vec![
+                crate::engine::hot_loop::farm::MdReqEntry {
+                    req_id: 1, request_type: 442, venue: "BEST".into(), precision: "1",
+                },
+                crate::engine::hot_loop::farm::MdReqEntry {
+                    req_id: 2, request_type: 442, venue: "BEST".into(), precision: "1",
+                },
+            ],
+        }));
+
+        // The venue refused the quote, and the services it names for the API
+        // are more than the ones it names for the data: a subscription the
+        // API owes on its own.
+        hl.farm.md_req_to_instrument.push((1, instrument));
+        let refused = crate::protocol::fix::fix_build(&[
+            (crate::protocol::fix::TAG_MSG_TYPE, "3"),
+            (262, "1"),
+            (9887, "0"),
+            (58, "Error&BEST/CS/Top"),
+            (6756, "50"),
+            (6763, "50,51"),
+        ], 1);
+        hl.farm.process_farm_message(&refused, &mut None, &mut hl.context, &hl.shared, &None, &mut hl.hb);
+
+        tx.send(ControlCommand::SubscribeTbt {
+            contract: stock(265_598, "AAPL"),
+            req_id: 5, tbt_type: TbtType::Last, number_of_ticks: 0,
+            ignore_size: false, filters: Default::default(),
+        }).unwrap();
+        tx.send(ControlCommand::SubscribeRealTimeBar {
+            req_id: 6, contract: stock(265_598, "AAPL"),
+            what_to_show: "TRADES".into(), use_rth: false,
+            filters: Default::default(),
+        }).unwrap();
+        hl.poll_once();
+        hl.poll_once();
+
+        let needed = API_SUBSCRIPTION_NEEDED.to_string();
+        let mut told = hl.shared.reference.drain_historical_errors();
+        told.sort_by_key(|(req_id, ..)| *req_id);
+        assert_eq!(
+            told,
+            vec![(5, 10089, needed.clone()), (6, 10089, needed)],
+            "both live streams are refused at request time under the API-subscription sentence",
+        );
+        assert!(
+            hl.hmds.tbt_subscriptions.is_empty() && hl.hmds.rtbar_subs.is_empty(),
+            "neither refused stream is taken",
+        );
+
+        // A fresh acknowledgement of the subscription clears the refusal,
+        // and the contract streams again. (The acknowledgement consumed the
+        // request's routing, as each acknowledgement does; a fresh
+        // subscription states it again.)
+        hl.farm.md_req_to_instrument.push((1, instrument));
+        hl.farm.process_farm_message(b"35=Q\x0176904,1,0.01,0,3,a6,,1,1", &mut None, &mut hl.context, &hl.shared, &None, &mut hl.hb);
+        tx.send(ControlCommand::SubscribeTbt {
+            contract: stock(265_598, "AAPL"),
+            req_id: 7, tbt_type: TbtType::Last, number_of_ticks: 0,
+            ignore_size: false, filters: Default::default(),
+        }).unwrap();
+        hl.poll_once();
+        assert!(
+            hl.shared.reference.drain_historical_errors().is_empty(),
+            "an acknowledged contract streams again",
+        );
+        assert_eq!(hl.hmds.tbt_subscriptions.len(), 1, "the stream is taken");
+
+        // A refusal naming no service the API owes alone is the short
+        // sentence: the two are told apart.
+        hl.farm.md_req_to_instrument.push((2, instrument));
+        let not_subscribed = crate::protocol::fix::fix_build(&[
+            (crate::protocol::fix::TAG_MSG_TYPE, "3"),
+            (262, "2"),
+            (9887, "0"),
+            (58, "Error&BEST/CS/Top"),
+            (6756, "50"),
+            (6763, "50"),
+        ], 1);
+        hl.farm.process_farm_message(&not_subscribed, &mut None, &mut hl.context, &hl.shared, &None, &mut hl.hb);
+        tx.send(ControlCommand::SubscribeRealTimeBar {
+            req_id: 8, contract: stock(265_598, "AAPL"),
+            what_to_show: "TRADES".into(), use_rth: false,
+            filters: Default::default(),
+        }).unwrap();
+        hl.poll_once();
+        assert_eq!(
+            hl.shared.reference.drain_historical_errors(),
+            vec![(8, 354, "Requested market data is not subscribed.".to_string())],
+            "the bar stream is refused under the short sentence",
         );
     }
 

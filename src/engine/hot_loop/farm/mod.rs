@@ -1177,6 +1177,13 @@ pub(crate) struct FarmState {
     depth_resub_info: Vec<(u32, i64, String, String, String, i32, bool)>,
     md_resub_info: Vec<MdResubInfo>,
     delayed_subscriptions: std::collections::HashMap<InstrumentId, DelayedSubscription>,
+    /// What the venue last said of the API's access to a contract's quote:
+    /// `true` where the API owes a subscription of its own, `false` where it
+    /// is simply not subscribed. A live stream asked on the contract is
+    /// refused at request time under this — as a gateway refuses a tick-by-
+    /// tick or live bar request from the access state its quote refusals
+    /// write — until a fresh acknowledgement clears it.
+    pub(crate) quote_access: std::collections::HashMap<InstrumentId, bool>,
     /// The options a gateway's model is asked for here.
     modelled_options: std::collections::HashMap<InstrumentId, ModelledOption>,
     /// The options something new has been stated for since their model ticks
@@ -2517,6 +2524,7 @@ impl FarmState {
             depth_resub_info: Vec::new(),
             md_resub_info: Vec::new(),
             delayed_subscriptions: std::collections::HashMap::new(),
+            quote_access: std::collections::HashMap::new(),
             modelled_options: std::collections::HashMap::new(),
             option_ticks_due: std::collections::HashSet::new(),
             option_ticks_built_in: 0,
@@ -3293,6 +3301,10 @@ impl FarmState {
                 e.req_id == req_id && e.request_type == REGULATORY_SNAPSHOT_REQUEST_TYPE
             }));
         if !is_a_snapshot {
+            // Taken now: what the venue said the last time it refused the
+            // quote is no longer what a live stream request on the contract
+            // is owed.
+            self.quote_access.remove(&instrument);
             shared.market.note_subscription_accepted(instrument);
             let mode = self.request_mode(instrument);
             shared.market.note_pricing_subscription(instrument, mode, true);
@@ -3487,6 +3499,14 @@ impl FarmState {
                     } else {
                         Refusal::no_definition(format!("the venue refused this subscription: {reason}"))
                     };
+                    // What the venue said of the API's access stands for live
+                    // stream requests on this contract too, until a fresh
+                    // acknowledgement outruns it.
+                    match refusal.code {
+                        10089 => { self.quote_access.insert(instrument, true); }
+                        354 => { self.quote_access.insert(instrument, false); }
+                        _ => {}
+                    }
                     shared.market.push_subscription_refusal(instrument, refusal);
                 }
                 // A depth subscription asks under an id of its own, and one venue's
