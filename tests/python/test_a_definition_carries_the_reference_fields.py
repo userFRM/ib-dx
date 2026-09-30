@@ -48,7 +48,10 @@ def _details_for(sec_type, last_trade_date):
 
 def test_the_security_ids_are_tag_values():
     d = ContractDetails()
-    assert d.secIdList == []
+    # Nothing rather than an empty list until a list is stated, as the
+    # reference client holds it: its decoder assigns one only where the wire
+    # states entries, and a program guards `if cd.secIdList is None`.
+    assert d.secIdList is None
     d.sec_id_list = [TagValue("ISIN", "US0378331005")]
     entry = d.secIdList[0]
     assert (entry.tag, entry.value) == ("ISIN", "US0378331005")
@@ -85,10 +88,11 @@ def test_any_other_type_states_its_expiry_and_no_maturity():
 
 
 def test_the_security_id_list_shares_so_an_append_reaches_the_field():
-    """The reference client's decoder builds secIdList by appending to it; the
-    field is the shared list, so an append is kept rather than lost on a copy."""
+    """The reference client's decoder builds secIdList by appending to it; once
+    a list is stated the field is that shared list, so a later append is kept
+    rather than lost on a copy."""
     d = ContractDetails()
-    d.secIdList.append(TagValue("ISIN", "US0378331005"))
+    d.secIdList = [TagValue("ISIN", "US0378331005")]
     d.secIdList.append(TagValue("CUSIP", "037833100"))
     assert [(t.tag, t.value) for t in d.secIdList] == [
         ("ISIN", "US0378331005"), ("CUSIP", "037833100"),

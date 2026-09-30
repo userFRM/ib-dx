@@ -710,12 +710,13 @@ pub struct ContractDetails {
     #[pyo3(get, set)]
     pub cusip: String,
     /// The identifiers the definition states, each a `TagValue` as the
-    /// reference client holds them.
-    /// The identifiers the definition states, a shared list so an append
-    /// reaches the field — the shape the reference client's decoder builds it
-    /// in.
+    /// reference client holds them — a shared list, so an append reaches
+    /// the field. Nothing rather than an empty list until a definition
+    /// states entries, which is how the reference client holds it: its
+    /// decoder assigns the list only where the wire states a count above
+    /// nought, and a program guards the field against nothing.
     #[pyo3(get, set)]
-    pub sec_id_list: ListField,
+    pub sec_id_list: Option<Py<PyList>>,
     #[pyo3(get, set)]
     pub min_size: DecimalField,
     /// Unset until stated, as the reference client holds it; this client
@@ -931,15 +932,15 @@ impl ContractDetails {
 
     fn __traverse__(&self, visit: pyo3::PyVisit<'_>) -> Result<(), pyo3::PyTraverseError> {
         visit.call(&self.contract)?;
-        visit.call(self.ineligibility_reason_list.as_ref())?;
-        self.sec_id_list.traverse(&visit)
+        visit.call(self.sec_id_list.as_ref())?;
+        visit.call(self.ineligibility_reason_list.as_ref())
     }
 
     fn __clear__(&mut self, py: Python<'_>) -> PyResult<()> {
         // Release this reference without clearing a contract somebody else
         // may share. The field continues to hold a Contract.
         self.contract = Py::new(py, Contract::default())?;
-        self.sec_id_list = ListField::new();
+        self.sec_id_list = None;
         self.ineligibility_reason_list = None;
         Ok(())
     }
@@ -1022,7 +1023,7 @@ impl Clone for ContractDetails {
             country: self.country.clone(),
             isin: self.isin.clone(),
             cusip: self.cusip.clone(),
-            sec_id_list: self.sec_id_list.clone(),
+            sec_id_list: self.sec_id_list.as_ref().map(|list| list.clone_ref(py)),
             min_size: self.min_size.clone(),
             min_algo_size: self.min_algo_size.clone(),
             maturity: self.maturity.clone(),
@@ -1064,7 +1065,7 @@ impl ContractDetails {
             country: String::new(),
             isin: String::new(),
             cusip: String::new(),
-            sec_id_list: ListField::new(),
+            sec_id_list: None,
             min_size: DecimalField::unset(),
             min_algo_size: DecimalField::unset(),
             maturity: String::new(),
@@ -1187,7 +1188,18 @@ impl ContractDetails {
             country: def.country.clone(),
             isin: def.isin.clone(),
             cusip: def.cusip.clone(),
-            sec_id_list: ListField::of(py, def.sec_id_list.iter().map(|(tag, value)| TagValue { tag: tag.clone(), value: value.clone() })).unwrap_or_default(),
+            // Nothing, not an empty list, where the definition states no
+            // identifier: the reference client's decoder assigns a list only
+            // where the wire states entries.
+            sec_id_list: (!def.sec_id_list.is_empty()).then(|| {
+                ListField::of(
+                    py,
+                    def.sec_id_list.iter().map(|(tag, value)| TagValue { tag: tag.clone(), value: value.clone() }),
+                )
+                .unwrap_or_default()
+                .bound(py)
+                .unbind()
+            }),
             min_size: DecimalField::from_float(def.min_size),
             min_algo_size: DecimalField::unset(),
             maturity: if bond { def.last_trade_date.clone() } else { String::new() },
@@ -1781,6 +1793,11 @@ for cls, field in [(Contract, 'comboLegs'), (ContractDetails, 'secIdList'),
     tag = Tag()
     tag.owner = value
     items = getattr(value, field)
+    if items is None:
+        # A fresh details states no identifiers yet, as the reference
+        # holds it; the cycle is the stated list's.
+        setattr(value, field, [])
+        items = getattr(value, field)
     items.append(tag)
     assert getattr(value, field) is items
     ref = weakref.ref(tag)
@@ -1833,6 +1850,24 @@ for cls in [Contract, ContractDetails, ContractDescription]:
             let details = ContractDetails::from_definition(py, &def);
             assert_eq!(details.last_price_precision.to_string(), "0.010");
             assert_eq!(details.last_size_precision.to_string(), "0.000001");
+        });
+    }
+
+    /// A definition stating no security identifiers hands a caller nothing
+    /// rather than an empty list, and one stating them hands the TagValues.
+    #[test]
+    fn the_security_ids_are_none_until_the_definition_states_them() {
+        Python::initialize();
+        Python::attach(|py| {
+            let mut def = crate::control::contracts::ContractDefinition::default();
+            assert!(ContractDetails::from_definition(py, &def).sec_id_list.is_none());
+
+            def.sec_id_list = vec![("ISIN".to_string(), "US0378331005".to_string())];
+            let details = ContractDetails::from_definition(py, &def);
+            let held = details.sec_id_list.expect("identifiers").into_bound(py);
+            assert_eq!(held.len(), 1);
+            let entry: TagValue = held.get_item(0).unwrap().extract().expect("a TagValue");
+            assert_eq!((entry.tag.as_str(), entry.value.as_str()), ("ISIN", "US0378331005"));
         });
     }
 
