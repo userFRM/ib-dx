@@ -14,6 +14,7 @@ hedge are not here: a callback hands those back as well as taking them, so
 those classes live beside the classes that carry them.
 """
 
+import abc
 import enum
 import math
 import sys
@@ -266,11 +267,17 @@ class ScanData:
         )
 
 
-class OrderCondition:
-    """What kind of thing an order's condition watches.
+class OrderCondition(Object, metaclass=abc.ABCMeta):
+    """What kind of thing an order's condition watches, and the base every
+    condition is (ibapi order_condition.py).
 
     The numbers the venue gives each kind, which a program compares against
-    `condType` and passes when it builds one.
+    `condType` and passes when it builds one — and the base itself, which a
+    program instantiates with a kind and joins with `And()`/`Or()`. The six
+    condition classes are the engine's rather than subclasses of this, so each
+    is registered against it: `isinstance` answers as the reference's own
+    subclassing answers. The wire builders (`make_fields`/`decode`) stay out —
+    the wire here is Rust.
     """
 
     Price = 1
@@ -279,6 +286,24 @@ class OrderCondition:
     Execution = 5
     Volume = 6
     PercentChange = 7
+
+    def __init__(self, condType):
+        self.condType = condType
+        self.isConjunctionConnection = True
+
+    def type(self):
+        return self.condType
+
+    def And(self):
+        self.isConjunctionConnection = True
+        return self
+
+    def Or(self):
+        self.isConjunctionConnection = False
+        return self
+
+    def __str__(self):
+        return "<AND>" if self.isConjunctionConnection else "<OR>"
 
 
 class MarketDataTypeEnum:

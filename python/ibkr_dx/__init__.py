@@ -305,6 +305,14 @@ PriceCondition.TriggerMethodEnum = Enum(  # noqa: F405
     "N/A1", "N/A2", "LastBidAsk", "MidPoint",
 )
 
+# The condition base claims the six condition classes, so a program's
+# isinstance checks against it answer as the reference client's own
+# inheritance answers.
+from . import _condition_shapes as _condition_shapes_module  # noqa: E402
+
+_condition_shapes_module.install(globals())
+del _condition_shapes_module
+
 # The reference client's own module names, laid over what this package
 # publishes, so its import lines resolve under the one rename a person would
 # guess at. Bound as attributes as well as registered, because a program writes
