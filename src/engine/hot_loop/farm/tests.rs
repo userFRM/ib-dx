@@ -5572,7 +5572,10 @@ mod depth_identity_tests {
     /// to the caller was dropped: the two records beside it stayed for the
     /// life of the connection, scanned on every acknowledgement and every
     /// subscribe, and a later acknowledgement of that wire id would have
-    /// filed the book under the wire number as though a caller held it.
+    /// filed the book under the wire number as though a caller held it. The
+    /// caller is told once, in the catalog sentence a gateway tells a refused
+    /// subscription in — the one the quote path states — with the venue's own
+    /// detail after it.
     #[test]
     fn a_refused_book_leaves_no_record_behind() {
         let mut farm = FarmState::new();
@@ -5590,7 +5593,11 @@ mod depth_identity_tests {
         assert!(farm.depth_fanout_map.is_empty(), "the map goes");
         assert!(farm.depth_subs.is_empty(), "and the wire record: {:?}", farm.depth_subs);
         assert!(farm.depth_fanout_exchange.is_empty(), "and the venue it stood on: {:?}", farm.depth_fanout_exchange);
-        assert_eq!(shared.reference.drain_historical_errors().len(), 1, "the caller is told once");
+        assert_eq!(
+            shared.reference.drain_historical_errors(),
+            [(1, 354, "Requested market data is not subscribed.Error&ISLAND/DEPTH/not available".to_string())],
+            "the caller is told once, as a gateway tells a refused subscription",
+        );
     }
 
     /// The venue answers a second subscription on a contract and venue it is

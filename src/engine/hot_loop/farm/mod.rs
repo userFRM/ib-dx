@@ -3558,10 +3558,20 @@ impl FarmState {
                         *rid != asked_for || *sm != mode
                     });
                     self.depth_rows.retain(|(id, sm, _)| *id != asked_for || *sm != mode);
+                    // Told as the quote beside it is told: a gateway routes a
+                    // refusal of either through the one construction — the
+                    // catalog sentence, the delayed notice where the refusal
+                    // offers one, and the venue's own detail after it.
+                    let refusal = refused_quote(
+                        said,
+                        delayed_available.get(index) == Some(&"1"),
+                        data_services.get(index).copied().unwrap_or(""),
+                        api_services.get(index).copied().unwrap_or(""),
+                    );
                     shared.reference.push_historical_error(
                         asked_for,
-                        DEPTH_VENUE_REFUSED,
-                        format!("the venue refused depth here: {reason}"),
+                        refusal.code,
+                        refusal.message,
                     );
                 }
             }
