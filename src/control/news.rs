@@ -116,6 +116,36 @@ pub fn validate_headline_count(total_results: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// What the provider codes a historical-news query names have to state to be
+/// askable: each one a provider the session is subscribed to.
+///
+/// A gateway splits the codes on `+` and checks each against the providers
+/// the venue named at logon, refusing the whole query on the first code the
+/// list does not hold — before the venue is asked anything. A list holding
+/// nothing refuses every named code. A trailing separator names no code of
+/// its own, and a code is read whichever way it is written.
+pub fn validate_news_providers(
+    provider_codes: &str, session: &[crate::types::NewsProvider],
+) -> Result<(), String> {
+    // Split as a gateway's does: an empty field names one empty code, which
+    // the session's list does not hold, and trailing empty codes are dropped.
+    let codes: Vec<&str> = if provider_codes.is_empty() {
+        vec![""]
+    } else {
+        let mut parts: Vec<&str> = provider_codes.split('+').collect();
+        while parts.last() == Some(&"") {
+            parts.pop();
+        }
+        parts
+    };
+    for code in codes {
+        if !session.iter().any(|p| p.code.eq_ignore_ascii_case(code)) {
+            return Err(format!("Not subscribed for '{code}' provider"));
+        }
+    }
+    Ok(())
+}
+
 /// Build the XML query for a historical news request.
 ///
 /// The window must pass [`validate_news_window`] first, so a bound that cannot

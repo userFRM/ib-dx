@@ -392,6 +392,12 @@ impl EClient {
         ) {
             return self.report_refusal(py, req_id, why.into());
         }
+        // The providers are checked before the count, as a gateway checks
+        // them first.
+        let subscribed = self.shared_state()?.reference.news_providers();
+        if let Err(why) = crate::control::news::validate_news_providers(provider_codes, &subscribed) {
+            return self.report_refusal(py, req_id, why.into());
+        }
         if let Err(why) = crate::control::news::validate_headline_count(total_results) {
             return self.report_refusal(py, req_id, why.into());
         }

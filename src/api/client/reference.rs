@@ -497,9 +497,14 @@ impl EClient {
     ) -> Result<(), Refusal> {
         // The number and the contract are read before anything is validated,
         // as a gateway reads the request before it checks what it states.
+        // The providers are checked before the count, as a gateway checks
+        // them first.
         let numbered = wire_req_id(req_id)?;
         let contract = wire_con_id(con_id, "a request for headlines")?;
         crate::control::news::validate_news_window(start_time, end_time)?;
+        crate::control::news::validate_news_providers(
+            provider_codes, &self.shared.reference.news_providers(),
+        )?;
         crate::control::news::validate_headline_count(total_results)?;
         self.send(ControlCommand::FetchHistoricalNews {
             req_id: numbered,

@@ -4906,14 +4906,24 @@ fn an_unwireable_req_id_is_refused() {
         crate::bridge::ReferenceState::ASK_ID_BASE as i64, crate::bridge::ENGINE_ID_BASE as i64,
         u32::MAX as i64, u32::MAX as i64 + 1,
     ];
+    // The headline request names a provider, so the session holds it; what
+    // this test is about is the number, and a refused number is read before
+    // anything else is checked.
+    let subscribed = |shared: &std::sync::Arc<crate::bridge::SharedState>| {
+        shared.reference.set_news_providers(vec![
+            crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+        ]);
+    };
     for (name, call) in calls {
         for bad in unfit {
-            let (client, rx, _shared) = test_client();
+            let (client, rx, shared) = test_client();
+            subscribed(&shared);
             call(&client, bad);
             assert_eq!(client.shared.drain_refused(), unread(bad), "{name}({bad})");
             assert!(rx.try_recv().is_err(), "{name}({bad}): and nothing reaches the engine");
         }
-        let (client, rx, _shared) = test_client();
+        let (client, rx, shared) = test_client();
+        subscribed(&shared);
         call(&client, -1);
         let refused = client.shared.drain_refused();
         assert!(
@@ -4921,7 +4931,8 @@ fn an_unwireable_req_id_is_refused() {
             "{name}(-1) is refused, the field named: {refused:?}",
         );
         assert!(rx.try_recv().is_err(), "{name}(-1): and nothing reaches the engine");
-        let (client, rx, _shared) = test_client();
+        let (client, rx, shared) = test_client();
+        subscribed(&shared);
         let largest = i64::from(i32::MAX);
         call(&client, largest);
         assert!(client.shared.drain_refused().is_empty(), "{name}: the largest number that fits is taken");
@@ -6361,7 +6372,10 @@ fn cancel_scanner_subscription_sends_cancel() {
 
 #[test]
 fn req_historical_news_sends_fetch() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
     // The query carries no time bounds, so a window is refused rather than
     // dropped: the answer is the most recent headlines, not the window's.
     assert!(client.try_req_historical_news(4, 265598, "BRFG", "2026-01-01", "2026-03-01", 10).is_err());
@@ -6376,6 +6390,35 @@ fn req_historical_news_sends_fetch() {
         }
         _ => panic!("expected FetchHistoricalNews"),
     }
+}
+
+/// A gateway splits the provider codes on `+` and requires the session to be
+/// subscribed to each, refusing the whole query on the first code its list
+/// does not hold — before the venue is asked anything.
+#[test]
+fn a_headline_query_naming_an_unsubscribed_provider_is_refused() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+    let err = client
+        .try_req_historical_news(4, 265598, "BRFG+DJNL", "", "", 10)
+        .expect_err("a code the session does not hold was asked of the venue");
+    assert_eq!(err.code, 321);
+    assert_eq!(err.message, "Not subscribed for 'DJNL' provider");
+    assert!(rx.try_recv().is_err(), "the venue was asked");
+
+    // A trailing separator names no code of its own, and a code is found
+    // whichever way it is written.
+    client.try_req_historical_news(4, 265598, "brfg+", "", "", 10).unwrap();
+    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::FetchHistoricalNews { .. }));
+
+    // A session holding nothing refuses every named code the same way.
+    shared.reference.set_news_providers(vec![]);
+    let err = client
+        .try_req_historical_news(4, 265598, "BRFG", "", "", 10)
+        .expect_err("a session holding nothing asked the venue");
+    assert_eq!(err.message, "Not subscribed for 'BRFG' provider");
 }
 
 /// `total_results` is the TWS API's `int`, taken as a gateway takes it: no
