@@ -6640,15 +6640,19 @@ impl ClientCore {
         Ok(())
     }
 
-    /// The exchange a ticks request states, read off the contract as the
-    /// caller stated it — a contract given by id alone included — refused
-    /// before anything else in the request is read, and in this request's
-    /// own sentence: a gateway refuses a ticks request naming no venue in
-    /// other words than the rest of the historical family. Whitespace
-    /// states no venue either.
-    pub fn validate_ticks_exchange(exchange: &str) -> Result<(), Refusal> {
+    /// What a gateway reads off a ticks request before anything else in it,
+    /// refused in this request's own sentences — other words than the rest
+    /// of the historical family is refused in: the exchange the caller left
+    /// unstated, a contract given by id alone included (whitespace states no
+    /// venue either), and a type that folds onto a combination, BAG or PDC
+    /// however spelled, with COMB folded onto BAG as a gateway folds it —
+    /// served no ticks at all, legs stated or not.
+    pub fn validate_ticks_contract(exchange: &str, sec_type: &str) -> Result<(), Refusal> {
         if exchange.trim().is_empty() {
             return Err(Refusal::validation("Exchange must not be empty"));
+        }
+        if matches!(Self::resolve_sec_type(sec_type), Some("BAG" | "PDC")) {
+            return Err(Refusal::validation("Combo types are not supported"));
         }
         Ok(())
     }

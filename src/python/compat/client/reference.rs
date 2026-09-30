@@ -601,7 +601,7 @@ impl EClient {
         // What a gateway reads off this request before anything else, in its
         // own sentence for it; the engine still names the contract's type by
         // id where the caller stated none.
-        if let Err(why) = ClientCore::validate_ticks_exchange(&contract.exchange) {
+        if let Err(why) = ClientCore::validate_ticks_contract(&contract.exchange, &contract.sec_type) {
             return self.report_refusal(py, req_id, why);
         }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {

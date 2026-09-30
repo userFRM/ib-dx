@@ -5081,6 +5081,34 @@ fn a_ticks_request_naming_no_exchange_is_refused_in_its_own_words() {
     }
 }
 
+/// A ticks request on a combination is refused at intake in this request's
+/// own sentence — a gateway serves no combination ticks at all — with the
+/// COMB spelling folded onto BAG as a gateway folds it and PDC beside it,
+/// however the caller spelled either, and before the count is read.
+#[test]
+fn a_ticks_request_on_a_combination_is_refused_in_its_own_words() {
+    let (client, rx, _shared) = test_client();
+    for sec_type in ["BAG", "bag", "COMB", "PDC", "pdc"] {
+        let contract = Contract {
+            con_id: 28868674, symbol: "SPY".into(), sec_type: sec_type.into(),
+            exchange: "SMART".into(), ..Default::default()
+        };
+        let err = crate::api::client::tests::reported(&client, || {
+            client.req_historical_ticks(8, &contract, "20260925-13:00:00", "", 100, "TRADES", true, false)
+        })
+        .expect_err("a combination");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (
+                Refusal::VALIDATION,
+                "Error validating request:-'' : cause - Combo types are not supported",
+            ),
+            "{sec_type}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {sec_type}");
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Contract details
 // ═══════════════════════════════════════════════════════════════════

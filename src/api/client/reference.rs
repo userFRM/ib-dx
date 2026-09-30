@@ -729,7 +729,7 @@ impl EClient {
             // What a gateway reads off this request before anything else, in
             // its own sentence for it; the engine still names the contract's
             // type by id where the caller stated none.
-            crate::client_core::ClientCore::validate_ticks_exchange(&contract.exchange)?;
+            crate::client_core::ClientCore::validate_ticks_contract(&contract.exchange, &contract.sec_type)?;
             crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
             // Before anything that reaches the venue, so an id it cannot carry is
             // named as the trouble rather than whatever is checked first.

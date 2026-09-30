@@ -3402,6 +3402,13 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 )
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for ticks naming no exchange");
+            client
+                .call_method1(
+                    py, "req_historical_ticks",
+                    (6i64, &combo, "20260925-13:00:00", "", 100i32, "TRADES", 1i32, false, py.None()),
+                )
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for ticks on a combination");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3416,6 +3423,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (3, "Please enter exchange"),
                 (4, "Security type 'BAG' requires combo leg details."),
                 (5, "Exchange must not be empty"),
+                (6, "Combo types are not supported"),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }
