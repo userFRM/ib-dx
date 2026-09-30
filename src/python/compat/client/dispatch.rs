@@ -676,10 +676,6 @@ impl EClient {
                     ),
                     bar.open, bar.high, bar.low, bar.close,
                     DecimalField::from_float(bar.volume), DecimalField::from_float(bar.wap), bar.count,
-                    String::new(), // streaming bars carry no timezone
-                    // A forming bar has not ended, and the stream states no
-                    // end for one.
-                    String::new(),
                 );
                 let bar_py = Py::new(py, bar_obj)?.into_any();
                 call_wrapper!(self, py, shared, "historical_data_update", (req_id as i64, &bar_py));
@@ -700,8 +696,6 @@ impl EClient {
                         self.core.historical_bar_time_for(req_id as i64, bar, &response.timezone),
                         bar.open, bar.high, bar.low, bar.close,
                         DecimalField::from_qty(bar.volume), DecimalField::from_float(bar.wap), bar.count,
-                        response.timezone.clone(),
-                        bar.end.clone(),
                     );
                     let bar_py = Py::new(py, bar_obj)?.into_any();
                     if is_update {

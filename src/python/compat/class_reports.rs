@@ -26,21 +26,6 @@ pub struct BarData {
     pub wap: DecimalField,
     #[pyo3(get, set)]
     pub bar_count: i32,
-    /// Which timezone `date` is stated in, as the reply states it. Without
-    /// it the timestamp says nothing about what the bar times mean. Empty on
-    /// streaming updates, which carry no timezone of their own.
-    #[pyo3(get, set)]
-    pub timezone: String,
-    /// When the bar closed, as the venue states it.
-    ///
-    /// A bar the venue aggregated states its own bounds — a week runs Monday to
-    /// Friday, a month the first to the last — and those are not derivable from
-    /// the start. The last bar of any series is normally partial, so this is
-    /// what tells a finished week from a running one. Empty where the venue
-    /// stated none; it states one under `endTime` on the sizes it times and
-    /// under `endDate` on the two it dates, and both are read.
-    #[pyo3(get, set)]
-    pub end: String,
 }
 
 #[pymethods]
@@ -71,9 +56,9 @@ impl BarData {
     }
 
     #[new]
-    #[pyo3(signature = (date="".to_string(), open=0.0, high=0.0, low=0.0, close=0.0, volume=DecimalField::unset(), wap=DecimalField::unset(), bar_count=0, timezone="".to_string(), end="".to_string()))]
-    pub fn new(date: String, open: f64, high: f64, low: f64, close: f64, volume: DecimalField, wap: DecimalField, bar_count: i32, timezone: String, end: String) -> Self {
-        Self { date, open, high, low, close, volume, wap, bar_count, timezone, end }
+    #[pyo3(signature = (date="".to_string(), open=0.0, high=0.0, low=0.0, close=0.0, volume=DecimalField::unset(), wap=DecimalField::unset(), bar_count=0))]
+    pub fn new(date: String, open: f64, high: f64, low: f64, close: f64, volume: DecimalField, wap: DecimalField, bar_count: i32) -> Self {
+        Self { date, open, high, low, close, volume, wap, bar_count }
     }
 
     fn __repr__(&self) -> String {

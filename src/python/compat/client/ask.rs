@@ -385,13 +385,9 @@ impl EClient {
         // refused one — a series that could not be folded among them — ends on
         // its refusal, which the wait hands back: no end follows it.
         let mut bars = Vec::new();
-        let mut zone = String::new();
         let what = format!("a bar request for {} {}", contract.sec_type, contract.symbol);
         wait_for(py, &shared, req_id, &what, |sh| {
             for part in sh.reference.take_historical_for(req_id as u32) {
-                if zone.is_empty() {
-                    zone = part.timezone.clone();
-                }
                 let complete = part.is_complete;
                 bars.extend(part.bars.iter().cloned());
                 if complete {
@@ -408,7 +404,7 @@ impl EClient {
                     b.time, b.open, b.high, b.low, b.close,
                     super::super::contract::DecimalField::from_qty(b.volume),
                     super::super::contract::DecimalField::from_float(b.wap),
-                    b.count, zone.clone(), b.end,
+                    b.count,
                 )
             })
             .collect())
