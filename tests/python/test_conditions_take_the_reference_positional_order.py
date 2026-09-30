@@ -40,3 +40,16 @@ def test_volume_condition_positional_order():
 def test_percent_change_condition_positional_order():
     c = PercentChangeCondition(265598, "SMART", False, 5.0)
     assert (c.conId, c.exch, c.isMore, c.changePercent) == (265598, "SMART", False, 5.0)
+
+
+def test_price_condition_spells_its_trigger_method_as_the_sample_does():
+    # The official sample builds a price condition through
+    # PriceCondition.TriggerMethodEnum.Default; the reference client holds the
+    # enum on the class itself, its nine names answering the ints 0..8.
+    tme = PriceCondition.TriggerMethodEnum
+    assert (tme.Default, tme.DoubleBidAsk, tme.Last, tme.DoubleLast,
+            tme.BidAsk, tme.LastBidAsk, tme.MidPoint) == (0, 1, 2, 3, 4, 7, 8)
+    assert tme.toStr(2) == "Last"
+    assert tme.toStr(5) == "N/A1"
+    p = PriceCondition(tme.Default, 265598, "SMART", False, 200.0)
+    assert p.triggerMethod == 0

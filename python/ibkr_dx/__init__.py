@@ -296,6 +296,15 @@ for _surface in (EWrapper, EClient):  # noqa: F405
     _answer_to_both_spellings(_surface)
 del _surface
 
+# The price condition's trigger methods, which the reference client holds on
+# the class itself (ibapi order_condition.py), built on that client's Enum —
+# the official sample spells every method through it, so a condition built
+# that way has to find it there.
+PriceCondition.TriggerMethodEnum = Enum(  # noqa: F405
+    "Default", "DoubleBidAsk", "Last", "DoubleLast", "BidAsk",
+    "N/A1", "N/A2", "LastBidAsk", "MidPoint",
+)
+
 # The reference client's own module names, laid over what this package
 # publishes, so its import lines resolve under the one rename a person would
 # guess at. Bound as attributes as well as registered, because a program writes
