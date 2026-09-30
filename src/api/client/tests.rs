@@ -4672,6 +4672,38 @@ fn a_historical_request_a_gateway_refuses_is_refused_here() {
     }
 }
 
+/// A historical request naming no exchange is refused at intake in the
+/// sentence a gateway refuses it in — read off the contract as the caller
+/// stated it, a contract given by id alone included — before anything is
+/// looked up or sent. The schedule series rides the same gateway parser,
+/// and its own call is refused the same way beside the bars call.
+#[test]
+fn a_historical_request_naming_no_exchange_is_refused() {
+    let (client, rx, _shared) = test_client();
+    for contract in [
+        Contract { con_id: 495_512_563, ..Default::default() },
+        Contract { symbol: "SPY".into(), sec_type: "STK".into(), ..Default::default() },
+        Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() },
+    ] {
+        for err in [
+            client
+                .try_req_historical_data(5, &contract, "", "1 D", "1 hour", "TRADES", true, 1, false)
+                .expect_err("no exchange named"),
+            client
+                .try_req_historical_data(6, &contract, "", "1 D", "1 day", "SCHEDULE", true, 1, false)
+                .expect_err("no exchange named"),
+            client.try_req_historical_schedule(7, &contract, "", "1 D", true).expect_err("no exchange named"),
+        ] {
+            assert_eq!(
+                (err.code, err.message.as_str()),
+                (Refusal::VALIDATION, "Please enter exchange"),
+                "{contract:?}",
+            );
+        }
+        assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
+    }
+}
+
 /// A date string a gateway cannot read is refused at intake under the
 /// invalid-datetime code, naming the parameter and carrying the standing
 /// text — not forwarded raw and relayed as a data-service failure after a
@@ -9879,12 +9911,12 @@ fn a_request_given_by_id_alone_is_named_by_the_engine_not_the_call() {
         ..Default::default()
     };
     let (client, rx, shared) = test_client();
-    client.try_req_historical_data(1, &by_id_alone, "", "1 D", "1 hour", "TRADES", true, 1, false).expect("handed over");
+    client.try_req_historical_data(1, &venue_stated, "", "1 D", "1 hour", "TRADES", true, 1, false).expect("handed over");
     client.try_req_head_time_stamp(2, &venue_stated, "TRADES", true, 1).expect("handed over");
     client.try_req_histogram_data(3, &by_id_alone, true, "1 week").expect("handed over");
     crate::api::client::tests::reported(&client, || client.req_historical_ticks(4, &by_id_alone, "20250101 00:00:00", "", 10, "TRADES", true, false))
         .expect("handed over");
-    client.try_req_historical_schedule(5, &by_id_alone, "", "1 D", true).expect("handed over");
+    client.try_req_historical_schedule(5, &venue_stated, "", "1 D", true).expect("handed over");
     client.try_req_fundamental_data(7, &described, "ReportSnapshot").expect("handed over");
     client.try_req_histogram_data(8, &described, true, "1 week").expect("handed over");
     let sent: Vec<ControlCommand> = rx.try_iter().collect();

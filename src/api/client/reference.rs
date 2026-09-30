@@ -81,10 +81,14 @@ impl EClient {
         end_date_time: &str, duration: &str, bar_size: &str,
         what_to_show: &str, use_rth: bool, format_date: i32, keep_up_to_date: bool,
     ) -> Result<(), Refusal> {
+        // The exchange is read off the contract as the caller stated it and
+        // refused empty before anything is looked up or sent, as a gateway
+        // refuses it — a contract given by id alone included, and the
+        // schedule series below rides the same gateway parser. What such a
+        // contract still leaves the venue is its naming, which the engine
+        // asks for by id before the query goes.
+        ClientCore::validate_exchange_stated(&contract.exchange)?;
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         // A series of its own on the reference client's historical request,
         // served there by the other surface too; refused here as a bar type
         // this client cannot send, while a call of its own carried it.
@@ -797,10 +801,11 @@ impl EClient {
         &self, req_id: i64, contract: &Contract,
         end_date_time: &str, duration: &str, use_rth: bool,
     ) -> Result<(), Refusal> {
+        // The schedule rides the historical request's own gateway parser, so
+        // the exchange is read off the contract as the caller stated it and
+        // refused empty, as that parser refuses it.
+        ClientCore::validate_exchange_stated(&contract.exchange)?;
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         self.send(ControlCommand::FetchHistoricalSchedule {
             contract: contract.into(),
             req_id: wire_req_id(req_id)?,

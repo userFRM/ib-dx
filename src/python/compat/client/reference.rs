@@ -34,6 +34,13 @@ impl EClient {
         chart_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // The exchange is read off the contract as the caller stated it and
+        // refused empty before anything is looked up or sent, as a gateway
+        // refuses it — a contract given by id alone included, and the
+        // schedule series below rides the same gateway parser.
+        if let Err(why) = ClientCore::validate_exchange_stated(&contract.exchange) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
@@ -53,8 +60,8 @@ impl EClient {
             return self.report_refusal(py, req_id, why);
         }
         // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
+        // request goes: what the request leaves the venue is the contract's
+        // type, which the engine asks for by id.
         if what_to_show.eq_ignore_ascii_case("SCHEDULE") {
             if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalSchedule {
                     contract: contract.into(),
@@ -718,12 +725,15 @@ impl EClient {
         end_date_time: &str, duration_str: &str, use_rth: bool,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // The schedule rides the historical request's own gateway parser, so
+        // the exchange is read off the contract as the caller stated it and
+        // refused empty, as that parser refuses it.
+        if let Err(why) = ClientCore::validate_exchange_stated(&contract.exchange) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalSchedule {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,

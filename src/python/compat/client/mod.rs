@@ -3370,6 +3370,17 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .call_method1(py, "req_head_time_stamp", (1i64, &no_exchange, "TRADES", 1i32, 1i32))
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for a head timestamp naming no exchange");
+            client
+                .call_method1(
+                    py, "req_historical_data",
+                    (2i64, &no_exchange, "", "1 D", "1 hour", "TRADES", 1i32, 1i32, false, py.None()),
+                )
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for bars naming no exchange");
+            client
+                .call_method1(py, "req_historical_schedule", (3i64, &no_exchange, "", "1 D", true))
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for a schedule naming no exchange");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3378,7 +3389,13 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
                 .unwrap().extract().unwrap();
             let wire = |text: &str| format!("Error validating request:-'' : cause - {text}");
-            assert!(said.contains(&(1, 321, wire("Please enter exchange"))), "{said:?}");
+            for (id, text) in [
+                (1, "Please enter exchange"),
+                (2, "Please enter exchange"),
+                (3, "Please enter exchange"),
+            ] {
+                assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
+            }
         });
     }
 
@@ -4309,18 +4326,20 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
-    /// The same for a historical request, which states the type too. The
-    /// request goes to the engine as it stands, and the engine asks the venue
-    /// to name the contract by its id before the bars are asked for: sent as
-    /// a US stock, a future named by id alone was answered with some share's
-    /// bars.
+    /// The same for a historical request, which states the venue it trades
+    /// on but not the type. The request goes to the engine as it stands, and
+    /// the engine asks the venue to name the contract by its id before the
+    /// bars are asked for: sent as a US stock, a future named by id alone was
+    /// answered with some share's bars.
     #[test]
     fn a_historical_request_names_a_contract_given_by_id_alone() {
         Python::initialize();
         Python::attach(|py| {
             let (client, rx, shared, _w) = wired_client(py);
             let engine = crate::api::client::tests::Engine::new(rx, &shared);
-            let contract = Py::new(py, Contract { con_id: 495512563, ..Default::default() }).unwrap();
+            let contract = Py::new(py, Contract {
+                con_id: 495512563, exchange: "SMART".into(), ..Default::default()
+            }).unwrap();
 
             client
                 .call_method1(
