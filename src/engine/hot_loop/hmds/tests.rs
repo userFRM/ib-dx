@@ -748,10 +748,10 @@ fn a_crypto_bar_query_under_the_aggregation_feature_is_served_aggregated_and_adv
         }
 
         // The five-second stream that continues a query kept up to date
-        // states the raw series and queries the one the session is served
-        // under, whichever way the feature maps it.
+        // states the series the caller stated and queries the one the
+        // session is served under, whichever way the feature maps it.
         hmds.send_realtime_bar_subscribe(
-            11, 596518305, "BTC", "CRYPTO", "PAXOS", "TRADES", true,
+            11, 596518305, "BTC", "CRYPTO", "PAXOS", stated, true,
             &mut conn, &mut hb, &shared,
         );
         let stream = String::from_utf8_lossy(&read_frame(&mut peer)).to_string();

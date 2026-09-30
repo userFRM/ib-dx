@@ -1567,6 +1567,11 @@ pub fn build_realtime_bar_xml(
         // query kept up to date are of the series the query itself was
         // mapped onto — not of the raw prints the venue no longer sends it.
         Ok(BarDataType::Trades) if aggregated => BarDataType::AggTrades.as_str(),
+        // And the same mapping read backwards: a session the venue serves
+        // the raw prints to queries the raw series, so the bars continuing
+        // a query kept up to date are of the series its batch was served
+        // from — not of the aggregated prints the venue does not send it.
+        Ok(BarDataType::AggTrades) if !aggregated => BarDataType::Trades.as_str(),
         Ok(kind) => kind.as_str(),
         Err(_) => "Last",
     };
