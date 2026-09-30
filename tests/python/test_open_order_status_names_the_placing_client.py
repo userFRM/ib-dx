@@ -44,7 +44,10 @@ def test_the_status_names_the_client_the_order_was_placed_under():
     c._test_dispatch_once()
 
     assert w.opened == [(ORDER_ID, PLACED_UNDER)], w.opened
-    assert w.status == [(ORDER_ID, PLACED_UNDER)], w.status
+    # The replay's status names the placing client. The tail stating the
+    # placement is still in processing names the asking session's client, as
+    # a gateway states it, and no open_order rides beside it.
+    assert w.status == [(ORDER_ID, PLACED_UNDER), (ORDER_ID, ASKING_UNDER)], w.status
 
 
 def test_a_fill_and_a_status_name_the_client_that_placed_the_order():

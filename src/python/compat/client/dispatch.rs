@@ -1292,6 +1292,20 @@ impl EClient {
                          // The client the order was placed under.
                          tracked.order.client_id as i64, why_held.as_str(), 0.0f64));
                 }
+                // Placements this connection made that the venue has not
+                // answered are stated as still in processing after the
+                // replay and before the end: one status each, nothing
+                // filled, the whole quantity outstanding, under this
+                // session's client, and no openOrder beside it.
+                let asking = shared.orders.api_client_id();
+                for (_, tracked) in self.core.orders_in_processing() {
+                    owed!(out, py, "order_status",
+                        (tracked.order.order_id, "ApiPending",
+                         DecimalField::from_whole(0),
+                         DecimalField::from_whole(tracked.order.total_quantity as i64),
+                         0.0f64, 0i64, tracked.order.parent_id, 0.0f64,
+                         asking as i64, "", 0.0f64));
+                }
                 owed!(out, py, "open_order_end", ());
             }
             Answer::CompletedOrders { api_only } => {

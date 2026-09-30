@@ -1041,6 +1041,97 @@ w = W()",
         });
     }
 
+    /// A placement the venue has not answered is stated as still in
+    /// processing after the replay and before its end: one status saying the
+    /// placement is being worked on and is not lost, with nothing filled and
+    /// its whole quantity outstanding, under this session's client, and no
+    /// openOrder beside it. An order the venue has answered meanwhile is
+    /// skipped, and a preview places nothing at the venue, so nothing is in
+    /// processing on it.
+    #[test]
+    fn a_placement_the_venue_has_not_answered_reads_as_in_processing_after_the_replay() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, shared, wrapper) = wired_client(py);
+            shared.orders.set_replay_done();
+            client.client_id.store(7, Ordering::Release);
+            client.core.set_api_client_id(7);
+            shared.orders.set_api_client_id(7);
+            client.core.con_id_to_instrument.lock().unwrap().insert(756733, 0);
+            // Placed by this session; the venue has not answered it.
+            client.place_order(py, 3, &bracket_contract(), &bracket_order(false, 0)).unwrap();
+            let record = |id: i64, what_if: bool| crate::types::model::Order {
+                order_id: id, action: "BUY".into(), total_quantity: 100.0,
+                order_type: "LMT".into(), lmt_price: 10.0, what_if,
+                ..Default::default()
+            };
+            let contract = || crate::types::model::Contract {
+                con_id: 756733, symbol: "SPY".into(), ..Default::default()
+            };
+            // A second placement the venue has since answered.
+            client.core.track_order(4, contract(), record(4, false), 0);
+            client.core.update_order_status(
+                &shared, 4, crate::types::OrderStatus::Submitted, 0.0, 100.0, 0,
+            );
+            // A preview places nothing at the venue.
+            client.core.track_order(5, contract(), record(5, true), 0);
+            client.req_open_orders(py).unwrap();
+            crate::api::client::tests::the_engine_answers(&rx, &shared);
+            client.dispatch_once(py, &shared).unwrap();
+
+            let calls = wrapper.bind(py).getattr("calls").unwrap();
+            let mut heard: Vec<String> = Vec::new();
+            type TailHeard = (i64, f64, f64, f64, i64, i64, f64, i64, String, f64);
+            let mut tail: Option<TailHeard> = None;
+            let mut tail_at = None;
+            for i in 0..calls.len().unwrap() {
+                let call = calls.get_item(i).unwrap();
+                let name: String = call.get_item(0).unwrap().extract().unwrap();
+                heard.push(name.clone());
+                if name != "orderStatus" {
+                    continue;
+                }
+                let status: String = call.get_item(2).unwrap().extract().unwrap();
+                if status == "ApiPending" {
+                    tail_at = Some(heard.len() - 1);
+                    tail = Some((
+                        call.get_item(1).unwrap().extract().unwrap(),
+                        call.get_item(3).unwrap().extract().unwrap(),
+                        call.get_item(4).unwrap().extract().unwrap(),
+                        call.get_item(5).unwrap().extract().unwrap(),
+                        call.get_item(6).unwrap().extract().unwrap(),
+                        call.get_item(7).unwrap().extract().unwrap(),
+                        call.get_item(8).unwrap().extract().unwrap(),
+                        call.get_item(9).unwrap().extract().unwrap(),
+                        call.get_item(10).unwrap().extract().unwrap(),
+                        call.get_item(11).unwrap().extract().unwrap(),
+                    ));
+                }
+            }
+            assert_eq!(
+                tail,
+                Some((3, 0.0, 100.0, 0.0, 0, 0, 0.0, 7, String::new(), 0.0)),
+                "one status states the placement still in processing: nothing \
+                 filled, its whole quantity outstanding, under this session's \
+                 client: {heard:?}",
+            );
+            let tail_at = tail_at.expect("the status stating the placement was heard");
+            let ends = heard.iter().position(|name| name == "openOrderEnd")
+                .expect("the answer closes");
+            assert!(tail_at < ends, "the status comes before the end: {heard:?}");
+            assert!(
+                heard.iter().enumerate().all(|(at, name)| name != "openOrder" || at < tail_at),
+                "and after every order of the replay: {heard:?}",
+            );
+            assert_eq!(
+                heard.iter().filter(|name| **name == "openOrder").count(), 2,
+                "the placement in processing is replayed from the record, the \
+                 preview is replayed by nothing, and no openOrder rides with \
+                 the status: {heard:?}",
+            );
+        });
+    }
+
     /// A quote feed the engine has given up on does not stop this surface
     /// withdrawing a live order.
     ///

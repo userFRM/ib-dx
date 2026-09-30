@@ -6842,7 +6842,8 @@ fn process_msgs_then_open_orders_admits_inactive_excludes_rejected() {
 /// the venue has said anything about it: under its type's own name, on the
 /// account it went out for, and with the number it went to the venue under as
 /// its permanent id. Asked for, it is stated and then its status, as a gateway
-/// answers the question; the status alone was left out.
+/// answers the question; the status alone was left out. After the replay and
+/// before its end, the placement is also stated as still in processing.
 #[test]
 fn an_order_is_stated_as_a_gateway_holds_it_before_the_venue_answers() {
     #[derive(Default)]
@@ -6877,6 +6878,7 @@ fn an_order_is_stated_as_a_gateway_holds_it_before_the_venue_answers() {
     assert_eq!(heard.0, [
         (91, "LMT".to_string(), "DU123".to_string(), 91, "PendingSubmit".to_string()),
         (91, "PendingSubmit".to_string(), "0/1".to_string(), 91, String::new()),
+        (91, "ApiPending".to_string(), "0/1".to_string(), 0, String::new()),
     ]);
 }
 

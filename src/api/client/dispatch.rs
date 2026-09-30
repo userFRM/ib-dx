@@ -1002,6 +1002,20 @@ impl EClient {
                         tracked.last_fill_price, i64::from(tracked.order.client_id), &why_held, 0.0,
                     );
                 }
+                // Placements this connection made that the venue has not
+                // answered are stated as still in processing after the
+                // replay and before the end: one status each, nothing
+                // filled, the whole quantity outstanding, under this
+                // session's client, and no openOrder beside it.
+                let asking = self.shared.orders.api_client_id();
+                for (_, tracked) in self.core.orders_in_processing() {
+                    wrapper.order_status(
+                        tracked.order.order_id, "ApiPending", 0.0,
+                        (tracked.order.total_quantity as i64) as f64,
+                        0.0, 0, tracked.order.parent_id, 0.0,
+                        i64::from(asking), "", 0.0,
+                    );
+                }
                 wrapper.open_order_end();
             }
             Answer::CompletedOrders { api_only } => {
@@ -2391,6 +2405,84 @@ mod ownership_tests {
         assert_eq!(
             other.commission_and_fees.commission_and_fees, 1.25,
             "and its charge is stamped on the filed execution",
+        );
+    }
+
+    /// A placement the venue has not answered is stated as still in
+    /// processing after the replay and before its end: one status with
+    /// nothing filled and the whole quantity outstanding, under this
+    /// session's client, and no openOrder beside it. An order the venue has
+    /// answered meanwhile is skipped, and a preview places nothing at the
+    /// venue, so nothing is in processing on it.
+    #[test]
+    fn a_placement_the_venue_has_not_answered_reads_as_in_processing_after_the_replay() {
+        #[derive(Default)]
+        struct Heard(Vec<String>);
+        impl Wrapper for Heard {
+            fn open_order(
+                &mut self, order_id: i64, _contract: &Contract, _order: &ModelOrder,
+                _state: &OrderState,
+            ) {
+                self.0.push(format!("open_order {order_id}"));
+            }
+            fn order_status(
+                &mut self, order_id: i64, status: &str, filled: f64, remaining: f64,
+                _avg_fill_price: f64, _perm_id: i64, _parent_id: i64, _last_fill_price: f64,
+                client_id: i64, _why_held: &str, _mkt_cap_price: f64,
+            ) {
+                self.0.push(format!(
+                    "order_status {order_id} {status} {filled} {remaining} {client_id}"
+                ));
+            }
+            fn open_order_end(&mut self) {
+                self.0.push("end".into());
+            }
+        }
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        shared.orders.set_api_client_id(7);
+        let contract = || Contract {
+            con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
+            exchange: "SMART".into(), ..Default::default()
+        };
+        let record = |id: i64, what_if: bool| ModelOrder {
+            order_id: id, action: "BUY".into(), total_quantity: 100.0,
+            order_type: "LMT".into(), lmt_price: 10.0, what_if,
+            ..Default::default()
+        };
+        // Placed by this session; the venue has not answered it.
+        client.core.track_order(3, contract(), record(3, false), 0);
+        // A second placement the venue has since answered.
+        client.core.track_order(4, contract(), record(4, false), 0);
+        client.core.update_order_status(&shared, 4, OrderStatus::Submitted, 0.0, 100.0, 0);
+        // A preview places nothing at the venue.
+        client.core.track_order(5, contract(), record(5, true), 0);
+
+        shared.push_call_record(crate::bridge::Record::Answer(
+            crate::bridge::Answer::OpenOrders(crate::types::model::Question::OpenOrders),
+        ));
+        let mut heard = Heard::default();
+        client.process_msgs(&mut heard);
+
+        assert_eq!(
+            &heard.0[heard.0.len().saturating_sub(2)..],
+            ["order_status 3 ApiPending 0 100 7".to_string(), "end".to_string()],
+            "the tail is one status, nothing filled, the whole quantity \
+             outstanding, under this session's client, before the end: {:?}",
+            heard.0,
+        );
+        let mut body = heard.0[..heard.0.len() - 2].to_vec();
+        body.sort();
+        assert_eq!(
+            body,
+            [
+                "open_order 3".to_string(),
+                "open_order 4".to_string(),
+                "order_status 3 PendingSubmit 0 100 0".to_string(),
+                "order_status 4 Submitted 0 100 0".to_string(),
+            ],
+            "the replay states what the record holds, the answered placement \
+             gets no tail, the preview is replayed by nothing, and no \
+             openOrder rides with the tail: {:?}", heard.0,
         );
     }
 }

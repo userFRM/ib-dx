@@ -4666,6 +4666,25 @@ impl ClientCore {
         result
     }
 
+    /// The placements this connection made that the venue has not answered
+    /// yet, under the numbers the session reads them by. An order that
+    /// finished processing meanwhile is not among them, and a preview places
+    /// nothing at the venue, so nothing is in processing on it.
+    pub(crate) fn orders_in_processing(&self) -> Vec<(u64, TrackedOrder)> {
+        let mut rows: Vec<(u64, TrackedOrder)> = self.open_orders.lock().unwrap().iter()
+            .filter(|(_, tracked)| {
+                tracked.placed_here && tracked.status == "PendingSubmit" && !tracked.order.what_if
+            })
+            .map(|(&order_id, tracked)| (order_id, tracked.clone()))
+            .collect();
+        rows.sort_unstable_by_key(|(order_id, _)| *order_id);
+        for (wire, tracked) in &mut rows {
+            tracked.order.order_id = self.api_order_id(*wire);
+            if tracked.order.parent_id > 0 { tracked.order.parent_id = self.api_order_id(tracked.order.parent_id as u64); }
+        }
+        rows
+    }
+
     // ── Dispatch preparation methods ──
 
     /// Poll quotes for a single instrument and return tick events.
