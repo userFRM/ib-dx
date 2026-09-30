@@ -2241,6 +2241,63 @@ fn news_is_asked_for_from_the_providers_the_logon_named() {
     assert_eq!(asked("292:"), None, "an entry cut from its suffix is no entry the venue reads");
 }
 
+/// A NEWS market-data request names its source on the exchange field, which
+/// a gateway reads as two parts around a colon taking the second and any
+/// other shape taking the first. The source is checked against the
+/// venue-provided provider registry, and one that is empty or unregistered
+/// is refused before anything is subscribed, listing the registered sources
+/// in a gateway's bracketed shape. The generic list's provider syntax is not
+/// validated, as a gateway does not validate it.
+#[test]
+fn a_news_request_naming_no_registered_source_is_refused() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let core = ClientCore::new();
+    let shared = SharedState::new();
+    // A code the venue stated twice is listed once, in the registry's order.
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRF".into(), name: "Briefing".into() },
+        crate::types::NewsProvider { code: "BRFUPDN".into(), name: "Briefing up to date".into() },
+        crate::types::NewsProvider { code: "BRF".into(), name: "Briefing".into() },
+    ]);
+    let next = std::cell::Cell::new(1i64);
+    let attempt = |exchange: &str| {
+        let id = next.get();
+        next.set(id + 1);
+        core.register_mkt_data(
+            &shared, &tx, id, 265598, "ZZZ", exchange, "NEWS", "", &Default::default(),
+            false, false, false, "", 0, None, None, false,
+        )
+    };
+    let invalid = "The entered news source is invalid. Valid are: [BRF, BRFUPDN]";
+    // A code is read as it is written: the registry's spelling is the only
+    // one that is in it.
+    for exchange in ["", "DJNL", "brf"] {
+        let why = attempt(exchange).expect_err("'{exchange}' names no registered source");
+        assert_eq!((why.code, why.message.as_str()), (321, invalid), "'{exchange}'");
+        assert!(rx.try_recv().is_err(), "'{exchange}' subscribed something");
+    }
+    // Two parts around the colon take the second, and only the second is
+    // looked at; any other shape takes the first, as the venue's split drops
+    // trailing empty parts — a trailing colon leaves one part.
+    for exchange in
+        ["BRF:BRFUPDN", "DJNL:BRF", "BRFUPDN", "BRF:BRFUPDN:", "BRF:", "BRF:BRFUPDN:extra"]
+    {
+        attempt(exchange).unwrap_or_else(|why| panic!("'{exchange}' was refused: {why:?}"));
+        assert!(
+            matches!(rx.try_recv().unwrap(), ControlCommand::Subscribe { .. }),
+            "'{exchange}' subscribed nothing",
+        );
+    }
+    // The 292 provider syntax rides the generic list unvalidated, whatever it
+    // states.
+    let id = next.get();
+    core.register_mkt_data(
+        &shared, &tx, id, 265598, "ZZZ", "BRF", "NEWS", "", &Default::default(),
+        false, false, false, "292:NOPE", 0, None, None, false,
+    ).expect("the generic list's providers are none of this check's business");
+    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::Subscribe { .. }));
+}
+
 /// A generic tick list read one whole entry at a time.
 ///
 /// Only a bare `292` was read as the headlines. `292:BRFG+DJNL`, the form that

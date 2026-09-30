@@ -2491,6 +2491,38 @@ impl ClientCore {
         // A currency outside the session's set is refused under its own
         // number, before the contract is looked up or anything registered.
         Self::validate_currency(shared, currency)?;
+        // A news subscription names its source on the exchange field, which a
+        // gateway reads as two parts around a colon taking the second and any
+        // other shape taking the first, as the venue's split drops trailing
+        // empty parts — a trailing colon leaves one part. The source is
+        // checked against the registry the venue provided, and one that is
+        // empty or unregistered is refused before anything is subscribed,
+        // listing the registered codes once each, in the registry's order, in
+        // a gateway's bracketed shape. The generic list's provider syntax is
+        // not validated, as a gateway does not validate it.
+        if sec_type.eq_ignore_ascii_case("NEWS") {
+            let mut parts: Vec<&str> = exchange.split(':').collect();
+            while parts.last() == Some(&"") {
+                parts.pop();
+            }
+            // A field left with no parts at all names no source, and is
+            // refused as an empty one.
+            let source =
+                if parts.len() == 2 { parts[1] } else { parts.first().copied().unwrap_or("") };
+            let providers = shared.reference.news_providers();
+            let mut codes: Vec<&str> = Vec::new();
+            for provider in &providers {
+                if !codes.contains(&provider.code.as_str()) {
+                    codes.push(&provider.code);
+                }
+            }
+            if source.is_empty() || !codes.contains(&source) {
+                return Err(Refusal::validation(format!(
+                    "The entered news source is invalid. Valid are: [{}]",
+                    codes.join(", "),
+                )));
+            }
+        }
         // The base description refusals, before the contract is looked up or
         // anything is registered. A contract given by id skips them — the id
         // stands in for the description — a combination excepted, whose legs

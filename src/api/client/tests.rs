@@ -13103,8 +13103,9 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
          Some("Please enter a valid security type"),
          &["market data", "depth", "tick by tick", "real time bars"]),
         // The news type is exempt from the identifier check: headlines name
-        // providers and no venue.
-        (Contract { symbol: String::new(), sec_type: "NEWS".into(), ..base() },
+        // providers and no venue. Its source rides the exchange field and is
+        // read against the registry the runner seeds.
+        (Contract { symbol: String::new(), sec_type: "NEWS".into(), exchange: "BRF".into(), ..base() },
          None, &[]),
         // (c) a character at or above U+0080 in either name.
         (Contract { symbol: "ÄAPL".into(), ..base() },
@@ -13200,7 +13201,12 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
     ];
     for (contract, reason, refused_on) in cases {
         for (surface, request) in surfaces {
-            let (client, rx, _shared) = test_client();
+            let (client, rx, shared) = test_client();
+            // A news contract names its source on the exchange field, and the
+            // session holds the registry it is read against.
+            shared.reference.set_news_providers(vec![
+                crate::types::NewsProvider { code: "BRF".into(), name: "Briefing".into() },
+            ]);
             if let (Some(reason), true) = (reason, refused_on.contains(surface)) {
                 let why = reported(&client, || request(&client, contract))
                     .expect_err(&format!("{surface} took {contract:?}"));
@@ -13337,7 +13343,7 @@ fn depth_requires_an_exchange_before_checking_expiry() {
 /// no venue.
 #[test]
 fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
     // By id alone, described by symbol, and beside a malformed expiry: the
     // refusal is the same and nothing follows it — no lookup, no
     // subscription, no expiry answer.
@@ -13359,10 +13365,23 @@ fn a_quote_naming_no_exchange_is_refused_before_any_lookup() {
         assert!(next_command(&rx).is_none(), "{contract:?} sent something");
         assert!(client.core.req_to_instrument.lock().unwrap().is_empty(), "and kept a subscription");
     }
-    // The news type is exempt: a headline request names providers, not a
-    // venue, and goes as it stands.
+    // The news type is exempt from the exchange sentence: a headline request
+    // names providers, not a venue. An empty exchange names no source, and
+    // it is the source check — not the exchange sentence — that refuses it.
     let news = Contract { con_id: 265598, sec_type: "NEWS".into(), exchange: String::new(), ..Default::default() };
-    reported(&client, || client.req_mkt_data(72, &news, "", false, false, &[])).expect("news is exempt");
+    let why = reported(&client, || client.req_mkt_data(72, &news, "", false, false, &[]))
+        .expect_err("a news request naming no source");
+    assert_eq!(
+        (why.code, why.message.as_str()),
+        (321, "Error validating request:-'' : cause - The entered news source is invalid. Valid are: []"),
+    );
+    // A source the registry holds is subscribed, on the exchange field where
+    // a gateway reads it.
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRF".into(), name: "Briefing".into() },
+    ]);
+    let news = Contract { con_id: 265598, sec_type: "NEWS".into(), exchange: "BRF".into(), ..Default::default() };
+    reported(&client, || client.req_mkt_data(73, &news, "", false, false, &[])).expect("a registered source is subscribed");
     assert!(matches!(next_command(&rx), Some(ControlCommand::Subscribe { .. })));
 }
 
