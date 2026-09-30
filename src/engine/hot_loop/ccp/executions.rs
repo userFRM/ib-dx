@@ -2925,9 +2925,13 @@ impl CcpState {
             let con_id: i64 = parsed.get(&6008).and_then(|s| s.parse().ok()).unwrap_or(0);
             let total_qty: f64 = parsed.get(&38).and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let ord_type_tag = parsed.get(&40).map(|s| s.as_str()).unwrap_or("");
-            let limit_price: f64 = parsed.get(&44).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            // Absent is not zero on a price: unset is the maximum double, the
+            // sentinel the order-builder, trailing-stop and lmt_price_offset
+            // defaults in this file already use. A market order read back as a
+            // limit of zero is one a caller echoing the field re-places at zero.
+            let limit_price: f64 = parsed.get(&44).and_then(|s| s.parse().ok()).unwrap_or(f64::MAX);
             let tif_tag = parsed.get(&59).map(|s| s.as_str()).unwrap_or("");
-            let stop_px: f64 = parsed.get(&99).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let stop_px: f64 = parsed.get(&99).and_then(|s| s.parse().ok()).unwrap_or(f64::MAX);
             let outside_rth = parsed.get(&6433).map(|s| s == "1").unwrap_or(false);
             let clearing_intent = parsed.get(&6419).cloned().unwrap_or_default();
             let auto_cancel_date = parsed.get(&6596).cloned().unwrap_or_default();

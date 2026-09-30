@@ -1614,6 +1614,12 @@ fn the_whole_order_the_venue_states_comes_back() {
     assert!(held.solicited);
     assert_eq!(held.duration, 300);
     assert!(held.not_held);
+    // A limit and a stop the report does not state are unset, and unset on a
+    // price is the sentinel every other price field here uses — the maximum
+    // double — not a price of nothing. A market order read back as a limit of
+    // zero is one a caller echoing the field back re-places at zero.
+    assert_eq!(held.lmt_price, f64::MAX, "no limit stated is the unset sentinel, not zero");
+    assert_eq!(held.aux_price, f64::MAX, "no stop stated is the unset sentinel, not zero");
 
     // A term the report does not mention is one the order does not carry, and
     // the default already says that.
