@@ -103,52 +103,75 @@ impl EClient {
 
     /// Ask the venue for a partition of the advisor's own configuration.
     ///
-    /// The reference client names the partition by a number — its aliases, its
-    /// groups, its allocation profiles — and the venue names it by a word, so
-    /// the number is turned into the word it stands for. A number that stands
-    /// for nothing is refused rather than sent as an empty partition.
+    /// The reference client names the partition by a number: its groups, its
+    /// allocation profiles, its aliases. The allocation profiles are refused
+    /// at the door under 585, with nothing sent, as the reference client
+    /// refuses them. For the rest, the venue names the partition by a word, so
+    /// the number is turned into the word it stands for; a number that stands
+    /// for nothing draws the intake's own refusal rather than being sent as an
+    /// empty partition.
     ///
     /// The venue's answer reaches [`Wrapper::receive_fa`](crate::api::wrapper::Wrapper::receive_fa) under the same
     /// number the partition was asked for by.
     pub fn request_fa(&self, fa_data_type: i32) {
-        if let Err(why) = (|| -> Result<(), Refusal> {
-            let partition = advisor_partition(fa_data_type)
-                .ok_or_else(|| format!("no advisor configuration is named by {fa_data_type}"))?;
-            self.send(crate::types::ControlCommand::AdvisorConfig {
-                // Nothing to carry back: the answer to a question about a
-                // partition names the partition, not a request.
-                req_id: -1,
-                // Asking for it by name.
-                command: 5,
-                partition: partition.to_string(),
-                fa_data_type,
-                document: None,
-            })
-        })() {
-            self.refuse_question(crate::types::model::Question::Fa, &why);
+        use crate::types::model::Question;
+        // The reference client's own order: the session first, then the
+        // profiles it refuses at the door.
+        if self.session_over() {
+            return self.refuse_question(Question::Fa, &Refusal::not_connected("Not connected"));
+        }
+        if fa_data_type == 2 {
+            return self.refuse_question(
+                Question::Fa, &Refusal::stated(585, FA_PROFILE_UNSUPPORTED),
+            );
+        }
+        let Some(partition) = advisor_partition(fa_data_type) else {
+            return self.refuse_question(
+                Question::Fa, &Refusal::validation(FA_UNKNOWN_OPERATION),
+            );
+        };
+        if let Err(why) = self.send(crate::types::ControlCommand::AdvisorConfig {
+            // Nothing to carry back: the answer to a question about a
+            // partition names the partition, not a request.
+            req_id: -1,
+            // Asking for it by name.
+            command: 5,
+            partition: partition.to_string(),
+            fa_data_type,
+            document: None,
+        }) {
+            self.refuse_question(Question::Fa, &why);
         }
     }
 
 
     /// Replace a partition of the advisor's configuration with the one given.
     ///
-    /// [`Wrapper::replace_fa_end`](crate::api::wrapper::Wrapper::replace_fa_end) fires with `req_id` once the venue has
-    /// taken it, and a venue that refuses states why on [`Wrapper::error`](crate::api::wrapper::Wrapper::error)
-    /// under the same number.
+    /// The allocation profiles are refused at the door under 585, as the
+    /// reference client refuses them, and a number naming no partition draws
+    /// the intake's own refusal; either way nothing is sent and the caller
+    /// hears it under `req_id`. [`Wrapper::replace_fa_end`](crate::api::wrapper::Wrapper::replace_fa_end) fires with
+    /// `req_id` once the venue has taken it, and a venue that refuses states
+    /// why on [`Wrapper::error`](crate::api::wrapper::Wrapper::error) under the same number.
     pub fn replace_fa(&self, req_id: i64, fa_data_type: i32, cxml: &str) {
         if self.number_unread(req_id) { return; }
-        if let Err(why) = (|| -> Result<(), Refusal> {
-            let partition = advisor_partition(fa_data_type)
-                .ok_or_else(|| format!("no advisor configuration is named by {fa_data_type}"))?;
-            self.send(crate::types::ControlCommand::AdvisorConfig {
-                req_id,
-                // Replacing it with what is carried.
-                command: 3,
-                partition: partition.to_string(),
-                fa_data_type,
-                document: Some(cxml.to_string()),
-            })
-        })() {
+        if self.session_over() {
+            return self.refuse_session(&Refusal::not_connected("Not connected"));
+        }
+        if fa_data_type == 2 {
+            return self.refuse_request(req_id, &Refusal::stated(585, FA_PROFILE_UNSUPPORTED));
+        }
+        let Some(partition) = advisor_partition(fa_data_type) else {
+            return self.refuse_request(req_id, &Refusal::validation(FA_UNKNOWN_OPERATION));
+        };
+        if let Err(why) = self.send(crate::types::ControlCommand::AdvisorConfig {
+            req_id,
+            // Replacing it with what is carried.
+            command: 3,
+            partition: partition.to_string(),
+            fa_data_type,
+            document: Some(cxml.to_string()),
+        }) {
             self.refuse_request(req_id, &why);
         }
     }
@@ -603,6 +626,17 @@ impl EClient {
 }
 
 
+/// What the reference client states of a request for the advisor's allocation
+/// profiles: it refuses one at the door, under 585 and with nothing sent, on
+/// any session new enough for the profiles to be gone from the venue — which
+/// every session here is.
+const FA_PROFILE_UNSUPPORTED: &str = "FA Profile is not supported anymore, use FA Group instead - ";
+
+/// The intake refusal of a request number that names no partition. The
+/// reference client forwards any number; one that names nothing is refused
+/// there, in this sentence, rather than at the door here.
+const FA_UNKNOWN_OPERATION: &str = "Non-existent FA data operation request.";
+
 /// The word the venue names an advisor's configuration partition by, from the
 /// number the reference client names it by.
 fn advisor_partition(fa_data_type: i32) -> Option<&'static str> {
@@ -716,6 +750,61 @@ mod advisor_partition_tests {
         for unknown in [0, 4, -1, i32::MAX] {
             assert_eq!(advisor_partition(unknown), None, "{unknown} was taken");
         }
+    }
+}
+
+#[cfg(test)]
+mod advisor_door_tests {
+    use crate::api::client::tests::{engine_refused, test_client};
+    use crate::types::ControlCommand;
+
+    /// A request for the advisor's allocation profiles never reaches the wire.
+    ///
+    /// The reference client refuses faData 2 — the allocation profiles — at
+    /// the door, under 585 and in its own words, and sends nothing; a session
+    /// here stands at a level where that refusal applies. A replace refused
+    /// at the door is heard under the caller's number.
+    #[test]
+    fn a_profile_request_is_refused_at_the_door_and_sends_nothing() {
+        let (client, rx, shared) = test_client();
+        client.request_fa(2);
+        client.replace_fa(9, 2, "<xml/>");
+        let refused = engine_refused(&rx, &shared);
+        let sentence = "FA Profile is not supported anymore, use FA Group instead - ".to_string();
+        assert_eq!(refused, [(-1, 585, sentence.clone()), (9, 585, sentence)]);
+        assert!(
+            !rx.try_iter().any(|cmd| matches!(cmd, ControlCommand::AdvisorConfig { .. })),
+            "nothing is sent",
+        );
+    }
+
+    /// A number naming no partition draws the intake's own refusal — its
+    /// sentence under the 321 validation wrap — not one invented here.
+    #[test]
+    fn a_number_naming_no_partition_hears_the_intakes_own_refusal() {
+        let (client, rx, shared) = test_client();
+        client.request_fa(7);
+        client.replace_fa(9, 7, "<xml/>");
+        let wrapped = "Error validating request:-'' : cause - \
+                       Non-existent FA data operation request."
+            .to_string();
+        assert_eq!(engine_refused(&rx, &shared), [(-1, 321, wrapped.clone()), (9, 321, wrapped)]);
+    }
+
+    /// A number naming a partition is forwarded, and nothing is refused.
+    #[test]
+    fn a_number_naming_a_partition_is_forwarded() {
+        let (client, rx, shared) = test_client();
+        client.request_fa(1);
+        client.replace_fa(9, 3, "<xml/>");
+        assert!(engine_refused(&rx, &shared).is_empty(), "nothing is refused");
+        assert_eq!(
+            rx.try_iter()
+                .filter(|cmd| matches!(cmd, ControlCommand::AdvisorConfig { .. }))
+                .count(),
+            2,
+            "both requests go",
+        );
     }
 }
 

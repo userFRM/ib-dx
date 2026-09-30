@@ -2318,7 +2318,7 @@ pub fn req_current_time_in_millis(&self)
 
 #### `request_fa`
 
-Ask the venue for a partition of the advisor's own configuration. The reference client names the partition by a number — its aliases, its groups, its allocation profiles — and the venue names it by a word, so the number is turned into the word it stands for. A number that stands for nothing is refused rather than sent as an empty partition. The venue's answer reaches `Wrapper::receive_fa` under the same number the partition was asked for by.
+Ask the venue for a partition of the advisor's own configuration. The reference client names the partition by a number: its groups, its allocation profiles, its aliases. The allocation profiles are refused at the door under 585, with nothing sent, as the reference client refuses them. For the rest, the venue names the partition by a word, so the number is turned into the word it stands for; a number that stands for nothing draws the intake's own refusal rather than being sent as an empty partition. The venue's answer reaches `Wrapper::receive_fa` under the same number the partition was asked for by.
 
 ```rust
 pub fn request_fa(&self, fa_data_type: i32)
@@ -2332,7 +2332,7 @@ pub fn request_fa(&self, fa_data_type: i32)
 
 #### `replace_fa`
 
-Replace a partition of the advisor's configuration with the one given. `Wrapper::replace_fa_end` fires with `req_id` once the venue has taken it, and a venue that refuses states why on `Wrapper::error` under the same number.
+Replace a partition of the advisor's configuration with the one given. The allocation profiles are refused at the door under 585, as the reference client refuses them, and a number naming no partition draws the intake's own refusal; either way nothing is sent and the caller hears it under `req_id`. `Wrapper::replace_fa_end` fires with `req_id` once the venue has taken it, and a venue that refuses states why on `Wrapper::error` under the same number.
 
 ```rust
 pub fn replace_fa(&self, req_id: i64, fa_data_type: i32, cxml: &str)
