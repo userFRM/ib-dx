@@ -3405,6 +3405,11 @@ fn a_replace_names_the_contract_the_venue_says_the_order_is_on() {
         "a side that states no contract states nothing to disagree with",
     );
     assert!(
+        ClientCore::names_the_same_contract(&by_id(i64::from(i32::MAX)), &by_id(8)),
+        "the unset marker the reference client carries states no contract either",
+    );
+    assert!(ClientCore::names_the_same_contract(&by_id(7), &by_id(i64::from(i32::MAX))));
+    assert!(
         ClientCore::names_the_same_contract(&spread, &by_id(8)),
         "nor does one that states legs against one that states none",
     );

@@ -2731,7 +2731,7 @@ impl ClientCore {
     /// The identifier read as a gateway reads one: zero, and the maximum
     /// 32-bit integer — the unset marker the reference client carries — both
     /// count as unstated.
-    fn identifier_unstated(con_id: i64) -> bool {
+    pub(crate) fn identifier_unstated(con_id: i64) -> bool {
         con_id == 0 || con_id == i64::from(i32::MAX)
     }
 
@@ -4010,7 +4010,11 @@ impl ClientCore {
             };
             return legs(known) == legs(stated);
         }
-        known.con_id == 0 || stated.con_id == 0 || known.con_id == stated.con_id
+        // An id either side leaves unstated — at zero or at the unset marker
+        // the reference client carries — states no contract to disagree on.
+        Self::identifier_unstated(known.con_id)
+            || Self::identifier_unstated(stated.con_id)
+            || known.con_id == stated.con_id
     }
 
     /// The slot a tracked order was placed on, if it is tracked.
@@ -7151,8 +7155,9 @@ impl ClientCore {
             }
         }
         // The contract the caller named, so the engine can see that the slot
-        // beside it is no longer the one they meant.
-        let con_id = contract.map_or(0, |c| c.con_id);
+        // beside it is no longer the one they meant. The unset marker states
+        // no contract to see past, and is carried as zero is.
+        let con_id = contract.map_or(0, |c| if Self::identifier_unstated(c.con_id) { 0 } else { c.con_id });
         let ex = |kind: OrderKind| OrderRequest::SubmitEx {
             order_id, instrument, con_id, side, qty,
             kind,

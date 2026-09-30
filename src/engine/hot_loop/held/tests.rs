@@ -1713,7 +1713,10 @@ fn a_duplicate_quote_number_cannot_open_a_second_lookup() {
 
 #[test]
 fn an_exercise_is_named_before_its_position_and_figure_are_read() {
-    for by_id in [false, true] {
+    // The row described beside the unset marker the reference client carries
+    // is named by its description exactly as the row described beside zero:
+    // the marker names no contract.
+    for (stated, by_id) in [(0, false), (700_001, true), (i64::from(i32::MAX), false)] {
         let (mut hl, shared, tx, mut peer) = with_trading();
         shared.portfolio.set_position_info(crate::types::PositionInfo {
             con_id: 700001,
@@ -1722,9 +1725,9 @@ fn an_exercise_is_named_before_its_position_and_figure_are_read() {
         });
         let ControlCommand::Exercise(mut asked) = exercise(5, 1, 8, false) else { unreachable!() };
         if by_id {
-            asked.contract = crate::api::Contract { con_id: 700001, ..Default::default() };
+            asked.contract = crate::api::Contract { con_id: stated, ..Default::default() };
         } else {
-            asked.contract.con_id = 0;
+            asked.contract.con_id = stated;
         }
         shared.admit(&tx, ControlCommand::Exercise(asked)).unwrap();
         hl.poll_once();
@@ -1738,6 +1741,7 @@ fn an_exercise_is_named_before_its_position_and_figure_are_read() {
             assert!(wire.contains("|6008=700001|"), "{wire}");
         } else {
             assert!(wire.contains("|55=SPY|"), "{wire}");
+            assert!(!wire.contains("|6008=2147483647|"), "nothing is asked under the unset marker: {wire}");
         }
         let query = hl.ccp.order_naming[0].0;
         name_the_option(&mut hl, query);
@@ -1751,6 +1755,109 @@ fn an_exercise_is_named_before_its_position_and_figure_are_read() {
         assert!(own_watches(&hl).is_empty());
         assert!(shared.drain_refused().is_empty());
     }
+}
+
+/// A contract named by the unset marker the reference client carries is
+/// handled as one naming no contract on the order paths too: an order
+/// described beside the marker is named by its description, and the answer is
+/// kept under the description an order stating no id at all reuses; an order
+/// carrying the marker alone behaves exactly as one carrying zero alone,
+/// whatever else it states; and a replacement described beside the marker
+/// is named by its description, not refused as naming another contract.
+#[test]
+fn an_order_named_by_the_unset_marker_is_handled_as_one_naming_no_contract() {
+    let marker = i64::from(i32::MAX);
+    let (mut hl, shared, tx, mut peer) = with_trading();
+    shared.orders.set_replay_done();
+    tx.send(placement(5, crate::types::model::Contract { con_id: marker, ..described() }, 0, true))
+        .unwrap();
+    hl.poll_once();
+    assert_eq!(hl.ccp.order_naming.len(), 1, "the marker names no contract: its description is looked up");
+    let wire = on_the_wire(&mut peer);
+    assert!(wire.contains("|35=c|") && wire.contains("|55=SPY|"), "{wire}");
+    assert!(!wire.contains("|6008=2147483647|"), "nothing is asked under the marker: {wire}");
+    named_spy(&mut hl);
+    hl.poll_once();
+    // An order describing the same contract with no id at all reuses the
+    // naming the marker's description was given: one description, one lookup.
+    tx.send(placement(6, described(), 0, true)).unwrap();
+    hl.poll_once();
+    assert_eq!(hl.ccp.order_naming.len(), 0, "the answer is kept under the description");
+    hl.poll_once();
+    hl.poll_once();
+    let wire = on_the_wire(&mut peer);
+    assert_eq!(wire.matches("35=D|").count(), 2, "{wire}");
+    assert!(wire.contains("|6008=756733|"), "{wire}");
+    assert!(!wire.contains("|6008=2147483647|"), "{wire}");
+
+    // An order carrying the marker alone behaves exactly as one carrying
+    // zero alone, whatever else it states: no lookup is asked under the
+    // marker, and no order goes out carrying it as the contract's id.
+    fn run(
+        con_id: i64, features: &[&str], state: fn(&mut crate::types::model::Order),
+    ) -> (Vec<i64>, bool, bool, bool) {
+        let (mut hl, shared, tx, mut peer) = with_trading();
+        shared.orders.set_replay_done();
+        shared.reference.set_enabled_features(features.iter().map(|f| f.to_string()).collect());
+        let ControlCommand::Place(mut p) =
+            placement(7, crate::types::model::Contract { con_id, ..Default::default() }, 0, true)
+        else {
+            unreachable!()
+        };
+        state(&mut p.order);
+        tx.send(ControlCommand::Place(p)).unwrap();
+        hl.poll_once();
+        hl.poll_once();
+        let wire = on_the_wire(&mut peer);
+        (
+            shared.drain_refused().into_iter().map(|(_, code, _)| code).collect(),
+            wire.contains("|35=c|"),
+            wire.contains("35=D|"),
+            wire.contains("|6008=2147483647|"),
+        )
+    }
+    type Row = (&'static str, &'static [&'static str], fn(&mut crate::types::model::Order));
+    let rows: [Row; 4] = [
+        ("plain", &[], |_| {}),
+        ("through an algorithm", &[], |o| {
+            o.algo_strategy = "Adaptive".into();
+        }),
+        ("counting the overnight session", &["CONDINCOVN"], |o| {
+            o.conditions.push(crate::types::OrderCondition::Time {
+                time: "20260925-20:30:00".into(),
+                is_more: true,
+                is_conjunction_connection: false,
+            });
+            o.conditions_include_overnight = true;
+        }),
+        ("stated by the cash it spends", &[], |o| {
+            o.cash_qty = 50.0;
+        }),
+    ];
+    for (what, features, state) in rows {
+        let zero = run(0, features, state);
+        let marked = run(marker, features, state);
+        assert_eq!(zero, marked, "{what}: the marker is read as zero is");
+        assert!(!marked.3, "{what}: no order goes out under the marker");
+    }
+
+    // A replacement names the order rather than the contract: described
+    // beside the marker, it is named by its description as the placement
+    // beside zero was, and is not refused as naming another contract.
+    let (mut hl, shared, tx, mut peer) = with_trading();
+    shared.orders.set_replay_done();
+    tx.send(placement(9, described(), 0, true)).unwrap();
+    hl.poll_once();
+    named_spy(&mut hl);
+    (0..3).for_each(|_| hl.poll_once());
+    assert!(on_the_wire(&mut peer).contains("35=D|"), "working before it is replaced");
+    tx.send(placement(9, crate::types::model::Contract { con_id: marker, ..described() }, 0, true))
+        .unwrap();
+    hl.poll_once();
+    hl.poll_once();
+    let refused: Vec<_> = shared.drain_refused().into_iter().map(|(_, code, _)| code).collect();
+    assert!(refused.is_empty(), "the marker states no contract a working order could disagree with: {refused:?}");
+    assert!(on_the_wire(&mut peer).contains("35=G|"), "the replacement goes as a replacement");
 }
 
 #[test]

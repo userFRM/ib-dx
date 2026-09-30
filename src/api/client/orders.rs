@@ -666,7 +666,7 @@ impl EClient {
                     .flatten();
                 let contract = match placed_on {
                     Some(contract) => contract,
-                    None if contract.con_id != 0 => self.core
+                    None if !ClientCore::identifier_unstated(contract.con_id) => self.core
                         .get_contract(contract.con_id, &self.shared)
                         .unwrap_or(contract),
                     None => contract,

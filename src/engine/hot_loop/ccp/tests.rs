@@ -5750,6 +5750,33 @@ fn a_request_giving_its_contract_by_id_alone_goes_out_as_the_venue_names_it() {
     let errors = shared.reference.drain_historical_errors();
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].0, 8);
+
+    // An id left at the unset marker the reference client carries names no
+    // contract, as a gateway reads it: asked alone, the request is handled as
+    // one naming nothing and refused under its number, rather than dispatched
+    // under 2147483647.
+    let marker = |req_id| C::FetchHistorical {
+        contract: crate::types::ContractRef { con_id: i64::from(i32::MAX), ..Default::default() },
+        req_id, end_date_time: String::new(), duration: "1 D".into(), bar_size: "1 hour".into(),
+        what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1,
+        include_expired: false, filters: Default::default(),
+    };
+    assert!(ccp.hold_until_named(marker(11), &mut None, &mut HeartbeatState::new(), &shared).is_none());
+    assert!(ccp.pending_named.is_empty(), "nothing waits on a lookup under the unset marker");
+    let errors = shared.reference.drain_historical_errors();
+    assert_eq!((errors.len(), errors[0].0, errors[0].1), (1, 11, 200), "{errors:?}");
+
+    // Asked beside a description, the description names it: the request waits
+    // on that lookup rather than going as it stands under the marker.
+    let mut described = marker(12);
+    if let C::FetchHistorical { contract, .. } = &mut described {
+        contract.symbol = "SPY".into();
+        contract.sec_type = "STK".into();
+        contract.exchange = "SMART".into();
+        contract.currency = "USD".into();
+    }
+    assert!(ccp.hold_until_named(described, &mut None, &mut HeartbeatState::new(), &shared).is_none());
+    assert_eq!(ccp.pending_named.len(), 1, "held for the lookup its description is named by");
 }
 
 #[test]

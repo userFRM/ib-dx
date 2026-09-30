@@ -652,7 +652,9 @@ pub(crate) fn say_goodbye(conn: &mut Connection) -> std::io::Result<()> {
 pub(crate) fn contract_named(cmd: &crate::types::ControlCommand) -> Option<&crate::types::ContractRef> {
     let contract = contract_of(cmd)?;
     // Only one the venue has not named yet: the rest already carry its id.
-    (contract.con_id == 0).then_some(contract)
+    // The unset marker the reference client carries is no id — a contract
+    // left at it is named by its description like one carrying none.
+    crate::client_core::ClientCore::identifier_unstated(contract.con_id).then_some(contract)
 }
 
 /// The contract a request names, whether or not the venue has numbered it.
@@ -693,7 +695,10 @@ pub(crate) fn named_by_id_alone(cmd: &crate::types::ControlCommand) -> Option<(i
         | C::SubscribeTbt { contract, .. } => contract,
         _ => return None,
     };
-    (contract.con_id != 0 && (contract.sec_type.is_empty() || contract.exchange.is_empty()))
+    // The id is read as a gateway reads one: the unset marker the reference
+    // client carries names no contract, as zero names none.
+    (!crate::client_core::ClientCore::identifier_unstated(contract.con_id)
+        && (contract.sec_type.is_empty() || contract.exchange.is_empty()))
         .then_some((contract.con_id, contract.exchange.as_str()))
 }
 
@@ -2934,6 +2939,9 @@ impl CcpState {
         // held here is looked up first, where the logon offers those sides.
         if let crate::types::ControlCommand::Subscribe { contract, regulatory_snapshot: true, .. } = &cmd
             && contract.con_id > 0
+            // The unset marker names no contract: the description below names
+            // it, rather than a lookup under the marker.
+            && !crate::client_core::ClientCore::identifier_unstated(contract.con_id)
             && !contract.exchange.is_empty()
             && matches!(crate::control::contracts::sec_type_to_fix(&contract.sec_type), "CS" | "WAR")
             && shared.reference.enables("ODDLOTBIDASK")
@@ -2999,7 +3007,10 @@ impl CcpState {
         ccp_conn.as_ref()?;
         let req_id = self.next_internal_secdef_id;
         self.next_internal_secdef_id = self.next_internal_secdef_id.wrapping_add(1);
-        if contract.con_id != 0 {
+        // The id is read as a gateway reads one: the unset marker the
+        // reference client carries names no contract, as zero names none —
+        // nothing is asked under 2147483647, and the description names it.
+        if !crate::client_core::ClientCore::identifier_unstated(contract.con_id) {
             self.send_secdef_request(req_id, contract.con_id, &contract.exchange, ccp_conn, hb, shared, &None);
         } else {
             // The caller's description narrows the lookup, including an

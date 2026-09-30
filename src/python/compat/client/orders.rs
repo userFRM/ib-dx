@@ -752,7 +752,9 @@ impl EClient {
                 // Taken verbatim here, an order lost its exchange, its
                 // multiplier and its local symbol the moment it finished,
                 // and only on this binding.
-                let contract = if contract.con_id != 0 {
+                // The unset marker names no contract: the record is enriched
+                // from a stated id alone, as on the other surface.
+                let contract = if !ClientCore::identifier_unstated(contract.con_id) {
                     self.core.get_contract(contract.con_id, shared).unwrap_or(contract)
                 } else {
                     contract

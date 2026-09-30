@@ -538,7 +538,9 @@ impl HotLoop {
         contract: &mut api::Contract,
         lookup: &mut Option<u32>,
     ) -> Result<bool, Refusal> {
-        let key = if contract.con_id == 0 {
+        // The unset marker the reference client carries is no id: a contract
+        // left at it keys by its description, as one carrying none does.
+        let key = if ClientCore::identifier_unstated(contract.con_id) {
             ClientCore::description_key(contract)
         } else {
             format!("conId:{}", contract.con_id)
@@ -668,7 +670,12 @@ impl HotLoop {
         let attaching = attached_checks::requested(&p.order);
         let smart_combo = (attaching || self.intake.attached.family_keys.contains_key(&order_id)) && p.contract.exchange == "SMART"
             && matches!(p.contract.sec_type.as_str(), "BAG" | "COMB" | "COMBO");
-        if p.contract.con_id == 0 && !p.contract.symbol.is_empty() && !smart_combo {
+        // A contract named by the unset marker alone names none: it is named
+        // by its description, as one carrying no id at all is.
+        if ClientCore::identifier_unstated(p.contract.con_id)
+            && !p.contract.symbol.is_empty()
+            && !smart_combo
+        {
             match self.name_order_contract(&mut p.contract, lookup) {
                 Ok(true) => {}
                 Ok(false) => return Step::Waits,
@@ -682,7 +689,7 @@ impl HotLoop {
         // of it, as a gateway holds it before anything else about the order:
         // the definitions are asked for the first time an order needs them.
         let mut algorithms = None;
-        if !existing && p.contract.con_id != 0 && !p.order.algo_strategy.is_empty() {
+        if !existing && !ClientCore::identifier_unstated(p.contract.con_id) && !p.order.algo_strategy.is_empty() {
             // The contract's definition, and for an order on an overnight venue
             // the definition on the smart route, which names its algorithms.
             let overnight = matches!(p.contract.exchange.as_str(), "OVERNIGHT" | "IBEOS");
@@ -749,7 +756,7 @@ impl HotLoop {
         // definition, so one not yet held is asked for. A replace is not asked.
         if !existing && !p.order.conditions.is_empty() && p.order.conditions_include_overnight {
             let enabled = self.shared.reference.enables("CONDINCOVN");
-            if enabled && p.contract.con_id != 0
+            if enabled && !ClientCore::identifier_unstated(p.contract.con_id)
                 && attached_orders::contract_definition(&self.shared, &p.contract).is_none()
             {
                 match self.name_order_contract(&mut p.contract.clone(), lookup) {
@@ -773,7 +780,7 @@ impl HotLoop {
         // as a gateway checks it before sending it. The contract's definition
         // decides, so one not yet held is asked for.
         if !existing
-            && p.contract.con_id != 0
+            && !ClientCore::identifier_unstated(p.contract.con_id)
             && (cash_quantity::stated_amount(&p.order).is_some() || p.contract.sec_type == "FUND")
         {
             if attached_orders::contract_definition(&self.shared, &p.contract).is_none() {
@@ -874,7 +881,9 @@ impl HotLoop {
         };
         let identity = crate::client_core::attached_combos::registration_identity(&p.contract);
         let instrument = match placed_on {
-            Some(placed_on) if p.contract.con_id != 0 && !matches!(p.contract.sec_type.as_str(), "BAG" | "COMB" | "COMBO") => {
+            // The unset marker states no contract a working order could
+            // disagree with: the replacement is read as one stating none.
+            Some(placed_on) if !ClientCore::identifier_unstated(p.contract.con_id) && !matches!(p.contract.sec_type.as_str(), "BAG" | "COMB" | "COMBO") => {
                 if self.context.market.instrument_by_con_id(p.contract.con_id) != Some(placed_on) {
                     self.refuse_order(
                         api_id,
@@ -1321,8 +1330,8 @@ impl HotLoop {
             }
         }
         let c = &e.contract;
-        if (c.con_id == 0 && !c.symbol.is_empty())
-            || (c.con_id != 0 && (c.sec_type.is_empty() || c.exchange.is_empty()))
+        if (ClientCore::identifier_unstated(c.con_id) && !c.symbol.is_empty())
+            || (!ClientCore::identifier_unstated(c.con_id) && (c.sec_type.is_empty() || c.exchange.is_empty()))
         {
             match self.name_order_contract(&mut e.contract, lookup) {
                 Ok(true) => {}

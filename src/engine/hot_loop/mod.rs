@@ -660,6 +660,10 @@ impl HotLoop {
         // narrowed differently do not share a slot before either is answered.
         narrowing: &str,
     ) -> InstrumentId {
+        // The unset marker the reference client carries names no contract:
+        // the slot is the one a registration carrying none takes, and the
+        // marker never reaches the wire from the slot beside an order.
+        let con_id = if crate::client_core::ClientCore::identifier_unstated(con_id) { 0 } else { con_id };
         // Whether this call is what created the slot. Registration is also how
         // an already-live contract is looked up, and the account row is older
         // than any fill booked since: reapplying it on every call rolled a
@@ -1755,7 +1759,9 @@ impl HotLoop {
                 }
                 ControlCommand::FetchContractDetails { contract, req_id, include_expired, filters } => {
                     let ContractRef { con_id, symbol, sec_type, exchange, currency, .. } = contract;
-                    if con_id > 0 {
+                    if con_id > 0
+                        && !crate::client_core::ClientCore::identifier_unstated(con_id)
+                    {
                         self.ccp.send_secdef_request(req_id, con_id, &exchange, &mut self.ccp_conn, &mut self.hb, &self.shared, &self.event_tx);
                     } else {
                         self.ccp.send_contract_details_lookup(req_id, &symbol, &sec_type, &exchange, &currency, &filters, include_expired, &mut self.ccp_conn, &mut self.hb, &self.shared, &self.event_tx);
@@ -5353,6 +5359,35 @@ mod tests {
             assert_eq!(passed.is_none(), looked_up, "{row:?}");
             assert_eq!(hl.ccp.pending_named.len(), usize::from(looked_up), "{row:?}");
         }
+    }
+
+    /// An id left at the unset marker the reference client carries names no
+    /// contract: where the odd-lot lookup is owed one, the description names
+    /// it, and nothing is asked of the venue under 2147483647.
+    #[test]
+    fn an_odd_lot_snapshot_under_the_unset_marker_is_looked_up_by_its_description() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        hl.shared.reference.set_enabled_features(vec!["ODDLOTBIDASK".into()]);
+        let (conn, mut peer) = Connection::for_test();
+        hl.ccp_conn = Some(conn);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        let mut request = subscription(1, ContractRef {
+            con_id: i64::from(i32::MAX), symbol: "AAPL".into(), sec_type: "STK".into(),
+            exchange: "SMART".into(), ..Default::default()
+        });
+        if let ControlCommand::Subscribe { regulatory_snapshot, .. } = &mut request {
+            *regulatory_snapshot = true;
+        }
+        tx.send(request).unwrap();
+        hl.poll_control_commands();
+        use std::io::Read;
+        let mut buf = [0u8; 4096];
+        let n = peer.read(&mut buf).unwrap();
+        let said = String::from_utf8_lossy(&buf[..n]).replace('\u{1}', "|");
+        assert!(said.contains("|55=AAPL|"), "asked by its description: {said}");
+        assert!(!said.contains("|6008=2147483647|"), "nothing asked under the unset marker: {said}");
     }
 
     #[test]
@@ -9315,6 +9350,33 @@ mod tests {
         );
         assert_eq!(shared.reference.drain_contract_details_end(), [7], "and the request is ended");
     }
+
+    /// An id left at the unset marker the reference client carries names no
+    /// contract, as a gateway reads it: a details request stating one beside
+    /// a description is looked up by the description, and nothing is asked of
+    /// the venue under 2147483647.
+    #[test]
+    fn a_details_request_under_the_unset_marker_is_looked_up_by_its_description() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
+        let (conn, mut peer) = Connection::for_test();
+        hl.ccp_conn = Some(conn);
+        tx.send(ControlCommand::FetchContractDetails {
+            req_id: 7, contract: stock(i64::from(i32::MAX), "AAPL"),
+            include_expired: false, filters: Default::default(),
+        })
+        .unwrap();
+        hl.poll_control_commands();
+        use std::io::Read;
+        let mut buf = [0u8; 4096];
+        let n = peer.read(&mut buf).unwrap();
+        let said = String::from_utf8_lossy(&buf[..n]).replace('\u{1}', "|");
+        assert!(said.contains("|55=AAPL|"), "asked by its description: {said}");
+        assert!(!said.contains("|6008=2147483647|"), "nothing asked under the unset marker: {said}");
+    }
+
 
     /// A caller asking which exchanges serve a book is answered from the
     /// market-data routing table, which states the book each serves and the
