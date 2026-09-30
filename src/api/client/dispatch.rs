@@ -2217,9 +2217,11 @@ mod delivered_size_tests {
         ].map(|(status, why)| (status.to_string(), why.to_string())));
     }
 
-    /// What each order callback was told, in the order it was told.
+    /// What each order callback was told, in the order it was told — and,
+    /// beside it, the completed time `open_order` stated and the parent
+    /// `order_status` carried, as strings in the same order.
     #[derive(Default)]
-    struct Pairs(Vec<(&'static str, i64, String, String)>);
+    struct Pairs(Vec<(&'static str, i64, String, String)>, Vec<String>);
 
     impl Wrapper for Pairs {
         fn open_order(
@@ -2227,19 +2229,26 @@ mod delivered_size_tests {
             order: &crate::types::model::Order, state: &crate::types::model::OrderState,
         ) {
             self.0.push(("open_order", order_id, contract.symbol.clone(), state.status.clone()));
+            self.1.push(state.completed_time.clone());
             assert_eq!(order.order_id, order_id, "the order it holds, not a blank one");
         }
         fn order_status(
             &mut self, order_id: i64, status: &str, _filled: f64, _remaining: f64,
-            _avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
+            _avg_fill_price: f64, _perm_id: i64, parent_id: i64,
             _last_fill_price: f64, _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
         ) {
             self.0.push(("order_status", order_id, String::new(), status.into()));
+            self.1.push(parent_id.to_string());
         }
     }
 
     /// A status change with no fill on the report states the order beside the
     /// status, as the other surface does and as this one's contract says.
+    ///
+    /// The state it states carries the completed time as the session's
+    /// datetime-format setting publishes it, not the venue's raw stamp, and
+    /// the status carries the parent this client placed the order under — the
+    /// one it was told, not the engine's answer.
     #[test]
     fn a_status_change_states_the_order_beside_it() {
         let (client, _rx, shared) = crate::api::client::tests::test_client();
@@ -2250,15 +2259,27 @@ mod delivered_size_tests {
                 exchange: "SMART".into(), ..Default::default()
             },
             crate::types::model::Order {
-                order_id: 7, action: "BUY".into(), total_quantity: 100.0,
+                order_id: 7, parent_id: 3, action: "BUY".into(), total_quantity: 100.0,
                 order_type: "LMT".into(), lmt_price: 400.0, ..Default::default()
             },
             0,
         );
+        // What the venue says about the order, held before the report arrives:
+        // an open status with the venue's own stamp on it.
+        shared.orders.push_order_info(7, crate::bridge::RichOrderInfo {
+            contract: Default::default(),
+            order: Default::default(),
+            order_state: crate::types::model::OrderState {
+                status: "Submitted".into(),
+                completed_time: "20260925-09:46:36".into(),
+                ..Default::default()
+            },
+            last_exec: Default::default(),
+        });
         shared.orders.push_order_update(crate::types::OrderUpdate {
             order_id: 7, instrument: 0, status: crate::types::OrderStatus::Submitted,
             filled_qty: 0.0, remaining_qty: 100.0, avg_price: 0,
-            perm_id: 0, parent_id: 0, timestamp_ns: 0,
+            perm_id: 0, parent_id: 99, timestamp_ns: 0,
         });
 
         let mut pairs = Pairs::default();
@@ -2269,6 +2290,11 @@ mod delivered_size_tests {
                 ("open_order", 7, "SPY".to_string(), "Submitted".to_string()),
                 ("order_status", 7, String::new(), "Submitted".to_string()),
             ],
+        );
+        assert_eq!(
+            pairs.1,
+            vec!["20260925 09:46:36 UTC".to_string(), "3".to_string()],
+            "the completed time as the setting publishes it, and the parent this client placed",
         );
     }
 
