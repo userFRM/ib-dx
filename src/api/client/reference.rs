@@ -726,13 +726,14 @@ impl EClient {
         number_of_ticks: i32, what_to_show: &str, use_rth: bool, ignore_size: bool,
     ) {
         if let Err(why) = (|| -> Result<(), Refusal> {
+            // What a gateway reads off this request before anything else, in
+            // its own sentence for it; the engine still names the contract's
+            // type by id where the caller stated none.
+            crate::client_core::ClientCore::validate_ticks_exchange(&contract.exchange)?;
             crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
             // Before anything that reaches the venue, so an id it cannot carry is
             // named as the trouble rather than whatever is checked first.
             let wire_id = wire_req_id(req_id)?;
-            // A contract given by id alone is named by the engine before the
-            // request goes: a request states the contract's type and its
-            // exchange, and both are the venue's to say.
             // Refused here rather than turned into trades on the way out.
             crate::control::historical::tick_data_type(what_to_show)?;
             // A moment a gateway cannot read is refused at intake under the

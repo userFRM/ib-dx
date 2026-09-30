@@ -5052,6 +5052,35 @@ fn a_head_timestamp_request_naming_no_exchange_is_refused() {
     }
 }
 
+/// A ticks request naming no exchange is refused at intake in this
+/// request's own sentence — not the one the rest of the historical family
+/// is refused in — read off the contract as the caller stated it, a
+/// contract given by id alone included, before anything is looked up or
+/// sent. Whitespace states no venue either.
+#[test]
+fn a_ticks_request_naming_no_exchange_is_refused_in_its_own_words() {
+    let (client, rx, _shared) = test_client();
+    for contract in [
+        Contract { con_id: 495_512_563, ..Default::default() },
+        Contract { symbol: "SPY".into(), sec_type: "STK".into(), ..Default::default() },
+        Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() },
+    ] {
+        let err = crate::api::client::tests::reported(&client, || {
+            client.req_historical_ticks(8, &contract, "20260925-13:00:00", "", 100, "TRADES", true, false)
+        })
+        .expect_err("no exchange named");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (
+                Refusal::VALIDATION,
+                "Error validating request:-'' : cause - Exchange must not be empty",
+            ),
+            "{contract:?}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Contract details
 // ═══════════════════════════════════════════════════════════════════
@@ -9965,7 +9994,8 @@ fn an_answering_call_does_not_wait_on_itself_to_name_a_contract_given_by_id() {
 }
 
 /// A request for bars, a head timestamp, a histogram, ticks or a schedule that
-/// gives its contract by id alone goes to the engine as it stands, and the
+/// gives its contract by id alone — stating the venue where the gateway reads
+/// one off it — goes to the engine as it stands, and the
 /// engine asks the venue to name it by that id before the request goes. Named
 /// at the call, the caller's thread waited out the lookup's round trip. A
 /// histogram or a fundamental report describing its contract is named by that
@@ -9986,7 +10016,7 @@ fn a_request_given_by_id_alone_is_named_by_the_engine_not_the_call() {
     client.try_req_historical_data(1, &venue_stated, "", "1 D", "1 hour", "TRADES", true, 1, false).expect("handed over");
     client.try_req_head_time_stamp(2, &venue_stated, "TRADES", true, 1).expect("handed over");
     client.try_req_histogram_data(3, &by_id_alone, true, "1 week").expect("handed over");
-    crate::api::client::tests::reported(&client, || client.req_historical_ticks(4, &by_id_alone, "20250101 00:00:00", "", 10, "TRADES", true, false))
+    crate::api::client::tests::reported(&client, || client.req_historical_ticks(4, &venue_stated, "20250101 00:00:00", "", 10, "TRADES", true, false))
         .expect("handed over");
     client.try_req_historical_schedule(5, &venue_stated, "", "1 D", true).expect("handed over");
     client.try_req_fundamental_data(7, &described, "ReportSnapshot").expect("handed over");

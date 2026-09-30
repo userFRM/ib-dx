@@ -598,6 +598,12 @@ impl EClient {
         misc_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // What a gateway reads off this request before anything else, in its
+        // own sentence for it; the engine still names the contract's type by
+        // id where the caller stated none.
+        if let Err(why) = ClientCore::validate_ticks_exchange(&contract.exchange) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
@@ -615,9 +621,6 @@ impl EClient {
                 return self.report_refusal(py, req_id, why);
             }
         }
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalTicks {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,

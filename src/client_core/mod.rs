@@ -6640,6 +6640,19 @@ impl ClientCore {
         Ok(())
     }
 
+    /// The exchange a ticks request states, read off the contract as the
+    /// caller stated it — a contract given by id alone included — refused
+    /// before anything else in the request is read, and in this request's
+    /// own sentence: a gateway refuses a ticks request naming no venue in
+    /// other words than the rest of the historical family. Whitespace
+    /// states no venue either.
+    pub fn validate_ticks_exchange(exchange: &str) -> Result<(), Refusal> {
+        if exchange.trim().is_empty() {
+            return Err(Refusal::validation("Exchange must not be empty"));
+        }
+        Ok(())
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized
