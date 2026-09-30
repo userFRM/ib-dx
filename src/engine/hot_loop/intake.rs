@@ -622,6 +622,15 @@ impl HotLoop {
             self.refuse_order(api_id, op, Refusal::stated(2102, "Unable to modify this order as its still being processed."));
             return Step::Done;
         }
+        // A source kind no identifier of a gateway answers to is refused
+        // before the order is named, built or sent, in its standing text as
+        // a gateway states it — the refusal the details surface makes, on the
+        // shared path a placement and a replacement on either client surface
+        // arrive by.
+        if let Some(why) = ClientCore::unknown_sec_id_type(&p.contract.sec_id_type) {
+            self.refuse_order(api_id, op, why);
+            return Step::Done;
+        }
         let order_id = if let Some(wire) = *wire_id { wire } else {
         let reusable = std::cell::Cell::new(false);
         // Counted from the highest number used this session, saved before it
@@ -3137,6 +3146,77 @@ mod tests {
             assert_eq!(wire.contains("35=D|"), refused.is_none(), "{what}: {wire}");
             if parent == Some("held") {
                 assert_eq!(wire.matches("35=D|").count(), 2, "{what}: the held parent goes with its child: {wire}");
+            }
+        }
+    }
+
+    /// An order stating a source kind no identifier of a gateway answers to
+    /// is refused before anything is named or sent, in the gateway's standing
+    /// text for it under 321 — a placement and a replacement alike, on the
+    /// shared order path both client surfaces place through, as its details
+    /// path refuses the same kind. A kind a gateway knows, and no kind at
+    /// all, go as stated.
+    #[test]
+    fn an_order_stating_an_unknown_source_kind_is_refused_as_a_gateway_refuses_it() {
+        for (what, sec_id_type, sec_id, replaces, refused) in [
+            ("a placement stating a kind no identifier answers to", "BBGID", "BBG000B9XRY4", false, true),
+            ("a placement stating a known kind in lower case", "cusip", "US0378331005", false, true),
+            ("a replacement stating a kind no identifier answers to", "FOO", "US0378331005", true, true),
+            ("a placement stating a known kind", "CUSIP", "US0378331005", false, false),
+            ("a placement stating no kind", "", "", false, false),
+        ] {
+            let shared = Arc::new(SharedState::new());
+            shared.orders.set_replay_done();
+            let mut engine = HotLoop::new(shared.clone(), None, None);
+            let (connection, mut peer) = Connection::for_test();
+            peer.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
+            engine.ccp_conn = Some(connection);
+            engine.set_account_id("DU1".into());
+            let (send, receive) = mpsc::channel();
+            engine.set_control_rx(receive);
+            let mut sent = || {
+                let mut wire = String::new();
+                let mut bytes = [0; 16384];
+                while let Ok(n) = peer.read(&mut bytes) {
+                    if n == 0 { break; }
+                    wire.push_str(&String::from_utf8_lossy(&bytes[..n]));
+                }
+                wire.replace('\x01', "|")
+            };
+            let mut place = |kind: &str, id: &str| {
+                shared.admit(&send, ControlCommand::Place(Box::new(Placement {
+                    order_id: 10,
+                    allocator: Arc::new(AtomicU64::new(11)),
+                    contract: Contract {
+                        con_id: 265598, symbol: "X".into(), sec_type: "STK".into(),
+                        exchange: "SMART".into(), currency: "USD".into(),
+                        sec_id: id.into(), sec_id_type: kind.into(), ..Default::default()
+                    },
+                    order: Order::limit("BUY", 1.0, 1.0),
+                    warnings: Vec::new(),
+                }))).unwrap();
+                (0..3).for_each(|_| engine.poll_once());
+            };
+            if replaces {
+                place("", "");
+                let first = sent();
+                assert!(first.contains("35=D|") && shared.drain_refused().is_empty(), "{what}: working first");
+            }
+            place(sec_id_type, sec_id);
+            let wire = sent();
+            let told = shared.drain_refused();
+            let codes: Vec<_> = told.iter().map(|(_, code, _)| *code).collect();
+            assert_eq!(codes, if refused { vec![321] } else { vec![] }, "{what}: {told:?}");
+            if refused {
+                assert_eq!(told[0].0, 10, "{what}: the refusal is on the order's number");
+                assert_eq!(
+                    told[0].2,
+                    format!("Error validating request:-'' : cause - Unknown security type : {sec_id_type} "),
+                    "{what}",
+                );
+                assert!(wire.is_empty(), "{what}: nothing goes out: {wire}");
+            } else {
+                assert!(wire.contains("35=D|"), "{what}: {wire}");
             }
         }
     }
