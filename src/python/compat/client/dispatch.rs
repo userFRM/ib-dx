@@ -1372,9 +1372,18 @@ impl EClient {
             call_wrapper!(self, py, shared, "update_account_value", (field.key.as_str(), field.value.as_str(), field.currency.as_str(), account_name.as_str()));
         }
         for entry in &portfolio {
+            // Named from the row while the cache is cold, exactly as the
+            // positions path names a holding.
             let c = match self.core.get_contract(entry.con_id, shared) {
                 Some(ac) => Contract::from_api(py, &ac)?,
-                None => Contract { con_id: entry.con_id, ..Default::default() },
+                None => Contract {
+                    con_id: entry.con_id,
+                    symbol: entry.symbol.clone(),
+                    sec_type: entry.sec_type.clone(),
+                    currency: entry.currency.clone(),
+                    multiplier: entry.multiplier.clone(),
+                    ..Default::default()
+                },
             };
             let c_py = pyo3::Py::new(py, c).unwrap().into_any();
             call_wrapper!(self, py, shared, "update_portfolio",

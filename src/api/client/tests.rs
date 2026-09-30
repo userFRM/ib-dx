@@ -8286,7 +8286,7 @@ fn subscribing_to_account_updates_reports_the_portfolio() {
     #[derive(Default)]
     struct Heard {
         values: Vec<String>,
-        positions: Vec<(i64, f64)>,
+        positions: Vec<(i64, String, String, f64)>,
     }
     impl Wrapper for Heard {
         fn update_account_value(&mut self, key: &str, _v: &str, _c: &str, _a: &str) {
@@ -8294,7 +8294,8 @@ fn subscribing_to_account_updates_reports_the_portfolio() {
         }
         fn update_portfolio(&mut self, contract: &Contract, position: f64, _mp: f64, _mv: f64,
                             _ac: f64, _up: f64, _rp: f64, _acct: &str) {
-            self.positions.push((contract.con_id, position));
+            self.positions.push((contract.con_id, contract.symbol.clone(),
+                                 contract.sec_type.clone(), position));
         }
     }
 
@@ -8326,8 +8327,8 @@ fn subscribing_to_account_updates_reports_the_portfolio() {
 
     assert!(heard.values.contains(&"NetLiquidation".to_string()), "the values still arrive");
     assert_eq!(
-        heard.positions, vec![(756733, 100.0)],
-        "and the holding they describe arrives with them",
+        heard.positions, vec![(756733, "SPY".to_string(), "STK".to_string(), 100.0)],
+        "and the holding they describe arrives with them, named from the row",
     );
 }
 

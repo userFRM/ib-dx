@@ -1106,10 +1106,16 @@ impl EClient {
         // What the account holds, beside what it is worth. The reference
         // client reports both on this subscription.
         for entry in portfolio {
+            // Named from the row while the cache is cold, exactly as the
+            // positions path names a holding.
             let contract = self.core
                 .get_contract(entry.con_id, &self.shared)
                 .unwrap_or_else(|| crate::types::model::Contract {
                     con_id: entry.con_id,
+                    symbol: entry.symbol.clone(),
+                    sec_type: entry.sec_type.clone(),
+                    currency: entry.currency.clone(),
+                    multiplier: entry.multiplier.clone(),
                     ..Default::default()
                 });
             wrapper.update_portfolio(

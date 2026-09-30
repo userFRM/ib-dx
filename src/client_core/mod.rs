@@ -794,6 +794,14 @@ pub struct AccountSummaryEntry {
 pub struct PortfolioUpdateEntry {
     /// The contract.
     pub con_id: i64,
+    /// Its ticker, as the position row states it.
+    pub symbol: String,
+    /// What kind of contract it is, as the row states it.
+    pub sec_type: String,
+    /// What it is priced in, as the row states it.
+    pub currency: String,
+    /// How many units one contract is worth, as the row states it.
+    pub multiplier: String,
     /// How much is held.
     pub position: f64,
     /// What it cost on average.
@@ -5601,6 +5609,10 @@ impl ClientCore {
 
         let to_entry = |pi: &PositionInfo| PortfolioUpdateEntry {
             con_id: pi.con_id,
+            symbol: pi.symbol.clone(),
+            sec_type: pi.sec_type.clone(),
+            currency: pi.currency.clone(),
+            multiplier: pi.multiplier.clone(),
             position: pi.position,
             avg_cost: pi.avg_cost as f64 / PRICE_SCALE_F,
             market_price: pi.market_price as f64 / PRICE_SCALE_F,

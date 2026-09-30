@@ -1078,13 +1078,16 @@ impl EClient {
 
     /// Push a position into SharedState.
     #[doc(hidden)]
-    #[pyo3(signature = (con_id, position, avg_cost, account=""))]
-    fn _test_set_position(&self, con_id: i64, position: f64, avg_cost: f64, account: &str) -> PyResult<()> {
+    #[pyo3(signature = (con_id, position, avg_cost, account="", symbol="", sec_type="", currency="", multiplier=""))]
+    fn _test_set_position(&self, con_id: i64, position: f64, avg_cost: f64, account: &str, symbol: &str, sec_type: &str, currency: &str, multiplier: &str) -> PyResult<()> {
         let shared = self.shared_state()?;
         let portfolio = shared.portfolio_for(account);
         let ps = PRICE_SCALE as f64;
         portfolio.set_position_info(PositionInfo {
-            con_id, position, avg_cost: (avg_cost * ps) as i64, ..Default::default()
+            con_id, position, avg_cost: (avg_cost * ps) as i64,
+            symbol: symbol.to_string(), sec_type: sec_type.to_string(),
+            currency: currency.to_string(), multiplier: multiplier.to_string(),
+            ..Default::default()
         });
         Ok(())
     }
