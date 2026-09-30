@@ -150,6 +150,9 @@ pub const FAIL_SEND_REQCONTRACT: (i32, &str) = (518, "Request Contract Data Send
 /// A book request carrying a field stated as None.
 pub const FAIL_SEND_REQMKTDEPTH: (i32, &str) = (519, "Request Market Depth Sending Error - ");
 
+/// A scanner subscription carrying a field stated as None.
+pub const FAIL_SEND_REQSCANNER: (i32, &str) = (524, "Request Scanner Subscription Sending Error - ");
+
 /// A history request carrying a field stated as None.
 pub const FAIL_SEND_REQHISTDATA: (i32, &str) = (527, "Request Historical Data Sending Error - ");
 

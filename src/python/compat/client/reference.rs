@@ -278,14 +278,18 @@ impl EClient {
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
         Python::attach(|py| {
-            // An absent attribute takes the default. One that is present and
-            // cannot be read is a value the caller stated, and is refused
-            // rather than run as a different scan under their request id.
+            // An absent attribute takes the default. One that is present is a
+            // value the caller stated: None is refused at the send as the
+            // reference client's encoder refuses it, and a value that cannot
+            // be read is refused rather than run as a different scan — both
+            // under the caller's request id.
             macro_rules! stated {
                 ($attr:literal, $kind:ty, $default:expr) => {
                     match subscription.getattr(py, $attr) {
                         Err(_) => $default,
-                        Ok(held) if held.is_none(py) => $default,
+                        Ok(held) if held.is_none(py) => return self.report_refusal(py, req_id,
+                            crate::error_codes::none_to_tws(
+                                crate::error_codes::FAIL_SEND_REQSCANNER)),
                         Ok(held) => match held.extract::<$kind>(py) {
                             Ok(value) => value,
                             Err(why) => return self.report_refusal(py, req_id,

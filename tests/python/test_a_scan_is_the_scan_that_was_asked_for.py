@@ -45,6 +45,20 @@ def test_a_field_stated_and_unreadable_is_refused():
     assert "scanCode" in w.errors[0][1]
 
 
+def test_a_field_stated_none_is_refused_at_the_send():
+    """The reference client's encoder raises on None and the request's
+    catch-all reports the send error under the caller's request id, with
+    nothing sent."""
+    w, c = _client()
+    sub = ib_async.ScannerSubscription()
+    sub.scanCode = None
+    c.req_scanner_subscription(6, sub)
+    c.poll()
+    assert w.errors == [
+        (524, "Request Scanner Subscription Sending Error - Cannot send None to TWS"),
+    ], w.errors
+
+
 def test_a_field_left_off_takes_the_default():
     """Anything shaped like a subscription works, as the reference client's
     own duck-typing allows."""
