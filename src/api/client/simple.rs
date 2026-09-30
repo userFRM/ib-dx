@@ -113,8 +113,14 @@ impl EClient {
         //
         // Through the same store `place_order` reads, so a description already
         // resolved once in this session is not asked about again.
+        //
+        // The id is read as a gateway reads one: an id left at the unset marker
+        // the reference client carries states none, as zero states none, and is
+        // resolved by the description beside it.
         let named;
-        let contract = if contract.con_id == 0 && !contract.symbol.is_empty() {
+        let contract = if crate::client_core::ClientCore::identifier_unstated(contract.con_id)
+            && !contract.symbol.is_empty()
+        {
             let key = crate::client_core::ClientCore::description_key(contract);
             let by_the_venue = match self.core.named_for(&key) {
                 Some(already) => already,

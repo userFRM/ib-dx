@@ -12059,13 +12059,31 @@ fn placing_by_description_keeps_the_hedge_the_caller_stated() {
     // reports what is known; what it was placed on is on the book either way.
     let _ = client.place(&hedged, &Order::limit("BUY", 100.0, 100.0));
 
-    let held = client.core.open_orders.lock().unwrap();
-    let (_, placed) = held.iter().next().expect("the order is tracked");
-    assert!(
-        placed.contract.delta_neutral_contract.is_some(),
-        "the contract this order hedges against is what the caller stated: {:?}",
-        placed.contract,
-    );
+    {
+        let held = client.core.open_orders.lock().unwrap();
+        let (_, placed) = held.iter().next().expect("the order is tracked");
+        assert!(
+            placed.contract.delta_neutral_contract.is_some(),
+            "the contract this order hedges against is what the caller stated: {:?}",
+            placed.contract,
+        );
+    }
+
+    // An id left at the unset marker the reference client carries states no
+    // id, as zero states none: the description beside it is resolved from
+    // the same record, and the order is tracked under the venue's id rather
+    // than proceeding under an identifier no session registered.
+    let marked = Contract { con_id: i64::from(i32::MAX), ..spy() };
+    let _ = client.place(&marked, &Order::limit("BUY", 100.0, 100.0));
+    {
+        let held = client.core.open_orders.lock().unwrap();
+        assert_eq!(held.len(), 2, "the marked description resolved and its order is tracked");
+        assert!(
+            held.values().all(|p| p.contract.con_id == 756733),
+            "no order proceeds under the marker: {:?}",
+            held.values().map(|p| p.contract.con_id).collect::<Vec<_>>(),
+        );
+    }
 }
 
 /// A preview of a description keeps the hedge and the legs the caller stated,
@@ -12074,31 +12092,107 @@ fn placing_by_description_keeps_the_hedge_the_caller_stated() {
 /// A preview names an unqualified contract itself, ahead of the turn, and then
 /// hands `place_order` the venue's naming — so the preview came back for a
 /// bare contract while the caller asked about a delta-neutral order.
+///
+/// Run for both spellings of an identifier the caller did not state: zero,
+/// and the unset marker the reference client carries. Both name no contract,
+/// and both are resolved by the description before the preview is placed.
 #[test]
 fn previewing_by_description_keeps_the_hedge_the_caller_stated() {
+    for stated in [0i64, i64::from(i32::MAX)] {
+        let (client, rx, shared) = test_client();
+        let mut hedged = spy();
+        hedged.con_id = stated;
+        hedged.delta_neutral_contract = Some(crate::types::model::DeltaNeutralContract {
+            con_id: 265598, delta: 0.5, price: 100.0,
+        });
+        let preview = Order {
+            action: "BUY".into(), total_quantity: 100.0, order_type: "LMT".into(),
+            lmt_price: 150.0, what_if: true, ..Default::default()
+        };
+
+        let previewed_on: std::sync::Mutex<Option<Contract>> = std::sync::Mutex::new(None);
+        let pushed = Arc::clone(&shared);
+        // The channel is not shared, it is handed over: the answering side owns it
+        // for as long as the question runs.
+        let placing = &client;
+        let previewed = &previewed_on;
+        let refused = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                let give_up = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                // The lookup goes out first, under a number of this client's own
+                // choosing. Answered as the venue answers it: one contract, and
+                // nothing about a hedge.
+                let looked_up = loop {
+                    assert!(std::time::Instant::now() < give_up, "no lookup was asked");
+                    match rx.try_recv() {
+                        Ok(ControlCommand::FetchContractDetails { req_id, .. }) => break req_id,
+                        Ok(_) => {}
+                        Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
+                    }
+                };
+                pushed.reference.push_contract_details(looked_up, ContractDefinition {
+                    con_id: 756733, symbol: "SPY".into(), sec_type: SecurityType::Stock,
+                    exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
+                });
+                pushed.reference.push_contract_details_end(looked_up);
+                // Then the preview is placed, and what it was placed on is the
+                // question. Refused as soon as it is read, so the wait ends here
+                // rather than at the answer timeout.
+                let order_id = loop {
+                    assert!(std::time::Instant::now() < give_up, "no preview was placed");
+                    // The engine takes the preview as it takes an order.
+                    let _ = rx.try_recv();
+                    let found = placing.core.open_orders.lock().unwrap().iter()
+                        .find(|(_, tracked)| tracked.order.what_if)
+                        .map(|(id, tracked)| (*id, tracked.contract.clone()));
+                    if let Some((id, on)) = found {
+                        *previewed.lock().unwrap() = Some(on);
+                        break id;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                };
+                pushed.orders.push_order_inactive(order_id, crate::types::model::OrderOp::Place, 201, "the margin cannot be stated".into());
+            });
+            client.what_if_order(&hedged, &preview).expect_err("the venue refused")
+        });
+
+        assert_eq!(refused.code, 201, "the venue's number reaches the caller: {refused}");
+        let on = previewed_on.lock().unwrap().clone().expect("the preview was placed");
+        assert!(
+            on.delta_neutral_contract.is_some(),
+            "the preview went out on the venue's naming, which hedges against \
+             nothing: {on:?}",
+        );
+        assert_eq!(
+            on.con_id, 756733,
+            "the preview went out under the venue's id, not the unstated \
+             identifier the caller left it at ({stated}): {on:?}",
+        );
+    }
+}
+
+/// A preview carrying the unset marker alone is handled as one naming no
+/// contract, as one carrying zero alone is: it goes through the naming, and
+/// a venue that names nothing refuses it — rather than skipping the naming
+/// and proceeding under an identifier no session registered.
+#[test]
+fn previewing_under_the_unset_marker_alone_is_refused_as_naming_no_contract() {
     let (client, rx, shared) = test_client();
-    let mut hedged = spy();
-    hedged.con_id = 0;
-    hedged.delta_neutral_contract = Some(crate::types::model::DeltaNeutralContract {
-        con_id: 265598, delta: 0.5, price: 100.0,
-    });
+    let bare = Contract {
+        con_id: i64::from(i32::MAX), sec_type: "STK".into(), exchange: "SMART".into(),
+        ..Default::default()
+    };
     let preview = Order {
         action: "BUY".into(), total_quantity: 100.0, order_type: "LMT".into(),
         lmt_price: 150.0, what_if: true, ..Default::default()
     };
-
-    let previewed_on: std::sync::Mutex<Option<Contract>> = std::sync::Mutex::new(None);
     let pushed = Arc::clone(&shared);
-    // The channel is not shared, it is handed over: the answering side owns it
-    // for as long as the question runs.
-    let placing = &client;
-    let previewed = &previewed_on;
     let refused = std::thread::scope(|scope| {
         scope.spawn(move || {
             let give_up = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            // The lookup goes out first, under a number of this client's own
-            // choosing. Answered as the venue answers it: one contract, and
-            // nothing about a hedge.
+            // The naming goes out first, under a number of this client's own
+            // choosing. Answered as a venue answers one that names nothing:
+            // the end of the definitions, and no definition before it.
             let looked_up = loop {
                 assert!(std::time::Instant::now() < give_up, "no lookup was asked");
                 match rx.try_recv() {
@@ -12107,38 +12201,13 @@ fn previewing_by_description_keeps_the_hedge_the_caller_stated() {
                     Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
                 }
             };
-            pushed.reference.push_contract_details(looked_up, ContractDefinition {
-                con_id: 756733, symbol: "SPY".into(), sec_type: SecurityType::Stock,
-                exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
-            });
             pushed.reference.push_contract_details_end(looked_up);
-            // Then the preview is placed, and what it was placed on is the
-            // question. Refused as soon as it is read, so the wait ends here
-            // rather than at the answer timeout.
-            let order_id = loop {
-                assert!(std::time::Instant::now() < give_up, "no preview was placed");
-                // The engine takes the preview as it takes an order.
-                let _ = rx.try_recv();
-                let found = placing.core.open_orders.lock().unwrap().iter()
-                    .find(|(_, tracked)| tracked.order.what_if)
-                    .map(|(id, tracked)| (*id, tracked.contract.clone()));
-                if let Some((id, on)) = found {
-                    *previewed.lock().unwrap() = Some(on);
-                    break id;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            };
-            pushed.orders.push_order_inactive(order_id, crate::types::model::OrderOp::Place, 201, "the margin cannot be stated".into());
         });
-        client.what_if_order(&hedged, &preview).expect_err("the venue refused")
+        client.what_if_order(&bare, &preview).expect_err("nothing was named")
     });
-
-    assert_eq!(refused.code, 201, "the venue's number reaches the caller: {refused}");
-    let on = previewed_on.lock().unwrap().clone().expect("the preview was placed");
     assert!(
-        on.delta_neutral_contract.is_some(),
-        "the preview went out on the venue's naming, which hedges against \
-         nothing: {on:?}",
+        refused.message.contains("no contract matches"),
+        "refused as one naming no contract: {refused}",
     );
 }
 

@@ -863,8 +863,12 @@ impl EClient {
         // carries it instead: the preview of a delta-neutral order or of a
         // combination is a preview of the order that would be placed, not of a
         // bare contract the venue was asked to name.
+        //
+        // The id is read as a gateway reads one: an id left at the unset marker
+        // the reference client carries states none, as zero states none, and is
+        // named by the description beside it.
         let named;
-        let contract = if contract.con_id == 0 {
+        let contract = if crate::client_core::ClientCore::identifier_unstated(contract.con_id) {
             named = named_with_what_the_caller_stated(self.qualify_contract(contract)?, contract);
             &named
         } else {
