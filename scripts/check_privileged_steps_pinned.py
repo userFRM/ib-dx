@@ -25,6 +25,8 @@ PERM = re.compile(r"^\s+([a-z-]+):\s*(read|write|none)\s*$")
 JOB = re.compile(r"^ {2}([A-Za-z0-9_-]+):\s*$")
 USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)\s*(?:#\s*(\S.*?))?\s*$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
+ABBR = re.compile(r"^[0-9a-f]{7,39}$")
+TAG = re.compile(r"v?\d+\.\d+\.\d+")
 
 
 def perms_under(lines, i, indent):
@@ -88,14 +90,27 @@ def audit(path):
             action, _, version = ref.partition("@")
             holding = ", ".join(k for k, v in perms.items() if v == "write")
             if not SHA.match(version):
-                problems.append(
-                    f"{where}: {job} holds {holding} write and resolves "
-                    f"{action} by tag, not by commit SHA"
-                )
+                if ABBR.match(version):
+                    problems.append(
+                        f"{where}: {job} holds {holding} write and pins "
+                        f"{action} by the abbreviated commit SHA {version}, "
+                        "not the full SHA"
+                    )
+                else:
+                    problems.append(
+                        f"{where}: {job} holds {holding} write and resolves "
+                        f"{action} by tag, not by commit SHA"
+                    )
             elif not comment:
                 problems.append(
                     f"{where}: {job} holds {holding} write and pins {action} "
                     "without recording the tag the SHA was resolved from"
+                )
+            elif not TAG.fullmatch(comment):
+                problems.append(
+                    f"{where}: {job} holds {holding} write and pins {action} "
+                    f"beside the comment {comment!r}, which does not read as "
+                    "the version tag the pin claims to name"
                 )
     return problems
 
