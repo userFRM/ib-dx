@@ -520,8 +520,14 @@ impl EClient {
     /// C++.
     pub fn req_news_article(&self, req_id: i64, provider_code: &str, article_id: &str) {
         if let Err(why) = (|| -> Result<(), Refusal> {
+            // The number is read before anything is validated, as a gateway
+            // reads the request before it checks what it states.
+            let numbered = wire_req_id(req_id)?;
+            crate::control::news::validate_news_article(
+                provider_code, article_id, &self.shared.reference.news_providers(),
+            )?;
             self.send(ControlCommand::FetchNewsArticle {
-                req_id: wire_req_id(req_id)?,
+                req_id: numbered,
                 provider_code: provider_code.into(),
                 article_id: article_id.into(),
             })

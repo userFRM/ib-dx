@@ -349,6 +349,12 @@ impl EClient {
         if let Some(why) = self.options_refused(py, &crate::client_core::NEWS_ARTICLE_OPTIONS, news_article_options)? {
             return self.report_refusal(py, req_id, why);
         }
+        // The provider is checked before the article id, as a gateway checks
+        // them.
+        let subscribed = self.shared_state()?.reference.news_providers();
+        if let Err(why) = crate::control::news::validate_news_article(provider_code, article_id, &subscribed) {
+            return self.report_refusal(py, req_id, why.into());
+        }
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchNewsArticle {
                 req_id: wire_req_id(req_id)?,
                 provider_code: provider_code.to_string(),

@@ -4574,6 +4574,33 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// An article request naming an unsubscribed provider, or a blank article
+    /// id, is refused here in a gateway's own words, and the venue is asked
+    /// nothing.
+    #[test]
+    fn a_news_article_an_unsubscribed_provider_or_a_blank_id_names_is_refused_here() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, shared, _w) = wired_client(py);
+            shared.reference.set_news_providers(vec![
+                crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+            ]);
+            client.call_method1(py, "req_news_article", (1i64, "DJNL", "DJNL$1")).unwrap();
+            client.call_method1(py, "req_news_article", (2i64, "BRFG", "")).unwrap();
+            assert!(rx.try_recv().is_err(), "the venue was asked");
+            let refused = shared.drain_refused();
+            assert_eq!(refused.len(), 2, "the caller is told");
+            assert_eq!(
+                (refused[0].1, refused[0].2.as_str()),
+                (321, "Error validating request:-'DJNL' : cause - Not subscribed for 'DJNL' provider"),
+            );
+            assert_eq!(
+                (refused[1].1, refused[1].2.as_str()),
+                (321, "Error validating request:-'' : cause - Article ID must not be empty"),
+            );
+        });
+    }
+
     #[cfg(feature = "test-helpers")]
     #[test]
     fn a_callback_replacing_the_session_ends_the_old_dispatch_pass() {

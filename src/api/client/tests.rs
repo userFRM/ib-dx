@@ -6456,7 +6456,10 @@ fn a_headline_count_is_read_as_a_gateway_reads_it() {
 
 #[test]
 fn req_news_article_sends_fetch() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
     crate::api::client::tests::reported(&client, || client.req_news_article(5, "BRFG", "BRFG$12345")).unwrap();
     let cmd = rx.try_recv().unwrap();
     match cmd {
@@ -6467,6 +6470,35 @@ fn req_news_article_sends_fetch() {
         }
         _ => panic!("expected FetchNewsArticle"),
     }
+}
+
+/// An article request is checked at the door as a gateway checks it: the
+/// provider first, then the article id, each refusal in a gateway's own words
+/// under the standing wrap naming the field checked, and the venue is asked
+/// nothing.
+#[test]
+fn a_news_article_an_unsubscribed_provider_or_a_blank_id_names_is_refused() {
+    let (client, rx, shared) = test_client();
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+    client.req_news_article(1, "DJNL", "DJNL$1");
+    client.req_news_article(2, "BRFG", "");
+    client.req_news_article(3, "BRFG", "   ");
+    assert!(rx.try_recv().is_err(), "the venue was asked");
+    let refused = shared.drain_refused();
+    assert_eq!(
+        refused.iter().map(|r| (r.0, r.1, r.2.as_str())).collect::<Vec<_>>(),
+        [
+            (1, 321, "Error validating request:-'DJNL' : cause - Not subscribed for 'DJNL' provider"),
+            (2, 321, "Error validating request:-'' : cause - Article ID must not be empty"),
+            (3, 321, "Error validating request:-'   ' : cause - Article ID must not be empty"),
+        ],
+    );
+    // A subscribed provider is found whichever way it is written, and its
+    // article is asked of the venue.
+    client.req_news_article(4, "brfg", "BRFG$1");
+    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::FetchNewsArticle { .. }));
 }
 
 // ═══════════════════════════════════════════════════════════════════
