@@ -163,20 +163,47 @@ const PERIOD_UNITS: [(&str, &str, &str); 8] = [
     ("years", "yrs", "y"),
 ];
 
-/// Read a period the way a gateway reads one: whitespace ignored, a leading
-/// positive integer taken as the count, one trailing lowercase 's' dropped,
-/// and what is left matched case-sensitively as the start of a unit's plural
-/// or short plural. Nothing is read where what is left fits two units — "m"
-/// fits minutes and months — as at a gateway; nor where the text carries no
-/// leading positive integer or a count no query number can carry.
-fn parse_period(period: &str) -> Option<(u32, &'static str)> {
-    let stripped: String = period.chars().filter(|c| !c.is_whitespace()).collect();
-    let digits = stripped.find(|c: char| !c.is_ascii_digit()).unwrap_or(stripped.len());
-    if digits == 0 || stripped.as_bytes()[0] == b'0' {
-        return None;
-    }
-    let count: u32 = stripped[..digits].parse().ok()?;
-    let mut rest = &stripped[digits..];
+/// Read a period the way a gateway reads one: ASCII whitespace ignored — a
+/// non-ASCII space is none to its strip and survives it — the first run of
+/// digits starting 1-9 taken as the count wherever in the text it stands,
+/// so a unit word carrying trailing junk still reads, one trailing
+/// lowercase 's' dropped from what is left, and that matched
+/// case-sensitively as the start of a unit's plural or short plural.
+/// Nothing is read where what is left fits two units — "m" fits minutes and
+/// months — as at a gateway; nor where the text carries no such run or the
+/// run reads as nought. A count the gateway's signed 32-bit parse cannot
+/// hold is its parse failure, which reaches the wire as a read refusal
+/// rather than an invalid period.
+fn parse_period(
+    period: &str,
+) -> Result<Option<(i32, &'static str)>, crate::error_codes::Refusal> {
+    let stripped: String = period
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r'))
+        .collect();
+    // The count is the first run of digits starting 1-9 anywhere in the
+    // text; taking it out joins what stood on either side of it.
+    let (count, rest) = match stripped.find(|c: char| c.is_ascii_digit() && c != '0') {
+        Some(at) => {
+            let end = at
+                + stripped[at..]
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(stripped.len() - at);
+            let digits = &stripped[at..end];
+            let count = digits.parse::<i32>().map_err(|_| {
+                crate::error_codes::Refusal::stated(
+                    crate::error_codes::REQUEST_NOT_READ,
+                    format!(
+                        "Error reading request: Unable to parse data. \
+                         java.lang.NumberFormatException: For input string: \"{digits}\""
+                    ),
+                )
+            })?;
+            (count, format!("{}{}", &stripped[..at], &stripped[end..]))
+        }
+        None => (0, stripped),
+    };
+    let mut rest = rest.as_str();
     if rest.len() >= 2 && rest.ends_with('s') {
         rest = &rest[..rest.len() - 1];
     }
@@ -184,20 +211,26 @@ fn parse_period(period: &str) -> Option<(u32, &'static str)> {
     for (plural, short, unit) in PERIOD_UNITS {
         if plural.starts_with(rest) || short.starts_with(rest) {
             if token.is_some() {
-                return None;
+                return Ok(None);
             }
             token = Some(unit);
         }
     }
-    Some((count, token?))
+    let Some(token) = token else { return Ok(None) };
+    if count <= 0 {
+        return Ok(None);
+    }
+    Ok(Some((count, token)))
 }
 
 /// The period a histogram request states: one no gateway reads is refused at
 /// intake in a gateway's own sentence, rather than riding raw to the venue
 /// and coming back as a failed query — and rather than being case-folded
-/// into a different question, which the table this replaced did.
+/// into a different question, which the table this replaced did. A count no
+/// signed 32-bit parse holds is refused as the gateway's parse failure
+/// refuses it: a read refusal under 320, not an invalid period under 321.
 pub fn validate_period(period: &str) -> Result<(), crate::error_codes::Refusal> {
-    if parse_period(period).is_none() {
+    if parse_period(period)?.is_none() {
         return Err(crate::error_codes::Refusal::validation("Invalid time period"));
     }
     Ok(())
@@ -217,8 +250,8 @@ pub fn validate_period(period: &str) -> Result<(), crate::error_codes::Refusal> 
 /// wrote rather than a silent default.
 fn convert_period(period: &str) -> String {
     match parse_period(period) {
-        Some((count, unit)) => format!("{count} {unit}"),
-        None => period.to_string(),
+        Ok(Some((count, unit))) => format!("{count} {unit}"),
+        _ => period.to_string(),
     }
 }
 
@@ -255,6 +288,34 @@ mod tests {
         assert_eq!(convert_period("01 days"), "01 days");
         // passthrough for unknown
         assert_eq!(convert_period("foo"), "foo");
+    }
+
+    /// The three edges a gateway's reading and a wrong one part on: its
+    /// count lookup is unanchored, so a unit word carrying trailing junk
+    /// still reads — "week1" is one week; its whitespace strip covers the
+    /// ASCII spaces only, so a non-ASCII space survives it and the unit
+    /// lookup finds nothing; and its count is a signed 32-bit parse, so a
+    /// count past that range is its parse failure, which reaches the wire
+    /// as a read refusal rather than an invalid period.
+    #[test]
+    fn the_period_reading_matches_a_gateway_on_its_edges() {
+        validate_period("week1").expect("the trailing junk of a unit word is no obstacle");
+        assert_eq!(convert_period("week1"), "1 W");
+
+        let padded = validate_period("1\u{a0}day").expect_err("a no-break space is not stripped");
+        assert_eq!((padded.code, padded.message.as_str()), (321, "Invalid time period"));
+        assert_eq!(convert_period("1\u{a0}day"), "1\u{a0}day", "passthrough for unknown");
+
+        let unread = validate_period("4000000000 days")
+            .expect_err("a count no signed 32-bit parse holds");
+        assert_eq!(
+            (unread.code, unread.message.as_str()),
+            (
+                320,
+                "Error reading request: Unable to parse data. \
+                 java.lang.NumberFormatException: For input string: \"4000000000\"",
+            ),
+        );
     }
 
     fn req(con_id: u32, sec_type: &str, exchange: &str, use_rth: bool, period: &str) -> HistogramRequest {

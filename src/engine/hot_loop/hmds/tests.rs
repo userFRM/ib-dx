@@ -571,6 +571,11 @@ fn a_duplicate_head_timestamp_or_histogram_is_refused_as_a_gateway_refuses_it() 
 
         if asked == "head-timestamp" {
             hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
+            assert_eq!(
+                hmds.pending_head_ts.len(),
+                usize::from(live == "head-timestamp") + usize::from(reason.is_none()),
+                "{label}: the arrival is held only where a gateway serves it",
+            );
         } else {
             hmds.send_histogram_request(7, 265598, "STK", "SMART", true, "3 M", &mut conn, &mut hb, &shared);
             assert_eq!(
