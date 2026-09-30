@@ -1546,6 +1546,14 @@ impl HotLoop {
             self.refuse_order(b.parent_id as i64, OrderOp::Place, why);
             return Step::Done;
         }
+        // A source kind no identifier of a gateway answers to is refused
+        // before any leg is recorded or sent, on the parent's number and in
+        // the standing text — the refusal the shared order path makes, as a
+        // bracket is three placements the caller states as one.
+        if let Some(why) = ClientCore::unknown_sec_id_type(&c.sec_id_type) {
+            self.refuse_order(b.parent_id as i64, OrderOp::Place, why);
+            return Step::Done;
+        }
         let identity = api::contract_identity(
             &c.last_trade_date_or_contract_month,
             c.strike,
@@ -3154,16 +3162,20 @@ mod tests {
     /// is refused before anything is named or sent, in the gateway's standing
     /// text for it under 321 — a placement and a replacement alike, on the
     /// shared order path both client surfaces place through, as its details
-    /// path refuses the same kind. A kind a gateway knows, and no kind at
-    /// all, go as stated.
+    /// path refuses the same kind, and a bracket alike, refused on its
+    /// parent's number before any leg is recorded or sent. A kind a gateway
+    /// knows, and no kind at all, go as stated.
     #[test]
     fn an_order_stating_an_unknown_source_kind_is_refused_as_a_gateway_refuses_it() {
-        for (what, sec_id_type, sec_id, replaces, refused) in [
-            ("a placement stating a kind no identifier answers to", "BBGID", "BBG000B9XRY4", false, true),
-            ("a placement stating a known kind in lower case", "cusip", "US0378331005", false, true),
-            ("a replacement stating a kind no identifier answers to", "FOO", "US0378331005", true, true),
-            ("a placement stating a known kind", "CUSIP", "US0378331005", false, false),
-            ("a placement stating no kind", "", "", false, false),
+        for (what, sec_id_type, sec_id, replaces, bracket, refused) in [
+            ("a placement stating a kind no identifier answers to", "BBGID", "BBG000B9XRY4", false, false, true),
+            ("a placement stating a known kind in lower case", "cusip", "US0378331005", false, false, true),
+            ("a replacement stating a kind no identifier answers to", "FOO", "US0378331005", true, false, true),
+            ("a bracket stating a kind no identifier answers to", "BBGID", "BBG000B9XRY4", false, true, true),
+            ("a bracket stating a known kind in lower case", "cusip", "US0378331005", false, true, true),
+            ("a placement stating a known kind", "CUSIP", "US0378331005", false, false, false),
+            ("a placement stating no kind", "", "", false, false, false),
+            ("a bracket stating a known kind", "CUSIP", "US0378331005", false, true, false),
         ] {
             let shared = Arc::new(SharedState::new());
             shared.orders.set_replay_done();
@@ -3184,17 +3196,31 @@ mod tests {
                 wire.replace('\x01', "|")
             };
             let mut place = |kind: &str, id: &str| {
-                shared.admit(&send, ControlCommand::Place(Box::new(Placement {
-                    order_id: 10,
-                    allocator: Arc::new(AtomicU64::new(11)),
-                    contract: Contract {
-                        con_id: 265598, symbol: "X".into(), sec_type: "STK".into(),
-                        exchange: "SMART".into(), currency: "USD".into(),
-                        sec_id: id.into(), sec_id_type: kind.into(), ..Default::default()
-                    },
-                    order: Order::limit("BUY", 1.0, 1.0),
-                    warnings: Vec::new(),
-                }))).unwrap();
+                let contract = Contract {
+                    con_id: 265598, symbol: "X".into(), sec_type: "STK".into(),
+                    exchange: "SMART".into(), currency: "USD".into(),
+                    sec_id: id.into(), sec_id_type: kind.into(), ..Default::default()
+                };
+                let cmd = if bracket {
+                    ControlCommand::Bracket(Box::new(crate::types::Bracket {
+                        contract,
+                        parent_id: 10,
+                        side: crate::types::Side::Buy,
+                        quantity: 1.0,
+                        entry: 1.0,
+                        take_profit: 2.0,
+                        stop_loss: 0.5,
+                    }))
+                } else {
+                    ControlCommand::Place(Box::new(Placement {
+                        order_id: 10,
+                        allocator: Arc::new(AtomicU64::new(11)),
+                        contract,
+                        order: Order::limit("BUY", 1.0, 1.0),
+                        warnings: Vec::new(),
+                    }))
+                };
+                shared.admit(&send, cmd).unwrap();
                 (0..3).for_each(|_| engine.poll_once());
             };
             if replaces {
