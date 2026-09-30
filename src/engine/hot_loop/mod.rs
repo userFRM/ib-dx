@@ -1568,6 +1568,44 @@ impl HotLoop {
                         push_hmds_refusal(&self.shared, req_id.max(0) as u32, code, text, false);
                         continue;
                     }
+                    // A fund description is served by no tick-by-tick stream:
+                    // the gateway's catalog runs its streams for the security
+                    // types it lists, and a fund is on none. Refused at
+                    // request time, under one sentence naming both. Which
+                    // further types a gateway's own logon lists is its
+                    // config, not stated on this wire.
+                    if sec_type.eq_ignore_ascii_case("FUND") {
+                        let kind = HmdsState::tbt_wire_kind(tbt_type);
+                        push_hmds_tbt_error(
+                            &self.shared, req_id.max(0) as u32,
+                            format!("{kind} tick-by-tick requests are not supported for {sec_type}"),
+                            false,
+                        );
+                        continue;
+                    }
+                    // The session holds at most three distinct contracts
+                    // under stream — the gateway's default, and the floor of
+                    // any raise a logon configures, which this client is not
+                    // given (ponytail: static cap; a configured raise would
+                    // arrive on the logon feed if one is ever modelled). A
+                    // contract already held is free: its streams ride the
+                    // query the venue already runs, and no new slot is taken.
+                    let held = self.context.market.instrument_by_con_id(con_id)
+                        .is_some_and(|asked| self.hmds.tbt_subscriptions.iter().any(|s| s.instrument == asked));
+                    if !held {
+                        let distinct: std::collections::HashSet<_> =
+                            self.hmds.tbt_subscriptions.iter().map(|s| s.instrument).collect();
+                        if distinct.len() >= 3 {
+                            const TBT_MAX_CODE: i32 = 10190;
+                            log::error!("tick-by-tick {req_id} refused: the held maximum is reached");
+                            push_hmds_refusal(
+                                &self.shared, req_id.max(0) as u32, TBT_MAX_CODE,
+                                "Max number of tick-by-tick requests has been reached".to_string(),
+                                false,
+                            );
+                            continue;
+                        }
+                    }
                     // Registered with what the contract is, so the slot carries
                     // it and the subscription can state it.
                     let id = self.register_contract(con_id, symbol, &sec_type, &exchange, "", "");
@@ -8560,6 +8598,83 @@ mod tests {
             vec![(8, 354, "Requested market data is not subscribed.".to_string())],
             "the bar stream is refused under the short sentence",
         );
+    }
+
+    /// A tick-by-tick request past the catalog or the cap is refused at
+    /// request time.
+    ///
+    /// A gateway serves a stream type only for the security types its
+    /// catalog lists — a fund description is served by none — and holds at
+    /// most its maximum of distinct contracts under stream (three by
+    /// default, and the floor of any raise). Past either, the request is
+    /// refused before any venue round trip: the catalog under 10189 with
+    /// one sentence naming both the stream and the security type, the cap
+    /// under 10190. A contract already held is free: its streams ride the
+    /// query the venue already runs.
+    #[test]
+    fn a_tick_by_tick_request_past_the_catalog_or_the_cap_is_refused_at_request_time() {
+        let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(8);
+        hl.set_control_rx(rx);
+        let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+        hl.hmds_conn = Some(conn);
+
+        let tbt = |req_id: i64, con_id: i64, sec_type: &str, kind: TbtType| {
+            ControlCommand::SubscribeTbt {
+                contract: crate::types::ContractRef {
+                    con_id, symbol: "X".into(), sec_type: sec_type.into(),
+                    exchange: "SMART".into(), ..Default::default()
+                },
+                req_id, tbt_type: kind, number_of_ticks: 0,
+                ignore_size: false, filters: Default::default(),
+            }
+        };
+
+        // A mutual fund streams no ticks: refused under the tick-by-tick
+        // family's number, with a sentence naming both.
+        tx.send(tbt(1, 555, "FUND", TbtType::Last)).unwrap();
+        hl.poll_once();
+        assert_eq!(
+            hl.shared.reference.drain_historical_errors(),
+            vec![(1, 10189, "Failed to request tick-by-tick data:Last tick-by-tick requests are not supported for FUND".to_string())],
+            "a security type the catalog does not serve is refused at request time",
+        );
+        assert!(hl.hmds.tbt_subscriptions.is_empty(), "no stream is taken");
+
+        // Three distinct contracts are held; a fourth is refused under the
+        // cap's number.
+        for (query_id, con_id) in [("tbt_a", 601i64), ("tbt_b", 602), ("tbt_c", 603)] {
+            let instrument = hl.context.market.register(con_id);
+            hl.hmds.tbt_subscriptions.push(crate::engine::hot_loop::hmds::TbtSubscription {
+                ignore_size: false,
+                instrument,
+                query_id: query_id.to_string(),
+                kind: TbtType::Last,
+                caller_req_id: 40 + con_id,
+                venue_id: 0,
+                min_tick: 0,
+                size_tick: 0.0,
+                running: Default::default(),
+            });
+        }
+        tx.send(tbt(2, 604, "STK", TbtType::Last)).unwrap();
+        hl.poll_once();
+        assert_eq!(
+            hl.shared.reference.drain_historical_errors(),
+            vec![(2, 10190, "Max number of tick-by-tick requests has been reached".to_string())],
+            "a request past the held maximum is refused",
+        );
+        assert_eq!(hl.hmds.tbt_subscriptions.len(), 3, "no stream is taken");
+
+        // A further stream on a contract already held is free: the venue's
+        // running query serves it, and no new slot is taken by it.
+        tx.send(tbt(3, 601, "STK", TbtType::BidAsk)).unwrap();
+        hl.poll_once();
+        assert!(
+            hl.shared.reference.drain_historical_errors().is_empty(),
+            "a held contract is not refused by the cap",
+        );
+        assert_eq!(hl.hmds.tbt_subscriptions.len(), 4, "the stream is taken");
     }
 
     /// A withdrawal that leaves the subscription standing leaves its tags

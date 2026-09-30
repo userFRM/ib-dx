@@ -2286,7 +2286,7 @@ fn build_tbt_query(
     )
 }
 
-    fn tbt_wire_kind(tbt_type: TbtType) -> &'static str {
+    pub(crate) fn tbt_wire_kind(tbt_type: TbtType) -> &'static str {
         // The name the caller asked for. The venue serves each of the three
         // as a query of its own and answers all three, so which trades are on
         // which stream is the venue's to say.
