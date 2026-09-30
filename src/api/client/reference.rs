@@ -27,21 +27,33 @@ pub(crate) fn wire_con_id(con_id: i64, what: &str) -> Result<u32, Refusal> {
     })
 }
 
+/// The login feature a symbol search needs to be askable.
+pub(crate) const MATCHING_SYMBOLS_FEATURE: &str = "SECDEFTA";
+
 /// A matching-symbols pattern as the venue is given one.
 ///
-/// The venue trims the pattern and collapses its runs of spaces before it
-/// sends it, and refuses one holding nothing to search for or anything but
-/// visible characters and spaces. Sent as the caller wrote it, `"  APPLE   INC "`
-/// asked the search service about a name nothing is listed under, so a call
-/// that matches through the reference client matched nothing here, and an
-/// empty pattern went out as a request instead of being refused.
-pub(crate) fn matching_symbols_pattern(pattern: &str) -> Result<String, Refusal> {
-    if pattern.trim().is_empty()
-        || !pattern.chars().all(|c| c == ' ' || c.is_ascii_graphic())
-    {
-        return Err(Refusal::validation(format!(
-            "a matching-symbols pattern is visible characters and spaces with something              among them to search for, and '{pattern}' is not one: the venue refuses it              rather than answering it",
-        )));
+/// A gateway checks the feature the login states first — a session without
+/// it is answered "Failed to request matching symbols" whatever the pattern
+/// states — then the pattern: one holding nothing to search for answers
+/// "Pattern must not be empty", and one holding anything but visible
+/// characters and spaces answers "Invalid pattern: '<p>'". Every refusal
+/// carries the standing wrap naming the pattern, so the wrap is stated here
+/// whole rather than left to the wire text, whose slot is always empty. What
+/// passes goes out trimmed with its runs of spaces collapsed, as a gateway
+/// sends it: sent as the caller wrote it, `"  APPLE   INC "` asked the search
+/// service about a name nothing is listed under.
+pub(crate) fn matching_symbols_pattern(pattern: &str, feature_on: bool) -> Result<String, Refusal> {
+    let refused = |cause: String| {
+        Refusal::validation(format!("Error validating request:-'{pattern}' : cause - {cause}"))
+    };
+    if !feature_on {
+        return Err(refused("Failed to request matching symbols".to_string()));
+    }
+    if pattern.trim().is_empty() {
+        return Err(refused("Pattern must not be empty".to_string()));
+    }
+    if !pattern.chars().all(|c| c == ' ' || c.is_ascii_graphic()) {
+        return Err(refused(format!("Invalid pattern: '{pattern}'")));
     }
     Ok(pattern.split_whitespace().collect::<Vec<_>>().join(" "))
 }
@@ -234,9 +246,16 @@ impl EClient {
     /// caller rather than pushed into the session's order.
     pub(crate) fn try_req_matching_symbols(&self, req_id: i64, pattern: &str) -> Result<(), Refusal> {
         wire_text("a matching-symbols pattern", pattern)?;
-        let pattern = matching_symbols_pattern(pattern)?;
+        // The number is read before anything is validated, as a gateway reads
+        // the request before it checks what it states. The feature is checked
+        // before the pattern, as a gateway checks it first.
+        let numbered = wire_req_id(req_id)?;
+        let pattern = matching_symbols_pattern(
+            pattern,
+            self.shared.reference.enables(MATCHING_SYMBOLS_FEATURE),
+        )?;
         self.send(ControlCommand::FetchMatchingSymbols {
-            req_id: wire_req_id(req_id)?,
+            req_id: numbered,
             pattern,
         })
     }
@@ -870,13 +889,15 @@ mod tests {
         );
     }
 
-    /// The pattern goes out as the venue would have sent it, and one it
-    /// would not have sent at all is refused here rather than asked.
+    /// The pattern goes out as the venue would have sent it, and what a
+    /// gateway refuses is refused here in its own words, under the standing
+    /// wrap naming the pattern, rather than asked.
     #[test]
     fn a_matching_symbols_pattern_is_sent_as_the_venue_sends_it() {
         use crate::types::ControlCommand;
 
-        let (client, rx, _shared) = super::super::tests::test_client();
+        let (client, rx, shared) = super::super::tests::test_client();
+        shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
         client.try_req_matching_symbols(8, "  APPLE   INC ").unwrap();
         match rx.try_recv().expect("the search is asked for") {
             ControlCommand::FetchMatchingSymbols { pattern, .. } => {
@@ -885,11 +906,31 @@ mod tests {
             cmd => panic!("expected FetchMatchingSymbols, got {cmd:?}"),
         }
 
-        for nothing_to_search_for in ["", "   ", "\u{a0}", "AAPL\n"] {
+        // The feature is checked first: a session without it is answered the
+        // feature refusal whatever the pattern states.
+        shared.reference.set_enabled_features(vec![]);
+        let why = client
+            .try_req_matching_symbols(8, "AAPL")
+            .expect_err("a session without the feature asked the venue");
+        assert_eq!(
+            why.message,
+            "Error validating request:-'AAPL' : cause - Failed to request matching symbols",
+        );
+        shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
+
+        for (nothing_to_search_for, cause) in [
+            ("", "Pattern must not be empty"),
+            ("   ", "Pattern must not be empty"),
+            ("\u{a0}", "Pattern must not be empty"),
+            ("AAPL\n", "Invalid pattern: 'AAPL\n'"),
+        ] {
             let why = client
                 .try_req_matching_symbols(8, nothing_to_search_for)
                 .expect_err("the venue refuses this rather than answering it");
-            assert!(why.message.contains("visible characters"), "{}", why.message);
+            assert_eq!(
+                why.message,
+                format!("Error validating request:-'{nothing_to_search_for}' : cause - {cause}"),
+            );
         }
         assert!(rx.try_recv().is_err(), "and nothing was asked");
     }

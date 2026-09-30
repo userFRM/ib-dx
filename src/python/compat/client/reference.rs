@@ -200,13 +200,19 @@ impl EClient {
     /// Search for matching symbols.
     pub(crate) fn req_matching_symbols(&self, py: Python<'_>, req_id: i64, pattern: &str) -> PyResult<()> {
         super::wire_text("a matching-symbols pattern", pattern)?;
+        let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
         // Normalised and checked the way the request surface does it: the
         // same pattern reaches the same search service over the same wire,
         // and agreeing on one surface and not the other answers the same
-        // call two ways.
-        let pattern = crate::api::client::reference::matching_symbols_pattern(pattern)
-            .map_err(|refusal| pyo3::exceptions::PyRuntimeError::new_err(refusal.message))?;
-        let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // call two ways. A refusal is reported as a gateway reports one, on
+        // the wrapper's error side, not raised at the caller.
+        let feature_on = self.shared_state()?.reference.enables(
+            crate::api::client::reference::MATCHING_SYMBOLS_FEATURE,
+        );
+        let pattern = match crate::api::client::reference::matching_symbols_pattern(pattern, feature_on) {
+            Ok(pattern) => pattern,
+            Err(why) => return self.report_refusal(py, req_id, why),
+        };
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchMatchingSymbols {
                 req_id: wire_req_id(req_id)?,
                 pattern,
@@ -1156,8 +1162,9 @@ mod tests {
     }
 
     /// The pattern goes out as the venue would have sent it, on this surface
-    /// as on the other, and one it would not have sent at all is refused
-    /// here rather than asked.
+    /// as on the other, and what a gateway refuses is refused here rather
+    /// than asked — reported as a gateway reports one, on the wrapper's
+    /// error side, not raised at the caller.
     #[test]
     fn a_matching_symbols_pattern_is_sent_as_the_venue_sends_it() {
         Python::initialize();
@@ -1170,7 +1177,9 @@ mod tests {
             client.__init__(wrapper).unwrap();
             let (tx, rx) = std::sync::mpsc::channel();
             *client.control_tx.lock().unwrap() = Some(tx);
-            *client.shared.lock().unwrap() = Some(std::sync::Arc::new(crate::bridge::SharedState::new()));
+            let shared = std::sync::Arc::new(crate::bridge::SharedState::new());
+            shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
+            *client.shared.lock().unwrap() = Some(shared.clone());
             client.connected.store(true, std::sync::atomic::Ordering::Release);
 
             client.req_matching_symbols(py, 8, "  APPLE   INC ").unwrap();
@@ -1180,11 +1189,14 @@ mod tests {
             };
             assert_eq!(pattern, "APPLE INC", "trimmed, and its runs of spaces collapsed");
 
-            let err = client
-                .req_matching_symbols(py, 8, "   ")
-                .expect_err("the venue refuses this rather than answering it");
-            assert!(err.to_string().contains("visible characters"), "{err}");
+            client.req_matching_symbols(py, 8, "   ").unwrap();
             assert!(rx.try_recv().is_err(), "and nothing was asked");
+            let refused = shared.drain_refused();
+            assert_eq!(refused.len(), 1, "the caller is told");
+            assert_eq!(
+                (refused[0].1, refused[0].2.as_str()),
+                (321, "Error validating request:-'   ' : cause - Pattern must not be empty"),
+            );
         });
     }
 

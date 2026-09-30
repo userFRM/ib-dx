@@ -4906,13 +4906,15 @@ fn an_unwireable_req_id_is_refused() {
         crate::bridge::ReferenceState::ASK_ID_BASE as i64, crate::bridge::ENGINE_ID_BASE as i64,
         u32::MAX as i64, u32::MAX as i64 + 1,
     ];
-    // The headline request names a provider, so the session holds it; what
-    // this test is about is the number, and a refused number is read before
-    // anything else is checked.
+    // The headline and article requests name a provider, so the session
+    // holds it, and the symbol search needs its feature; what this test is
+    // about is the number, and a refused number is read before anything
+    // else is checked.
     let subscribed = |shared: &std::sync::Arc<crate::bridge::SharedState>| {
         shared.reference.set_news_providers(vec![
             crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
         ]);
+        shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
     };
     for (name, call) in calls {
         for bad in unfit {
@@ -5272,7 +5274,8 @@ fn req_contract_details_forwards_that_an_expired_contract_is_in_scope() {
 
 #[test]
 fn req_matching_symbols_sends_fetch() {
-    let (client, rx, _shared) = test_client();
+    let (client, rx, shared) = test_client();
+    shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
     client.try_req_matching_symbols(8, "AAPL").unwrap();
     let cmd = rx.try_recv().unwrap();
     match cmd {
