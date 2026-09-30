@@ -4762,6 +4762,23 @@ fn a_historical_request_on_a_combination_naming_no_legs_is_refused() {
         );
         assert!(rx.try_recv().is_err(), "something was sent for {sec_type} {con_id}");
     }
+    // A request invalid in two ways hears the combo-legs sentence: a gateway
+    // reads the request before it executes it, and the legs refusal is raised
+    // in that read, where the exchange refusal only fires in the execution
+    // that follows it.
+    let doubly = Contract {
+        con_id: 28868674, symbol: "SPY".into(), sec_type: "BAG".into(),
+        ..Default::default()
+    };
+    let err = client
+        .try_req_historical_data(6, &doubly, "", "1 D", "5 mins", "TRADES", false, 1, false)
+        .expect_err("a combination stating no legs and no exchange");
+    assert_eq!(
+        (err.code, err.message.as_str()),
+        (Refusal::VALIDATION, "Security type 'BAG' requires combo leg details."),
+        "the combo-legs sentence comes first",
+    );
+    assert!(rx.try_recv().is_err(), "something was sent for a doubly invalid request");
     let leg = crate::types::model::ComboLeg {
         con_id: 756733, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
         ..Default::default()
