@@ -632,11 +632,13 @@ impl EClient {
             // filter, send it — arrives naming contract 2147483647 and asking
             // for that many rows. Both are the caller saying nothing.
             const UNSET: i64 = i32::MAX as i64;
+            // The unset marker is the only id that names nothing: zero and
+            // negatives are named contracts, as they are for a gateway.
             let con_id = asked
                 .getattr("conId")
                 .ok()
                 .and_then(|v| v.extract::<i64>().ok())
-                .filter(|id| *id > 0 && *id != UNSET);
+                .filter(|id| *id != UNSET);
             query.con_id = con_id;
             query.filter = text("filter");
             query.start_date = text("startDate");
@@ -1090,6 +1092,22 @@ mod calendar_request_tests {
             };
             assert_eq!(query.con_id, None, "no contract was named");
             assert_eq!(query.total_limit, None, "no number of rows was asked for");
+
+            // Zero is a named contract: the only id the mapping drops is
+            // the unset marker, which is the gateway's only test too.
+            let zero = py
+                .eval(
+                    c"__import__('builtins').type('W', (), {})()",
+                    None, None,
+                )
+                .unwrap();
+            zero.setattr("conId", 0).unwrap();
+            client.req_wsh_event_data(py, 12, Some(zero.unbind())).unwrap();
+            let Some(ControlCommand::FetchCalendarEvents { query, .. }) = rx.try_iter().next()
+            else {
+                panic!("the request reaches the engine");
+            };
+            assert_eq!(query.con_id, Some(0), "zero reaches the engine as zero");
         });
     }
 }

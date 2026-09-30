@@ -80,7 +80,11 @@ pub fn event_data_request(
     query: &CalendarQuery,
 ) -> Result<String, crate::error_codes::Refusal> {
     use crate::error_codes::Refusal;
-    let named = query.con_id;
+    // The gateway's only test on a contract id is against the unset marker,
+    // the number the reference client leaves in a field nobody set: every
+    // other value names a contract, zero and negatives included, and is
+    // forwarded in the watchlist as text.
+    let named = query.con_id.filter(|id| *id != i64::from(i32::MAX));
     let filtered = !query.filter.is_empty();
     if named.is_some() == filtered {
         return Err(Refusal::stated(
@@ -89,15 +93,6 @@ pub fn event_data_request(
         ));
     }
     let filter = if let Some(con_id) = named {
-        // A contract the venue does not number is not a scope. Written into
-        // the watchlist as text, "0" asked the calendar about nothing the
-        // venue can find, where the same id is refused for a headline.
-        if con_id <= 0 {
-            return Err(Refusal::validation(format!(
-                "contract {con_id} is not one the venue numbers, and the calendar is asked \
-                 about a contract by the venue's id: qualify it first",
-            )));
-        }
         format!(r#"{{"watchlist":["{con_id}"]}}"#)
     } else {
         // The caller's own filter, as written.
@@ -149,15 +144,19 @@ pub fn event_data_request(
 mod tests {
     use super::*;
 
-    /// A contract the venue does not number is not a scope. Written into the
-    /// watchlist as text, "0" asked the calendar about nothing the venue can
-    /// find, where the request surface refuses the same id for a headline.
+    /// A gateway's only test on a contract id is against the unset marker,
+    /// the field's own "nothing was set": zero and negative ids are named
+    /// contracts, forwarded in the watchlist as text.
     #[test]
-    fn a_contract_the_venue_does_not_number_is_refused_as_a_scope() {
+    fn any_contract_but_the_unset_marker_is_named() {
         for id in [0, -1] {
-            let query = CalendarQuery { con_id: Some(id), ..Default::default() };
-            assert!(event_data_request(&query).is_err(), "contract {id} is not a scope");
+            let json = event_data_request(&CalendarQuery { con_id: Some(id), ..Default::default() })
+                .expect("every id but the unset marker names a contract");
+            assert!(json.contains(&format!(r#""watchlist":["{id}"]"#)), "{json}");
         }
+        let unset = CalendarQuery { con_id: Some(i32::MAX as i64), ..Default::default() };
+        let err = event_data_request(&unset).unwrap_err();
+        assert!(format!("{err:?}").contains("10309"), "{err:?}");
     }
 
     /// The metadata request carries no filters. The answer is the same for
