@@ -6456,6 +6456,39 @@ fn req_histogram_data_sends_fetch() {
     }
 }
 
+/// A period no gateway reads is refused at intake in a gateway's own
+/// sentence rather than riding raw to the venue or being case-folded into
+/// a different question. The grammar is a gateway's: whitespace ignored, a
+/// leading positive integer required, one trailing lowercase 's' dropped,
+/// and what is left matched case-sensitively as the start of a unit's
+/// plural or short plural — so "1 m" fits both minutes and months and is
+/// refused, and "1 W" is refused because the case fits neither.
+#[test]
+fn a_histogram_period_no_gateway_reads_is_refused_in_its_words() {
+    let (client, rx, _shared) = test_client();
+    for period in [
+        "", "week", "1", "1 fortnight", "0 days", "-1 days",
+        "1 Days", "1 MONTHS", "1 S", "1 W", "1 H", "1 m", "1 d 1 d",
+    ] {
+        let err = client.try_req_histogram_data(7, &spy(), true, period).expect_err(period);
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (Refusal::VALIDATION, "Invalid time period"),
+            "{period:?}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {period:?}");
+    }
+    for period in [
+        "1 day", "3 days", "1 week", "30 seconds", "1 sec", "1 min",
+        "1 hr", "1 mos", "1 qtr", "1 yr", "2 wks",
+    ] {
+        client
+            .try_req_histogram_data(7, &spy(), true, period)
+            .unwrap_or_else(|e| panic!("{period:?}: {e}"));
+        assert!(rx.try_recv().is_ok(), "{period:?} was not sent");
+    }
+}
+
 #[test]
 fn cancel_histogram_data_sends_cancel() {
     let (client, rx, _shared) = test_client();

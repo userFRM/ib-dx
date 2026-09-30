@@ -682,6 +682,8 @@ impl EClient {
     /// caller rather than pushed into the session's order.
     pub(crate) fn try_req_histogram_data(&self, req_id: i64, contract: &Contract, use_rth: bool, period: &str) -> Result<(), Refusal> {
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
+        // After the shared contract checks, as a gateway runs them first.
+        crate::control::histogram::validate_period(period)?;
         // A contract given by id alone is named by the engine before the
         // request goes: a request states the contract's type and its
         // exchange, and both are the venue's to say.

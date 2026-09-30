@@ -150,6 +150,59 @@ pub fn parse_histogram_response(xml: &str) -> Option<Vec<HistogramEntry>> {
     Some(entries)
 }
 
+/// The period units in the order a gateway reads them: each unit's plural,
+/// its short plural, and the token the protocol carries.
+const PERIOD_UNITS: [(&str, &str, &str); 8] = [
+    ("seconds", "secs", "S"),
+    ("minutes", "mins", "min"),
+    ("hours", "hrs", "h"),
+    ("days", "days", "d"),
+    ("weeks", "wks", "W"),
+    ("months", "mos", "m"),
+    ("quarters", "qtrs", "q"),
+    ("years", "yrs", "y"),
+];
+
+/// Read a period the way a gateway reads one: whitespace ignored, a leading
+/// positive integer taken as the count, one trailing lowercase 's' dropped,
+/// and what is left matched case-sensitively as the start of a unit's plural
+/// or short plural. Nothing is read where what is left fits two units — "m"
+/// fits minutes and months — as at a gateway; nor where the text carries no
+/// leading positive integer or a count no query number can carry.
+fn parse_period(period: &str) -> Option<(u32, &'static str)> {
+    let stripped: String = period.chars().filter(|c| !c.is_whitespace()).collect();
+    let digits = stripped.find(|c: char| !c.is_ascii_digit()).unwrap_or(stripped.len());
+    if digits == 0 || stripped.as_bytes()[0] == b'0' {
+        return None;
+    }
+    let count: u32 = stripped[..digits].parse().ok()?;
+    let mut rest = &stripped[digits..];
+    if rest.len() >= 2 && rest.ends_with('s') {
+        rest = &rest[..rest.len() - 1];
+    }
+    let mut token = None;
+    for (plural, short, unit) in PERIOD_UNITS {
+        if plural.starts_with(rest) || short.starts_with(rest) {
+            if token.is_some() {
+                return None;
+            }
+            token = Some(unit);
+        }
+    }
+    Some((count, token?))
+}
+
+/// The period a histogram request states: one no gateway reads is refused at
+/// intake in a gateway's own sentence, rather than riding raw to the venue
+/// and coming back as a failed query — and rather than being case-folded
+/// into a different question, which the table this replaced did.
+pub fn validate_period(period: &str) -> Result<(), crate::error_codes::Refusal> {
+    if parse_period(period).is_none() {
+        return Err(crate::error_codes::Refusal::validation("Invalid time period"));
+    }
+    Ok(())
+}
+
 /// State a period the way the protocol's unit table states it.
 ///
 /// The table is `S` seconds, `min` minutes, `h` hours, `d` days, `W` weeks,
@@ -158,27 +211,14 @@ pub fn parse_histogram_response(xml: &str) -> Option<Vec<HistogramEntry>> {
 /// the case sends a second as a unit not in the table. A week is its own unit;
 /// rewriting one as seven days asks a different question.
 ///
-/// A period this does not recognise is passed through as the caller wrote it,
-/// so the venue refuses it rather than answering something else.
+/// A period the grammar does not read is passed through as the caller wrote
+/// it: the intake refuses one before a query is built, so none reaches the
+/// wire, and a query built beside the intake still says what the caller
+/// wrote rather than a silent default.
 fn convert_period(period: &str) -> String {
-    let parts: Vec<&str> = period.split_whitespace().collect();
-    if parts.len() != 2 {
-        return period.to_string();
-    }
-    let num: u32 = match parts[0].parse() {
-        Ok(n) => n,
-        Err(_) => return period.to_string(),
-    };
-    match parts[1].to_lowercase().as_str() {
-        "second" | "seconds" | "secs" | "sec" | "s" => format!("{num} S"),
-        "minute" | "minutes" | "mins" | "min" => format!("{num} min"),
-        "hour" | "hours" | "h" => format!("{num} h"),
-        "day" | "days" | "d" => format!("{num} d"),
-        "week" | "weeks" | "w" => format!("{num} W"),
-        "month" | "months" | "m" => format!("{num} m"),
-        "quarter" | "quarters" | "q" => format!("{num} q"),
-        "year" | "years" | "y" => format!("{num} y"),
-        _ => period.to_string(),
+    match parse_period(period) {
+        Some((count, unit)) => format!("{count} {unit}"),
+        None => period.to_string(),
     }
 }
 
@@ -199,6 +239,20 @@ mod tests {
         assert_eq!(convert_period("2 months"), "2 m");
         assert_eq!(convert_period("1 quarter"), "1 q");
         assert_eq!(convert_period("1 year"), "1 y");
+        // The gateway's grammar: whitespace ignored, one trailing lowercase
+        // 's' dropped, what is left matched case-sensitively as the start of
+        // a unit's plural or short plural.
+        assert_eq!(convert_period("1 dayss"), "1 d");
+        assert_eq!(convert_period("1 secons"), "1 S");
+        assert_eq!(convert_period("1 mo n"), "1 m");
+        assert_eq!(convert_period("1 s"), "1 S");
+        assert_eq!(convert_period("1 d"), "1 d");
+        // A unit nothing matches — or two match, as "m" fits both minutes
+        // and months — passes through as the caller wrote it: the intake
+        // refuses it before a query is built, so none reaches the wire.
+        assert_eq!(convert_period("1 m"), "1 m");
+        assert_eq!(convert_period("1 W"), "1 W");
+        assert_eq!(convert_period("01 days"), "01 days");
         // passthrough for unknown
         assert_eq!(convert_period("foo"), "foo");
     }

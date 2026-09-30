@@ -710,6 +710,10 @@ impl EClient {
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
+        // After the shared contract checks, as a gateway runs them first.
+        if let Err(why) = crate::control::histogram::validate_period(time_period) {
+            return self.report_refusal(py, req_id, why);
+        }
         // A contract given by id alone is named by the engine before the
         // request goes: a request states the contract's type and its
         // exchange, and both are the venue's to say.

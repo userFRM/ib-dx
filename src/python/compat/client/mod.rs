@@ -3425,6 +3425,10 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 .call_method1(py, "req_contract_details", (8i64, &combo))
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for contract details on a combination");
+            client
+                .call_method1(py, "req_histogram_data", (9i64, &described, true, "1 fortnight"))
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for a histogram period no gateway reads");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3442,6 +3446,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (6, "Combo types are not supported"),
                 (7, "Number of ticks must be > 0"),
                 (8, "'BAG' isn't supported for contract data request. Please enter a valid security type"),
+                (9, "Invalid time period"),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }
