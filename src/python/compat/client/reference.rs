@@ -866,13 +866,14 @@ fn stk_types_code(name: &str) -> &'static str {
 }
 
 /// One filter value, or `None` when the attribute is missing or left at its unset
-/// default. One that is present and cannot be read is a refusal, not an unset
-/// filter: sent without it, the scan would run narrower or wider than the one
-/// described.
+/// default. One that is present is a value the caller stated: a `None` is refused
+/// at the send as the reference client's encoder refuses it, and a value that
+/// cannot be read is refused rather than dropped — sent without it, the scan
+/// would run narrower or wider than the one described.
 fn scanner_filter_value(py: Python<'_>, sub: &Py<PyAny>, attr: &str) -> Result<Option<String>, crate::error_codes::Refusal> {
     let Ok(value) = sub.getattr(py, attr) else { return Ok(None) };
     if value.is_none(py) {
-        return Ok(None);
+        return Err(stated_none_filter());
     }
     if let Ok(n) = value.extract::<f64>(py) {
         // An unset numeric filter arrives as `sys.float_info.max` or `2**31 - 1`, and
@@ -886,6 +887,13 @@ fn scanner_filter_value(py: Python<'_>, sub: &Py<PyAny>, attr: &str) -> Result<O
         return Ok((!text.is_empty()).then_some(text));
     }
     Err(unreadable_filter(attr))
+}
+
+/// What a filter stated as `None` is refused as: the reference client's
+/// encoder raises on None and the request's catch-all reports the raise
+/// under the scanner subscription's sending-error number, sending nothing.
+fn stated_none_filter() -> crate::error_codes::Refusal {
+    crate::error_codes::none_to_tws(crate::error_codes::FAIL_SEND_REQSCANNER)
 }
 
 /// What a filter that is stated and cannot be read is reported as. Left off,
@@ -911,7 +919,7 @@ fn scanner_filters(py: Python<'_>, sub: &Py<PyAny>, filter_options: &[Py<PyAny>]
 
     match sub.getattr(py, "excludeConvertible") {
         Err(_) => {}
-        Ok(v) if v.is_none(py) => {}
+        Ok(v) if v.is_none(py) => return Err(stated_none_filter()),
         Ok(v) => match v.extract::<bool>(py) {
             Ok(true) => filters.push(("excludeConvertible".to_string(), "true".to_string())),
             Ok(false) => {}
@@ -920,7 +928,7 @@ fn scanner_filters(py: Python<'_>, sub: &Py<PyAny>, filter_options: &[Py<PyAny>]
     }
     match sub.getattr(py, "stockTypeFilter") {
         Err(_) => {}
-        Ok(v) if v.is_none(py) => {}
+        Ok(v) if v.is_none(py) => return Err(stated_none_filter()),
         Ok(v) => {
             let Ok(name) = v.extract::<String>(py) else {
                 return Err(unreadable_filter("stockTypeFilter"));
@@ -939,7 +947,7 @@ fn scanner_filters(py: Python<'_>, sub: &Py<PyAny>, filter_options: &[Py<PyAny>]
     // not carried: said once, and the scan goes as the rest of it states.
     match sub.getattr(py, "scannerSettingPairs") {
         Err(_) => {}
-        Ok(v) if v.is_none(py) => {}
+        Ok(v) if v.is_none(py) => return Err(stated_none_filter()),
         Ok(v) => match v.extract::<String>(py) {
             Ok(pairs) => crate::control::scanner::note_setting_pairs(&pairs),
             Err(_) => return Err(unreadable_filter("scannerSettingPairs")),
