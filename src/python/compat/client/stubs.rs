@@ -298,20 +298,30 @@ impl EClient {
     /// Ask the venue for a partition of the advisor's own configuration.
     ///
     /// The reference client names the partition by a number: its groups, its
-    /// allocation profiles, its aliases. The venue names it by a word, so the
-    /// number is turned into the word it stands for. A number that stands for
-    /// nothing is refused rather than sent as an empty partition.
+    /// allocation profiles, its aliases. The allocation profiles are refused
+    /// at the door under 585, with nothing sent, as the reference client
+    /// refuses them. For the rest, the venue names the partition by a word, so
+    /// the number is turned into the word it stands for; a number that stands
+    /// for nothing draws the intake's own refusal rather than being sent as an
+    /// empty partition.
     ///
     /// The venue's answer reaches `receive_fa` under the same number the
     /// partition was asked for by.
     fn request_fa(&self, py: Python<'_>, fa_data_type: i32) -> PyResult<()> {
         let refused = crate::types::model::ErrorOrigin::Question { q: crate::types::model::Question::Fa, ends: true };
+        // The reference client's own order: the session first, then the
+        // profiles it refuses at the door.
+        let Some(tx) = self.tx_or_report_as(refused)? else { return Ok(()) };
+        if fa_data_type == 2 {
+            return self.report_refusal_as(py, refused, crate::error_codes::Refusal::stated(
+                585, FA_PROFILE_UNSUPPORTED,
+            ));
+        }
         let Some(partition) = advisor_partition(fa_data_type) else {
             return self.report_refusal_as(py, refused, crate::error_codes::Refusal::validation(
-                format!("no advisor configuration is named by {fa_data_type}"),
+                FA_UNKNOWN_OPERATION,
             ));
         };
-        let Some(tx) = self.tx_or_report_as(refused)? else { return Ok(()) };
         self.send_control(&tx, ControlCommand::AdvisorConfig {
             // Nothing to carry back: the answer to a question about a
             // partition names the partition, not a request.
@@ -327,15 +337,22 @@ impl EClient {
     #[pyo3(signature = (req_id, fa_data_type, cxml))]
     /// Replace a partition of the advisor's configuration with the one given.
     ///
-    /// `replace_fa_end` fires with `req_id` once the venue has taken it, and
-    /// a venue that refuses states why on `error` under the same number.
+    /// The allocation profiles are refused at the door under 585, as the
+    /// reference client refuses them. `replace_fa_end` fires with `req_id`
+    /// once the venue has taken it, and a venue that refuses states why on
+    /// `error` under the same number.
     fn replace_fa(&self, py: Python<'_>, req_id: i64, fa_data_type: i32, cxml: &str) -> PyResult<()> {
+        let Some(tx) = self.tx_or_report(-1)? else { return Ok(()) };
+        if fa_data_type == 2 {
+            return self.report_refusal(py, req_id, crate::error_codes::Refusal::stated(
+                585, FA_PROFILE_UNSUPPORTED,
+            ));
+        }
         let Some(partition) = advisor_partition(fa_data_type) else {
             return self.report_refusal(py, req_id, crate::error_codes::Refusal::validation(
-                format!("no advisor configuration is named by {fa_data_type}"),
+                FA_UNKNOWN_OPERATION,
             ));
         };
-        let Some(tx) = self.tx_or_report(-1)? else { return Ok(()) };
         if self.number_unread(req_id)? { return Ok(()); }
         self.send_control(&tx, ControlCommand::AdvisorConfig {
             req_id,
@@ -821,6 +838,17 @@ fn report_reason(client: &EClient, req_id: i64, reason: &Refusal) {
 fn carried_under(req_id: i64) -> u32 {
     crate::api::client::carried_under(req_id)
 }
+
+/// What the reference client states of a request for the advisor's allocation
+/// profiles: it refuses one at the door, under 585 and with nothing sent, on
+/// any session new enough for the profiles to be gone from the venue — which
+/// every session here is.
+const FA_PROFILE_UNSUPPORTED: &str = "FA Profile is not supported anymore, use FA Group instead - ";
+
+/// The intake refusal of a request number that names no partition. The
+/// reference client forwards any number; one that names nothing is refused
+/// there, in this sentence, rather than at the door here.
+const FA_UNKNOWN_OPERATION: &str = "Non-existent FA data operation request.";
 
 /// The word the venue names a partition of an advisor's configuration by.
 ///

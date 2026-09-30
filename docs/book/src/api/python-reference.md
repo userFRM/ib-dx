@@ -2200,7 +2200,7 @@ def req_current_time_in_millis()
 
 #### `request_fa`
 
-Ask the venue for a partition of the advisor's own configuration.  The reference client names the partition by a number: its groups, its allocation profiles, its aliases. The venue names it by a word, so the number is turned into the word it stands for. A number that stands for nothing is refused rather than sent as an empty partition.  The venue's answer reaches `receive_fa` under the same number the partition was asked for by.
+Ask the venue for a partition of the advisor's own configuration.  The reference client names the partition by a number: its groups, its allocation profiles, its aliases. The allocation profiles are refused at the door under 585, with nothing sent, as the reference client refuses them. For the rest, the venue names the partition by a word, so the number is turned into the word it stands for; a number that stands for nothing draws the intake's own refusal rather than being sent as an empty partition.  The venue's answer reaches `receive_fa` under the same number the partition was asked for by.
 
 ```python
 def request_fa(fa_data_type)
@@ -2214,7 +2214,7 @@ def request_fa(fa_data_type)
 
 #### `replace_fa`
 
-Replace a partition of the advisor's configuration with the one given.  `replace_fa_end` fires with `req_id` once the venue has taken it, and a venue that refuses states why on `error` under the same number.
+Replace a partition of the advisor's configuration with the one given.  The allocation profiles are refused at the door under 585, as the reference client refuses them. `replace_fa_end` fires with `req_id` once the venue has taken it, and a venue that refuses states why on `error` under the same number.
 
 ```python
 def replace_fa(req_id, fa_data_type, cxml)
