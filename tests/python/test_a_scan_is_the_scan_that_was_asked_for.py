@@ -69,6 +69,20 @@ def test_a_field_stated_none_is_refused_at_the_send(field, req_id):
     ], w.errors
 
 
+def test_a_subscription_passed_as_none_is_refused_at_the_send():
+    """The reference client reads the subscription's first field inside its
+    send; on None the read raises and the request's catch-all reports the
+    send error under the caller's request id, with nothing sent. An
+    all-default scan is not what was asked for — nothing was."""
+    w, c = _client()
+    c.req_scanner_subscription(11, None)
+    c.poll()
+    assert w.errors == [
+        (11, 524, "Request Scanner Subscription Sending Error - "
+                  "'NoneType' object has no attribute 'numberOfRows'"),
+    ], w.errors
+
+
 def test_a_field_left_off_takes_the_default():
     """Anything shaped like a subscription works, as the reference client's
     own duck-typing allows."""

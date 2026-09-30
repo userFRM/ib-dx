@@ -278,6 +278,17 @@ impl EClient {
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
         Python::attach(|py| {
+            // A subscription passed as None is no scan at all: the reference
+            // client reads its first field inside the send, the read raises,
+            // and the request's catch-all reports the send error under the
+            // caller's request id with nothing sent.
+            if subscription.is_none(py) {
+                return self.report_refusal(py, req_id, crate::error_codes::Refusal::stated(
+                    crate::error_codes::FAIL_SEND_REQSCANNER.0,
+                    format!("{}'NoneType' object has no attribute 'numberOfRows'",
+                        crate::error_codes::FAIL_SEND_REQSCANNER.1),
+                ));
+            }
             // An absent attribute takes the default. One that is present is a
             // value the caller stated: None is refused at the send as the
             // reference client's encoder refuses it, and a value that cannot
