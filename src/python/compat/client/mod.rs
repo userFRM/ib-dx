@@ -297,6 +297,15 @@ fn client_id_under_either_spelling(client_id: i32, reference_spelling: Option<i3
     }
 }
 
+/// Whether every character of a string can go on the wire: all printable
+/// ASCII, or one of the three the wire tolerates — the reference client's own
+/// check (ibapi/utils.py:201).
+fn host_carriable(host: &str) -> bool {
+    host.chars().all(|c| {
+        c == '\t' || c == '\n' || c == '\r' || ('\u{20}'..='\u{7e}').contains(&c)
+    })
+}
+
 impl EClient {
     /// Keep the callable where the collector can see it. The login gate runs
     /// the adapter on its own thread, taking the GIL only to call Python.
@@ -476,6 +485,14 @@ impl EClient {
         // spelling is the whole of what the parameter is for.
         #[allow(non_snake_case)] clientId: Option<i32>,
     ) -> PyResult<()> {
+        // The reference client checks the host before opening anything and
+        // returns on the refusal, so it is the first thing done here: a host
+        // the wire cannot carry never reaches the claim, the logon or the
+        // venue, and the caller hears 579 on the wrapper.
+        if !host_carriable(&host) {
+            self.validate_invalid_symbols(py, &host)?;
+            return Ok(());
+        }
         let client_id = client_id_under_either_spelling(client_id, clientId)?;
         let username_for_resume = username.clone();
         let username_for_session = username.clone();
@@ -1002,17 +1019,15 @@ impl EClient {
         None
     }
 
-    /// Whether the host a connection names can go on the wire. The reference
-    /// client's own check (ibapi/client.py:352) — every character printable, or one
-    /// of the three the wire tolerates — and where it fails, said on `error`
-    /// under 579 naming the string, rather than raised: this client states its
-    /// refusals on the wrapper. The options that client checks beside the host
-    /// are never kept here, so there is nothing else to check.
+    /// The reference client's own check (ibapi/client.py:352) of a string
+    /// before it goes on the wire, as [`host_carriable`] runs it — and where it
+    /// fails, said on `error` under 579 naming the string, rather than raised:
+    /// this client states its refusals on the wrapper. The options that client
+    /// checks beside the host are never kept here, so there is nothing else to
+    /// check. `connect` runs it on the host and returns on the refusal, as the
+    /// reference client's `connect` does.
     fn validate_invalid_symbols(&self, py: Python<'_>, host: &str) -> PyResult<()> {
-        let carriable = host.chars().all(|c| {
-            c == '\t' || c == '\n' || c == '\r' || ('\u{20}'..='\u{7e}').contains(&c)
-        });
-        if carriable {
+        if host_carriable(host) {
             return Ok(());
         }
         self.report_refusal(py, -1, crate::error_codes::Refusal::stated(

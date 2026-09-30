@@ -211,7 +211,7 @@ def validate_attached_orders_parameters(attached_orders)
 
 #### `validate_invalid_symbols`
 
-Whether the host a connection names can go on the wire. The reference client's own check (ibapi/client.py:352) — every character printable, or one of the three the wire tolerates — and where it fails, said on `error` under 579 naming the string, rather than raised: this client states its refusals on the wrapper. The options that client checks beside the host are never kept here, so there is nothing else to check.
+The reference client's own check (ibapi/client.py:352) of a string before it goes on the wire, as [`host_carriable`] runs it — and where it fails, said on `error` under 579 naming the string, rather than raised: this client states its refusals on the wrapper. The options that client checks beside the host are never kept here, so there is nothing else to check. `connect` runs it on the host and returns on the refusal, as the reference client's `connect` does.
 
 ```python
 def validate_invalid_symbols(host)
