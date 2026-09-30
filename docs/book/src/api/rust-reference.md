@@ -1963,7 +1963,7 @@ pub fn req_market_rule(&self, market_rule_id: i32)
 
 #### `req_news_bulletins`
 
-Subscribe to news bulletins. `all_msgs` asks for the day's bulletins as well as the ones still to come. The subscription carries no field asking the venue for them, but the venue has been broadcasting them at this session since it opened and they are still queued, so a caller asking for every message of the day is answered from those. Asking only for what follows drops them, which is what stopped a subscription from opening with bulletins published before anyone asked for any.
+Subscribe to news bulletins. `all_msgs` asks for the day's bulletins as well as the ones still to come. The subscription carries no field asking the venue for them, but the venue has been broadcasting them at this session since it opened and they are still cached, so a caller asking for every message of the day is answered from those — without consuming them: the cache is the day's, a gateway clears it only at day rollover, and asking again restates it. Asking only for what follows starts the subscription where the call is made and leaves the cache to a later ask.
 
 ```rust
 pub fn req_news_bulletins(&self, all_msgs: bool)
@@ -2031,7 +2031,7 @@ pub fn cancel_scanner_subscription(&self, req_id: i64)
 
 #### `req_historical_news`
 
-Request historical news headlines. `start_time` and `end_time` bound the query in UTC: `YYYYMMDD-HH:MM:SS` or `YYYYMMDD HH:MM:SS`, optionally with fractional seconds. Empty bounds are omitted; unreadable ones are refused so the window is not lost. No more than three hundred are asked for however many are wanted. A gateway caps `total_results` there before the request goes out, so a bigger number is one the venue is never asked, and it passes a smaller one on as stated, below nought included.
+Request historical news headlines. `start_time` and `end_time` bound the query in UTC: `YYYYMMDD-HH:MM:SS` or `YYYYMMDD HH:MM:SS`, optionally with fractional seconds. Empty bounds are omitted; unreadable ones are refused so the window is not lost. No more than three hundred are asked for however many are wanted. A gateway caps `total_results` there before the request goes out, so a bigger number is one the venue is never asked, and it passes a smaller positive one on as stated; a count below one it refuses with 321 before the venue is asked anything.
 
 ```rust
 pub fn req_historical_news( &self, req_id: i64, con_id: i64, provider_codes: &str, start_time: &str, end_time: &str, total_results: i32, )

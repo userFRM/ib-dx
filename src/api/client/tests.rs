@@ -7276,10 +7276,9 @@ fn process_msgs_dispatches_news_bulletin() {
 }
 
 /// A bulletin subscription starts from the moment it is made unless `all_msgs`
-/// is set.
-///
-/// Bulletins are broadcast at the session whether or not anything is subscribed,
-/// so those already queued are discarded on subscribing unless asked for.
+/// is set — but starting late discards nothing: the day's bulletins are a
+/// cache a gateway clears only at day rollover, so asking for all of them
+/// replays the cache without consuming it, on every ask.
 #[test]
 fn a_bulletin_subscription_starts_where_the_caller_says_it_does() {
     let earlier = || NewsBulletin {
@@ -7305,17 +7304,18 @@ fn a_bulletin_subscription_starts_where_the_caller_says_it_does() {
     client.process_msgs(&mut w);
     assert!(w.events.iter().any(|e| e.starts_with("news_bulletin:8")));
 
-    // Asking for the day's own is answered with the ones already held.
-    let (asks_for_all, _rx, shared) = test_client();
-    shared.market.push_news_bulletin(earlier());
-    asks_for_all.req_news_bulletins(true);
-    let mut w = RecordingWrapper::default();
-    asks_for_all.process_msgs(&mut w);
-    assert!(
-        w.events.iter().any(|e| e.starts_with("news_bulletin:7")),
-        "the day's own were asked for and not delivered: {:?}",
-        w.events,
-    );
+    // Asking for the day's own replays the cache — including the bulletin
+    // that predates the subscription — and leaves it there: a second ask
+    // restates the day.
+    let heard = |w: &RecordingWrapper| {
+        w.events.iter().filter(|e| e.starts_with("news_bulletin:7")).count()
+    };
+    client.req_news_bulletins(true);
+    client.process_msgs(&mut w);
+    assert_eq!(heard(&w), 1, "the day's own were asked for and not replayed: {:?}", w.events);
+    client.req_news_bulletins(true);
+    client.process_msgs(&mut w);
+    assert_eq!(heard(&w), 2, "a second ask did not restate the day: {:?}", w.events);
 }
 
 // ═══════════════════════════════════════════════════════════════════

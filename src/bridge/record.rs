@@ -902,7 +902,23 @@ impl super::SharedState {
             Record::CompanionRefusal,
             &mut out,
         );
-        m.news_bulletins.take_below(cut, |_| !bulletins, Record::NewsBulletin, &mut out);
+        // Bulletins are a day's cache, not a stream to drain: a subscription
+        // is handed clones of what it is owed and the cache itself stays, so
+        // a replay asked for again restates the day. A gateway clears the
+        // store only at day rollover, which the cache's own bound stands in
+        // for here.
+        if bulletins {
+            let mark = m.bulletin_mark.load(Ordering::Relaxed);
+            {
+                let held = m.news_bulletins.lock();
+                for (seq, item) in held.iter() {
+                    if *seq >= mark && *seq < cut {
+                        out.push((*seq, Record::NewsBulletin(item.clone())));
+                    }
+                }
+            }
+            m.bulletin_mark.store(cut, Ordering::Relaxed);
+        }
         m.real_time_bars.take_below(
             cut,
             |(id, _)| kept_back(Some(RecordKind::Bars), request(*id)),

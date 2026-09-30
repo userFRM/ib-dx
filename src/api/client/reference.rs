@@ -413,15 +413,14 @@ impl EClient {
     /// `all_msgs` asks for the day's bulletins as well as the ones still to
     /// come. The subscription carries no field asking the venue for them, but
     /// the venue has been broadcasting them at this session since it opened
-    /// and they are still queued, so a caller asking for every message of the
-    /// day is answered from those. Asking only for what follows drops them,
-    /// which is what stopped a subscription from opening with bulletins
-    /// published before anyone asked for any.
+    /// and they are still cached, so a caller asking for every message of the
+    /// day is answered from those — without consuming them: the cache is the
+    /// day's, a gateway clears it only at day rollover, and asking again
+    /// restates it. Asking only for what follows starts the subscription
+    /// where the call is made and leaves the cache to a later ask.
     pub fn req_news_bulletins(&self, all_msgs: bool) {
         if self.session_over() { return self.report_reason(-1, &Refusal::not_connected("Not connected")); }
-        if !all_msgs {
-            let _ = self.shared.market.drain_news_bulletins();
-        }
+        self.shared.market.arm_news_bulletins(all_msgs, self.shared.next_seq());
         self.core.subscribe_bulletins();
     }
 

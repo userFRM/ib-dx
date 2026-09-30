@@ -285,6 +285,12 @@ pub struct MarketDataState {
     /// Each headline with the occupancy of its slot when it arrived.
     pub(super) tick_news: Queue<(u64, TickNews)>,
     pub(super) news_bulletins: Queue<NewsBulletin>,
+    /// Where a bulletin subscription's read stands in the cache: bulletins
+    /// stamped at or past it are still owed to the subscriber, and the ones
+    /// before it are the day's cache a replay restates. Armed by a
+    /// subscription, advanced by each delivery; the cache itself outlives
+    /// both, as a gateway clears it only at day rollover.
+    pub(super) bulletin_mark: AtomicU64,
     /// Each answer to a calculation asked of this client.
     pub(super) option_computations: Queue<crate::types::OptionComputation>,
     /// Each model tick with the occupancy of its slot when it was pushed.
@@ -431,6 +437,7 @@ impl MarketDataState {
             depth_drops_unsaid: Queue::new(stamps),
             tick_news: Queue::with_capacity(stamps, 32),
             news_bulletins: Queue::with_capacity(stamps, 16),
+            bulletin_mark: AtomicU64::new(u64::MAX),
             option_computations: Queue::with_capacity(stamps, 16),
             option_ticks: Queue::with_capacity(stamps, 16),
             last_option_model: Mutex::new(std::collections::HashMap::new()),
@@ -648,6 +655,15 @@ impl MarketDataState {
     /// Take every news bulletins waiting, leaving none.
     pub fn drain_news_bulletins(&self) -> Vec<NewsBulletin> {
         self.news_bulletins.drain()
+    }
+
+    /// Arm the bulletin cache for a subscription: `all_msgs` replays the
+    /// day's cache from its start, and without it the subscription stands at
+    /// `cut` and only what is stamped there or after is owed. The cache
+    /// itself is left intact either way — a gateway clears it only at day
+    /// rollover, and a replay must be repeatable.
+    pub fn arm_news_bulletins(&self, all_msgs: bool, cut: u64) {
+        self.bulletin_mark.store(if all_msgs { 0 } else { cut }, Ordering::Relaxed);
     }
 
     /// Take every option computations waiting, leaving none.

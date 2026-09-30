@@ -231,18 +231,19 @@ impl EClient {
     /// `all_msgs` asks for the day's bulletins as well as the ones still to
     /// come. Nothing is sent to the venue: it broadcasts these unasked and has
     /// been doing so since the session opened, so the day's are answered from
-    /// what is queued. Asking only for what follows drops that queue, or the
-    /// next poll opens with a bulletin published before the caller asked for
-    /// any. What cannot be had either way is anything from before the session
-    /// existed, because there is no request to ask for it with. The last
+    /// what is cached — without consuming it: the cache is the day's, a
+    /// gateway clears it only at day rollover, and asking again restates it.
+    /// Asking only for what follows starts the subscription where the call is
+    /// made and leaves the cache to a later ask. What cannot be had either way
+    /// is anything from before the session existed, because there is no
+    /// request to ask for it with. The last
     /// [`NEWS_BULLETIN_LIMIT`](crate::bridge::NEWS_BULLETIN_LIMIT)
     /// are kept for a caller who has not asked yet.
     #[pyo3(signature = (all_msgs=true))]
     fn req_news_bulletins(&self, all_msgs: bool) -> PyResult<()> {
         let Some(_tx) = self.tx_or_report(-1)? else { return Ok(()) };
-        if !all_msgs {
-            let _ = self.shared_state()?.market.drain_news_bulletins();
-        }
+        let shared = self.shared_state()?;
+        shared.market.arm_news_bulletins(all_msgs, shared.next_seq());
         self.core.subscribe_bulletins();
         Ok(())
     }

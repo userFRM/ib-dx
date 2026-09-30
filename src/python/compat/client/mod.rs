@@ -4495,11 +4495,11 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
     }
 
     /// `all_msgs=False` asks for the bulletins still to come, and the ones the
-    /// session collected before the call are not those. Kept, the first poll
-    /// after subscribing opened with a notice published before anyone had
-    /// asked for any.
+    /// session collected before the call are not those — but they are not the
+    /// caller's to lose either: the day's bulletins are a cache, and a later
+    /// `all_msgs=True` replays it without consuming it, on every ask.
     #[test]
-    fn asking_only_for_the_bulletins_to_come_drops_the_ones_already_here() {
+    fn asking_only_for_the_bulletins_to_come_keeps_the_ones_already_here() {
         Python::initialize();
         Python::attach(|py| {
             let (client, _rx, shared, w) = wired_client(py);
@@ -4525,6 +4525,16 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
             shared.market.push_news_bulletin(bulletin(2, "published after"));
             client.borrow(py).dispatch_once(py, &shared).unwrap();
             assert_eq!(heard(), 1, "the subscription answered nothing");
+
+            // Asking for the day's own replays the cache — the bulletin that
+            // predates the subscription included — and consumes nothing: a
+            // second ask restates the day.
+            client.call_method1(py, "req_news_bulletins", (true,)).unwrap();
+            client.borrow(py).dispatch_once(py, &shared).unwrap();
+            assert_eq!(heard(), 3, "the day's own were asked for and not replayed");
+            client.call_method1(py, "req_news_bulletins", (true,)).unwrap();
+            client.borrow(py).dispatch_once(py, &shared).unwrap();
+            assert_eq!(heard(), 5, "a second ask did not restate the day");
         });
     }
 
