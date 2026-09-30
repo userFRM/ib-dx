@@ -2580,7 +2580,14 @@ fn an_unanswered_matching_symbols_request_is_given_up_on() {
     assert_eq!(ccp.pending_matching_symbols[0].0, 8, "and the live one is kept");
     let refused = shared.reference.drain_historical_errors();
     assert_eq!(refused.len(), 1, "the caller of the expired one is told");
-    assert_eq!((refused[0].0, refused[0].1), (7, -1), "as no answer, not as an empty search");
+    assert_eq!(
+        (refused[0].0, refused[0].1, refused[0].2.as_str()),
+        (7, 10159, "Failed to request matching symbols:Error sending message to a CCP."),
+        "as the one error a gateway reports for a search it could not make",
+    );
+    // The window is the one a gateway gives: a search answered late is
+    // given up on long before the caller's own wait ends.
+    assert_eq!(MATCHING_SYMBOLS_TIMEOUT, Duration::from_secs(1));
 }
 /// Tag 583 is the link id the engine sends the OCA group on. Reading it
 /// back as a parent produced a stable non-zero value shared by every order
@@ -7799,7 +7806,11 @@ fn a_matching_symbols_request_that_goes_nowhere_is_refused() {
     );
     let refused = shared.reference.drain_historical_errors();
     assert_eq!(refused.len(), 1, "the caller is told it was not sent");
-    assert_eq!(refused[0].0, 7);
+    assert_eq!(
+        (refused[0].0, refused[0].1, refused[0].2.as_str()),
+        (7, 10159, "Failed to request matching symbols:Error sending message to a CCP."),
+        "in the one error a gateway reports for a search it could not make",
+    );
 
     ccp.pending_matching_symbols.push((8, Instant::now() - Duration::from_secs(1)));
     ccp.sweep_pending_matching_symbols(&shared);
@@ -7809,7 +7820,11 @@ fn a_matching_symbols_request_that_goes_nowhere_is_refused() {
     );
     let refused = shared.reference.drain_historical_errors();
     assert_eq!(refused.len(), 1, "the caller of the unanswered one is told");
-    assert_eq!(refused[0].0, 8);
+    assert_eq!(
+        (refused[0].0, refused[0].1, refused[0].2.as_str()),
+        (8, 10159, "Failed to request matching symbols:Error sending message to a CCP."),
+        "in the same error",
+    );
 }
 
 /// A bulletin whose urgency names no type here is still a message the venue

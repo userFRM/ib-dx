@@ -3,16 +3,22 @@ use std::time::{Duration, Instant};
 
 /// How long a matching-symbols request is held here before it is given up on.
 ///
+/// A gateway gives the search a one-second acknowledgement window and reports
+/// one still unacknowledged after it as failed, so this keeps the same window.
 /// Shorter than the caller's own wait, which is the rule every deadline the
 /// engine keeps has to follow and the reason `NAMING_TIMEOUT` below is written
-/// the same way. Held longer, as these two were, the caller gives up first and
-/// is told nothing arrived; the reply then arrives, is matched to the entry the
-/// caller abandoned, and is delivered under a number it never issued — while
-/// the retry it made in the meantime waits behind that entry and is given up on
-/// in its turn. A single timeout left the request unanswerable for as long as
-/// the difference lasted.
-const MATCHING_SYMBOLS_TIMEOUT: Duration =
-    Duration::from_secs(crate::config::ANSWER_TIMEOUT_SECS - 3);
+/// the same way. Held longer, the caller gives up first and is told nothing
+/// arrived; the reply then arrives, is matched to the entry the caller
+/// abandoned, and is delivered under a number it never issued — while the
+/// retry it made in the meantime waits behind that entry and is given up on
+/// in its turn.
+const MATCHING_SYMBOLS_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The one error a gateway reports for a search it could not make: its own
+/// number and text, on a send failure and on an acknowledgement window that
+/// closed with the request still unacknowledged.
+const MATCHING_SYMBOLS_FAILED: (i32, &str) =
+    (10159, "Failed to request matching symbols:Error sending message to a CCP.");
 
 /// The same, for a question or a replacement put to the advisor
 /// configuration.
@@ -3343,9 +3349,10 @@ impl CcpState {
             log::warn!("Matching symbols request req_id={req_id} pattern='{pattern}' not sent: no CCP transport");
             // Refused rather than answered empty: an empty answer is a search
             // the venue ran and nothing matched, which is not what happened.
+            // A gateway reports a send failure at once, as the one error it
+            // reports a failed search under.
             shared.reference.push_historical_error(
-                req_id, crate::error_codes::Refusal::NOT_CONNECTED,
-                "matching symbols request could not be sent: no connection to the venue".to_string(),
+                req_id, MATCHING_SYMBOLS_FAILED.0, MATCHING_SYMBOLS_FAILED.1.to_string(),
             );
             return;
         };
@@ -3360,8 +3367,7 @@ impl CcpState {
         ]) {
             log::warn!("Matching symbols request req_id={req_id} pattern='{pattern}' not sent: {e}");
             shared.reference.push_historical_error(
-                req_id, crate::error_codes::Refusal::NOT_CONNECTED,
-                format!("matching symbols request could not be sent: {e}"),
+                req_id, MATCHING_SYMBOLS_FAILED.0, MATCHING_SYMBOLS_FAILED.1.to_string(),
             );
             return;
         }
@@ -3389,10 +3395,11 @@ impl CcpState {
                 // told nothing waits on a request this session has abandoned.
                 // Refused rather than answered empty: an empty answer is a
                 // search the venue ran and nothing matched, and the venue
-                // never answered this one at all.
+                // never answered this one at all. A gateway reports one left
+                // unacknowledged past the window as the same failure as one
+                // it could not send.
                 shared.reference.push_historical_error(
-                    *req_id, crate::error_codes::Refusal::NO_ANSWER,
-                    "matching symbols request timed out — no reply from the gateway".to_string(),
+                    *req_id, MATCHING_SYMBOLS_FAILED.0, MATCHING_SYMBOLS_FAILED.1.to_string(),
                 );
                 abandoned = Some(*req_id);
                 false
