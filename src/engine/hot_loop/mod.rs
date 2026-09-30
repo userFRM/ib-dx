@@ -4287,6 +4287,35 @@ pub(crate) fn push_hmds_ticks_error(shared: &SharedState, req_id: u32, message: 
     );
 }
 
+/// The long sentence a gateway appends to a market-data refusal's details
+/// where the session's record states the API access itself as one a
+/// subscription is needed for.
+pub(crate) const API_SUBSCRIPTION_NEEDED: &str =
+    "Requested market data requires additional subscription for API. See link in 'Market Data Connections' dialog for more details.";
+
+/// The same, for a live bar stream's failure: a gateway relays the venue's
+/// refusal of the query under a number and words of the family's own, the
+/// venue's details following them.
+pub(crate) fn push_hmds_rtbar_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const RTBAR_ERROR_CODE: i32 = 420;
+    push_hmds_refusal(
+        shared, req_id, RTBAR_ERROR_CODE,
+        format!("Invalid Real-time Query:{message}"),
+        from_historical,
+    );
+}
+
+/// The same, for a live tick-by-tick stream's failure, which a gateway
+/// relays under a number and a prefix of the family's own.
+pub(crate) fn push_hmds_tbt_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {
+    const TBT_ERROR_CODE: i32 = 10189;
+    push_hmds_refusal(
+        shared, req_id, TBT_ERROR_CODE,
+        format!("Failed to request tick-by-tick data:{message}"),
+        from_historical,
+    );
+}
+
 /// The same, for a historical-news failure: a gateway relays the venue's
 /// failure of the query under a number and a prefix of its own.
 pub(crate) fn push_hmds_news_error(shared: &SharedState, req_id: u32, message: String, from_historical: bool) {

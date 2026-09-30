@@ -4404,3 +4404,64 @@ fn every_bar_in_a_frame_reaches_the_request_it_belongs_to() {
         .map(|(req_id, bar)| (*req_id, bar.timestamp, bar.close, bar.volume)).collect();
     assert_eq!(heard, [(41, 1_790_355_025, 2_500.0, 5.0), (40, 1_790_355_030, 2_525.0, 7.0)]);
 }
+
+/// A live bar or tick-by-tick stream the venue refuses mid-session is told
+/// under its family's own number and words, not the historical service's:
+/// 420 with the venue's details for a bar stream, whether or not bars of
+/// its own had been delivered — the standing route words a gateway tells
+/// under a number of their own belong to a route that failed while it was
+/// being observed, not to a query the venue refused — and 10189 for a
+/// tick-by-tick stream. Where the refusal's own record states the API
+/// access as one a subscription is needed for, the long sentence is
+/// appended to the details.
+#[test]
+fn a_refused_live_stream_is_told_under_its_own_families_number() {
+    const NEEDED: &str = "Requested market data requires additional subscription for API. See link in 'Market Data Connections' dialog for more details.";
+    type Row<'a> = (&'a str, bool, Option<&'a str>, (u32, i32, String));
+    let rows: Vec<Row> = vec![
+        ("rt_1", false, None, (9, 420, "Invalid Real-time Query:Query failed".into())),
+        ("rt_1", true, None, (9, 420, "Invalid Real-time Query:Query failed".into())),
+        ("rt_1", false, Some("51,50"), (9, 420, format!("Invalid Real-time Query:Query failed. {NEEDED}"))),
+        ("rt_1", true, Some("51"), (9, 420, format!("Invalid Real-time Query:Query failed. {NEEDED}"))),
+        ("tbt_1", false, None, (9, 10189, "Failed to request tick-by-tick data:Query failed".into())),
+        ("tbt_1", false, Some("restricted"), (9, 10189, "Failed to request tick-by-tick data:Query failed".into())),
+        ("tbt_1", false, Some("nonsense"), (9, 10189, "Failed to request tick-by-tick data:Query failed".into())),
+        ("tbt_1", false, Some("51"), (9, 10189, format!("Failed to request tick-by-tick data:Query failed. {NEEDED}"))),
+    ];
+    for (query_id, had_bars, api_access, expected) in rows {
+        let named = format!("{query_id} had_bars={had_bars} apiAccess={api_access:?}");
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let mut conn: Option<Connection> = None;
+        let bars = query_id == "rt_1";
+        if bars {
+            hmds.rtbar_subs.push((query_id.to_string(), 9, had_bars.then_some(41), 0.01, 1.0));
+        } else {
+            hmds.tbt_subscriptions.push(TbtSubscription {
+                ignore_size: false, instrument: 7, query_id: query_id.to_string(),
+                kind: TbtType::Last, caller_req_id: 9, venue_id: 0, min_tick: 0, size_tick: 0.0,
+                running: Default::default(),
+            });
+        }
+        let xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QueryError>\n\t<id>{query_id}</id>\n\t<error>Query failed</error>{}\n</QueryError>\n",
+            api_access.map(|a| format!("\n\t<apiAccess>{a}</apiAccess>")).unwrap_or_default(),
+        );
+        let mut msg = Vec::new();
+        msg.extend_from_slice(b"35=W\x016118=");
+        msg.extend_from_slice(xml.as_bytes());
+        msg.push(0x01);
+        hmds.process_hmds_message(&msg, &mut conn, &shared, &None, &mut hb);
+        let errors = shared.reference.drain_historical_errors();
+        assert_eq!(errors.len(), 1, "{named}: {errors:?}");
+        assert_eq!((errors[0].0, errors[0].1, errors[0].2.clone()), expected, "{named}");
+        if bars {
+            assert!(hmds.rtbar_subs.is_empty(), "{named}: the stream is gone");
+            assert!(hmds.rtbar_resub.iter().all(|r| r.req_id != 9), "{named}: and is not asked for again");
+        } else {
+            assert!(hmds.tbt_subscriptions.is_empty(), "{named}: the stream is gone");
+        }
+        assert!(over(&shared).is_empty(), "{named}: a live stream's refusal ends no historical request");
+    }
+}

@@ -1750,7 +1750,7 @@ fn refused_quote(said: &str, delayed_available: bool, data_services: &str, api_s
 
 /// The services a refusal names as ones a subscription is needed for: a list,
 /// or a single number. Anything else names none.
-fn subscribed_services(stated: &str) -> Option<Vec<&str>> {
+pub(crate) fn subscribed_services(stated: &str) -> Option<Vec<&str>> {
     if stated.contains(',') {
         Some(stated.split(',').collect())
     } else if stated.contains('#') {

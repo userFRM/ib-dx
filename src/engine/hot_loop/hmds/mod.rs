@@ -1427,15 +1427,27 @@ impl HmdsState {
                         // consumer sees no completion or error event.
                         let query_id = crate::control::xml::tag(xml_tag, "id")
                             .map(|s| s.to_string());
-                        let error_msg = crate::control::xml::tag(xml_tag, "error")
+                        let mut error_msg = crate::control::xml::tag(xml_tag, "error")
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| "unknown".to_string());
+                        // The refusal's own record of the access: where it
+                        // states the API access as one a subscription is
+                        // needed for, a gateway appends the long sentence to
+                        // the venue's words before it relays the details.
+                        let access = crate::control::xml::tag(xml_tag, "apiAccess").unwrap_or("");
+                        let access_needs_a_subscription = !access.is_empty()
+                            && !access.eq_ignore_ascii_case("restricted")
+                            && super::farm::subscribed_services(access)
+                                .is_some_and(|services| !services.is_empty());
                         let mut released_req_id: Option<u32> = None;
                         let mut from_historical = false;
                         // How the refusal is told: under the number and the
                         // words the kind of request it refused is told in, as
                         // a gateway tells it. The service's own by default.
                         let mut tell: fn(&SharedState, u32, String, bool) = super::push_hmds_error;
+                        // Whether the family the refusal is told in carries
+                        // the venue's details, which alone gain the sentence.
+                        let mut gains_the_access_sentence = false;
                         // Whether the query the venue refused is one a held
                         // series is actually waiting on. A hold belongs to its
                         // own bar query and to the corporate-actions query that
@@ -1496,6 +1508,16 @@ impl HmdsState {
                                     );
                                 } else {
                                     released_req_id = Some(req_id);
+                                    // A query the venue refused is told as
+                                    // the query's failure, with the venue's
+                                    // details, whether or not bars of the
+                                    // stream's own had been delivered: the
+                                    // standing route words under a number of
+                                    // their own tell a route that failed
+                                    // while it was being observed, and no
+                                    // query refusal arrives as one.
+                                    gains_the_access_sentence = true;
+                                    tell = super::push_hmds_rtbar_error;
                                 }
                             } else if let Some(pos) = self.pending_head_ts.iter().position(|(q, ..)| states(qid, q)) {
                                 let (_, req_id, ..) = self.pending_head_ts.remove(pos);
@@ -1553,6 +1575,8 @@ impl HmdsState {
                                 // waited on a stream that was never coming.
                                 let sub = self.tbt_subscriptions.remove(pos);
                                 released_req_id = Some(sub.caller_req_id as u32);
+                                tell = super::push_hmds_tbt_error;
+                                gains_the_access_sentence = true;
                             }
                         }
                         // A bar request whose pages, or whose actions, the venue
@@ -1594,6 +1618,15 @@ impl HmdsState {
                             // duplicate of one that is not running, for the
                             // rest of the session.
                             self.pending_historical.retain(|(_, r)| *r != rid);
+                        }
+                        // The refusal's record states the API access as one
+                        // a subscription is needed for: the long sentence
+                        // follows the venue's words, as a gateway appends it.
+                        // A refusal told in standing words carries no details
+                        // to append it to.
+                        if gains_the_access_sentence && access_needs_a_subscription {
+                            let needed = super::API_SUBSCRIPTION_NEEDED;
+                            error_msg = format!("{error_msg}. {needed}");
                         }
                         match released_req_id {
                             Some(req_id) => {
