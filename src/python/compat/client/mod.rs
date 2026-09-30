@@ -3968,6 +3968,9 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         Python::initialize();
         Python::attach(|py| {
             let (client, rx, shared, _w) = wired_client(py);
+            // A gateway only looks for matches where the platform has the
+            // feature, so the session states it before asking.
+            shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
             let answering = std::thread::spawn(move || {
                 // Answered under the number the question went out under, as a
                 // venue answers it. The number the next question will take is
