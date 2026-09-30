@@ -395,6 +395,9 @@ impl EClient {
                 return Err(Refusal::not_connected("Not connected"));
             }
             crate::client_core::ClientCore::validate_depth_request(contract.con_id, &contract.symbol, &contract.exchange, &contract.sec_type, num_rows, &contract.last_trade_date_or_contract_month, &contract.lookup_filters(), crate::client_core::ClientCore::zero_strike_enabled(&self.shared))?;
+            // A currency outside the session's set is refused under its own
+            // number, before the book slot is taken.
+            crate::client_core::ClientCore::validate_currency(&self.shared, &contract.currency)?;
             // A book rides the quote feed, so a feed the engine has given up on
             // serves none. Accepted, the request took a book slot and reached a
             // sender with no connection to write it to, which is silent — and a

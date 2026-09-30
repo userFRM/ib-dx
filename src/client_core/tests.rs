@@ -5038,3 +5038,36 @@ fn plain_snapshots_are_paced_a_hundred_to_the_second() {
     }
     assert!(ask(104, true, false).is_ok(), "the next second is a fresh window");
 }
+
+/// A request stating a currency outside the session's set is refused under
+/// the number a gateway refuses it with, before anything is subscribed; the
+/// set is the seeded thirteen plus the currencies the venue stated at logon,
+/// and a request stating none has nothing to read.
+#[test]
+fn a_currency_outside_the_sessions_set_is_refused_under_its_own_number() {
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let core = ClientCore::new();
+    let shared = SharedState::new();
+    let ask = |currency: &str| {
+        core.register_mkt_data(
+            &shared, &tx, 7, 7, "SPY", "SMART", "STK", currency, &Default::default(),
+            false, false, false, "", 0, None, None, false,
+        )
+    };
+    for held in ["USD", "JPY", "BASE", ""] {
+        assert!(ask(held).is_ok(), "{held:?} is inside the session's set");
+    }
+    let why = ask("ZZZ").unwrap_err();
+    assert_eq!(why.code, 406, "the refusal keeps its own number");
+    assert_eq!(why.message, "Currency ZZZ is not allowed");
+    // A currency the venue provided at logon is never refused.
+    shared.reference.set_money_orders(crate::bridge::MoneyOrderTerms {
+        product_defaults: "CASH,TRY,0.01,0.01,2;OPT,GBP,1,1,2".to_string(),
+        fixed_rates: "HUF:0.003,PLN:0.25".to_string(),
+        ..Default::default()
+    });
+    assert!(ask("TRY").is_ok(), "a currency the product defaults state");
+    assert!(ask("HUF").is_ok(), "a currency the fixed rates state");
+    assert!(ask("PLN").is_ok(), "every rate is a currency the venue provided");
+    assert_eq!(ask("ZZZ").unwrap_err().code, 406, "anything else is still refused");
+}

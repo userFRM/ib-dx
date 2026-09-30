@@ -2426,6 +2426,39 @@ impl ClientCore {
         }
     }
 
+    /// A request stating a currency outside the session's set is refused
+    /// under its own number, before anything is subscribed. The set is the
+    /// seeded thirteen plus the currencies the venue stated at logon — under
+    /// `CASH` in its product defaults, or with a fixed rate — and a request
+    /// stating none has nothing to read against it.
+    // ponytail: the seeded thirteen stand — a gateway's set grows at its
+    // logon, which this session sees only through the venue's feed.
+    pub(crate) fn validate_currency(
+        shared: &SharedState,
+        currency: &str,
+    ) -> Result<(), Refusal> {
+        const SEEDED: [&str; 13] = [
+            "AUD", "CAD", "CHF", "EUR", "GBP", "HKD", "JPY", "KRW", "SEK", "MXN", "NOK", "USD",
+            "BASE",
+        ];
+        if currency.is_empty() || SEEDED.contains(&currency) {
+            return Ok(());
+        }
+        let terms = shared.reference.money_orders();
+        let provided = terms.product_defaults.split(';').any(|entry| {
+            let mut tokens = entry.split(',').filter(|token| !token.is_empty());
+            tokens.next() == Some("CASH") && tokens.next() == Some(currency)
+        }) || terms
+            .fixed_rates
+            .split(',')
+            .filter(|rate| !rate.is_empty())
+            .any(|rate| rate.split(':').next() == Some(currency));
+        if provided {
+            return Ok(());
+        }
+        Err(Refusal::stated(406, format!("Currency {currency} is not allowed")))
+    }
+
     pub fn register_mkt_data(
         &self,
         shared: &SharedState,
@@ -2455,6 +2488,9 @@ impl ClientCore {
         if exchange.is_empty() && !sec_type.eq_ignore_ascii_case("NEWS") {
             return Err(Refusal::validation("Please enter exchange"));
         }
+        // A currency outside the session's set is refused under its own
+        // number, before the contract is looked up or anything registered.
+        Self::validate_currency(shared, currency)?;
         // The base description refusals, before the contract is looked up or
         // anything is registered. A contract given by id skips them — the id
         // stands in for the description — a combination excepted, whose legs

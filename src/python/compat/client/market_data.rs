@@ -265,6 +265,11 @@ impl EClient {
         ) {
             return self.report_refusal(py, req_id, why);
         }
+        // A currency outside the session's set is refused under its own
+        // number, before the book slot is taken.
+        if let Err(why) = crate::client_core::ClientCore::validate_currency(&shared, &contract.currency) {
+            return self.report_refusal(py, req_id, why);
+        }
         // A book rides the quote feed, so a feed given up on serves none. The
         // other surface refuses this and this one did not: a book asked for
         // here took a slot, reached a sender with no connection to write it to,
