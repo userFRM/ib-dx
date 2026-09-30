@@ -741,12 +741,11 @@ impl EClient {
             // raw to the venue and coming back as a data service failure.
             crate::client_core::ClientCore::validate_moment("Start Date/Time", start_date_time)?;
             crate::client_core::ClientCore::validate_moment("End Date/Time", end_date_time)?;
-            // A count below zero is not a count. Cast unchecked it became a
-            // request for four billion ticks, which the venue answers by refusing
-            // a request the caller never made.
-            let number_of_ticks = u32::try_from(number_of_ticks).map_err(|_| {
-                Refusal::validation(format!("number_of_ticks {number_of_ticks} is negative"))
-            })?;
+            // A count of no ticks is not a count: zero rode the unsigned cast
+            // as a request the venue refused, and a negative one was refused
+            // here in this client's own words rather than a gateway's.
+            let number_of_ticks =
+                crate::client_core::ClientCore::validate_tick_count(number_of_ticks)?;
             self.send(ControlCommand::FetchHistoricalTicks {
                 contract: contract.into(),
                 req_id: wire_id,

@@ -5109,6 +5109,36 @@ fn a_ticks_request_on_a_combination_is_refused_in_its_own_words() {
     }
 }
 
+/// A ticks request counting no ticks — zero included, which the unsigned
+/// cast used to carry as a count of four billion the venue then refused —
+/// is refused at intake in a gateway's own sentence for it, on both
+/// surfaces alike, before anything is sent.
+#[test]
+fn a_ticks_request_counting_no_ticks_is_refused_in_its_own_words() {
+    let (client, rx, _shared) = test_client();
+    for count in [0, -1, i32::MIN] {
+        let err = crate::api::client::tests::reported(&client, || {
+            client.req_historical_ticks(8, &spy(), "20260925-13:00:00", "", count, "TRADES", true, false)
+        })
+        .expect_err("a count of no ticks");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (
+                Refusal::VALIDATION,
+                "Error validating request:-'' : cause - Number of ticks must be > 0",
+            ),
+            "{count}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {count}");
+    }
+    // A count of one tick is a count.
+    crate::api::client::tests::reported(&client, || {
+        client.req_historical_ticks(8, &spy(), "20260925-13:00:00", "", 1, "TRADES", true, false)
+    })
+    .expect("a positive count goes");
+    assert!(rx.try_recv().is_ok(), "and the request was sent");
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Contract details
 // ═══════════════════════════════════════════════════════════════════

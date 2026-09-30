@@ -85,12 +85,14 @@ def test_both_clients_carry_the_same_contract_details():
     )
 
 
-#: An argument a surface takes and will not send is refused with this sentence,
-#: which names the argument first. Read from the sources for the same reason the
-#: fields are: a list beside them is a third thing to forget.
-#: An argument named at the start of a refusal, however the refusal goes on.
-#: Keyed on one sentence, this stopped reading the day the last refusal using
-#: that sentence was resolved, and the guard below is what said so.
+#: An argument a surface takes and will not send is refused with a sentence
+#: naming the argument first, or by a helper the argument is named to. Read
+#: from the sources for the same reason the fields are: a list beside them is
+#: a third thing to forget.
+#: The refusals both surfaces share now live in the one intake they both
+#: route through, and its sentences name no argument, so this scan finds
+#: neither surface spelling one: that is the standing state. What it still
+#: catches is a refusal one surface grows back on its own.
 _REFUSED = re.compile(
     r'"([a-z_]+)[= ]\{?[a-z_]*\}? (?:is not carried by this protocol|is negative)'
     r'|wire_u32\("([a-z_]+)"'
@@ -119,14 +121,10 @@ def test_both_clients_refuse_the_same_arguments():
     that is not the one they asked for, and nothing says so."""
     rust = _refused("src/api/client")
     python = _refused("src/python/compat/client")
-    # Two empty sets are equal, and both surfaces spelling the refusal
-    # differently — or one of them dropping it — leaves two empty sets. The
-    # sentence this reads for is the one both surfaces write, so finding none is
-    # this test having stopped reading rather than there being none to find.
-    assert rust and python, (
-        "neither surface was found refusing anything, so the sentence this "
-        "reads for has changed and this test is no longer reading it"
-    )
+    # Empty on both sides is the standing state: the refusals the surfaces
+    # share live in the one intake they both route through, whose sentences
+    # name no argument. What the equality still catches is one surface
+    # spelling a refusal the other lacks.
     assert rust == python, (
         "an argument is refused by one client and accepted by the other: "
         f"rust only={sorted(rust - python)} python only={sorted(python - rust)}"

@@ -621,12 +621,19 @@ impl EClient {
                 return self.report_refusal(py, req_id, why);
             }
         }
+        // A count of no ticks is not a count: zero rode the unsigned cast as
+        // a request the venue refused, and a negative one was raised here
+        // rather than reported in a gateway's words and code.
+        let number_of_ticks = match ClientCore::validate_tick_count(number_of_ticks) {
+            Ok(count) => count,
+            Err(why) => return self.report_refusal(py, req_id, why),
+        };
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalTicks {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,
                 start_date_time: start_date_time.to_string(),
                 end_date_time: end_date_time.to_string(),
-                number_of_ticks: super::wire_u32("number_of_ticks", number_of_ticks as i64)?,
+                number_of_ticks,
                 what_to_show: what_to_show.to_string(),
                 use_rth: use_rth != 0,
                 ignore_size,

@@ -3372,6 +3372,10 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 con_id: 28868674, sec_type: "BAG".into(), exchange: "SMART".into(),
                 ..Default::default()
             }).unwrap();
+            let described = Py::new(py, Contract {
+                con_id: 756733, sec_type: "STK".into(), exchange: "SMART".into(),
+                ..Default::default()
+            }).unwrap();
 
             client
                 .call_method1(py, "req_head_time_stamp", (1i64, &no_exchange, "TRADES", 1i32, 1i32))
@@ -3409,6 +3413,13 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 )
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for ticks on a combination");
+            client
+                .call_method1(
+                    py, "req_historical_ticks",
+                    (7i64, &described, "20260925-13:00:00", "", 0i32, "TRADES", 1i32, false, py.None()),
+                )
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for ticks counting none");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3424,6 +3435,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (4, "Security type 'BAG' requires combo leg details."),
                 (5, "Exchange must not be empty"),
                 (6, "Combo types are not supported"),
+                (7, "Number of ticks must be > 0"),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }

@@ -6657,6 +6657,17 @@ impl ClientCore {
         Ok(())
     }
 
+    /// The count a ticks request states: one counting no ticks — zero
+    /// included, which the unsigned wire number used to carry silently — is
+    /// refused in a gateway's own sentence for it before anything is sent,
+    /// and a count it accepts is handed back for the wire.
+    pub fn validate_tick_count(number_of_ticks: i32) -> Result<u32, Refusal> {
+        if number_of_ticks <= 0 {
+            return Err(Refusal::validation("Number of ticks must be > 0"));
+        }
+        Ok(number_of_ticks as u32)
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized
