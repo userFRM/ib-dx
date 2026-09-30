@@ -110,6 +110,7 @@ from ._reference_shapes import (  # noqa: F401
     iswrapper,
     listOfValues,
     longMaxString,
+    printProtoSingleLine,
 )
 
 #: What a fill cost, under the name the reference client gave it before the
@@ -135,6 +136,16 @@ def _reference_name(ours: str) -> str:
         "cancel_pnl": "cancelPnL",
         "req_pnl_single": "reqPnLSingle",
         "cancel_pnl_single": "cancelPnLSingle",
+        "req_pnl_proto_buf": "reqPnLProtoBuf",
+        "cancel_pnl_proto_buf": "cancelPnLProtoBuf",
+        "req_pnl_single_proto_buf": "reqPnLSingleProtoBuf",
+        "cancel_pnl_single_proto_buf": "cancelPnLSingleProtoBuf",
+        "req_fa_proto_buf": "reqFAProtoBuf",
+        "replace_fa_proto_buf": "replaceFAProtoBuf",
+        "receive_fa_proto_buf": "receiveFAProtoBuf",
+        "replace_fa_end_proto_buf": "replaceFAEndProtoBuf",
+        "req_head_time_stamp_proto_buf": "reqHeadTimestampProtoBuf",
+        "cancel_head_time_stamp_proto_buf": "cancelHeadTimestampProtoBuf",
         "request_fa": "requestFA",
         "replace_fa": "replaceFA",
         "set_connect_options": "setConnectionOptions",
@@ -291,6 +302,15 @@ def _standing_in_front_of(method, cls, theirs: str):
     theirs_calls_ours.__wrapped__ = method
     return theirs_calls_ours
 
+
+# The reference client's second encoding: the *ProtoBuf family on both
+# surfaces, routing to the text requests, and `useProtoBuf` answering False.
+# Installed before the spellings are paired, so the reference names are
+# generated for what it puts there as for any other method.
+from . import _protobuf_shapes as _protobuf_shapes_module  # noqa: E402
+
+_protobuf_shapes_module.install(globals())
+del _protobuf_shapes_module
 
 for _surface in (EWrapper, EClient):  # noqa: F405
     _answer_to_both_spellings(_surface)

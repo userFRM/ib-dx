@@ -389,6 +389,50 @@ Rust's `req_config(req_id)` and `update_config(req_id)` take only the request
 id and deliver the same refusal through `process_msgs` and `Wrapper::error`.
 They accept no configuration payload.
 
+## The protobuf encoding's family
+
+Beside every text request the reference client publishes a second spelling
+that takes a message of a protobuf encoding, serializes it and sends it on a
+socket: the `req*ProtoBuf` and `cancel*ProtoBuf` family, `useProtoBuf(msgId)`
+to ask which encoding a session speaks, and a `*ProtoBuf` stub on its wrapper
+for every answer of that encoding. There is no socket between a program and
+this client — the engine runs in the same process — and no protobuf encoder
+exists or is needed here.
+
+`useProtoBuf(msgId)` answers `False` under both spellings, so a sample program
+written against that client asks, is told no, and takes its text path. Every
+`req*ProtoBuf(requestProto)` routes to the text request carrying the same
+intent: it states what its message states, and a field the message does not
+state falls to the text request's own default, while an argument the text
+request requires but the message omits arrives as the encoding's own zero for
+it — what a gateway reads off the wire for an unstated field. A `None` message
+is the reference client's own first line and sends nothing. The two
+configuration calls above are the exception: they report 10357 rather than
+routing, and the family leaves them to the Rust surface that does.
+
+Two requests carry a field the text surface has no place for.
+`placeOrderProtoBuf(placeOrderRequestProto)` routes `orderId`, `contract` and
+`order`; its `attachedOrders` is dropped, as a stop-loss and take-profit pair
+travels here on the order's own fields, not beside it. `startApiProtoBuf`
+routes to the text `start_api`, whose session this client establishes without
+the `clientId` and `optionalCapabilities` the message may state. The transport
+primitive `sendMsgProtoBuf` is absent: there is no socket to serialize onto,
+and a program that reaches for it is reaching for the encoding this client
+does not speak.
+
+`printProtoSingleLine(header, message)` is in the utils module, the
+one-line display helper a callback in that encoding prints what arrived with.
+Where the protobuf library is installed it renders a message on one line as
+that library renders one; where it is not, the message's own text is collapsed
+to one line, so the call displays and never dies on the import a program's
+first line made. The 81 `*ProtoBuf` wrapper stubs exist to be found: a
+program's override calls `super()` into one, and the base answers as every
+other stub here answers — nothing, as this client's engine delivers its
+answers under the text encoding. The whole family is installed from Python
+(`ibkr_dx/_protobuf_shapes.py`), and the reference spellings are generated for
+it as for any other method, so both `reqMarketDataProtoBuf` and
+`req_market_data_proto_buf` name one call.
+
 ## Connect options
 
 Python's `set_connect_options` (also `setConnectOptions`, and ibapi's

@@ -33,7 +33,27 @@ def test_a_request_never_delivers_ahead_of_the_sessions_earlier_record(name):
         def HasField(self, field):
             return field == "reqId"
 
-    values = dict(
+    class ProtoRequest:
+        """A message of the protobuf encoding stating its one number: what
+        every member of that family takes, and nothing else stated, so the
+        text twin it routes to defaults the rest."""
+
+        def __init__(self):
+            self.reqId = 9
+            self.pattern = "SPY"
+
+        def HasField(self, field):
+            return field in ("reqId", "pattern")
+
+    class Values(dict):
+        def __missing__(self, key):
+            # The family's parameters carry the reference's own names, one
+            # per message; every one of them ends in the encoding's name.
+            if key.endswith("Proto"):
+                return ProtoRequest()
+            raise KeyError(key)
+
+    values = Values(
         config_request_proto=ConfigRequest(), update_config_request_proto=ConfigRequest(),
         req_id=9, order_id=9, perm_id=9, con_id=756733,
         contract=ibkr_dx.Contract(), order=ibkr_dx.Order(),

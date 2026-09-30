@@ -377,6 +377,24 @@ def getTimeStrFromMillis(time):
     return stamp.strftime("%b %d, %Y %H:%M:%S.%f")[:-3]
 
 
+def printProtoSingleLine(header, message):
+    """A message of the protobuf encoding, on one line under a header.
+
+    The reference client's own helper: a callback in that encoding prints what
+    arrived this way. Where the protobuf library is installed it renders as
+    that library renders one message on one line; where it is not — this client
+    needs no encoder — the message's own text is collapsed to one line, so the
+    call displays and never dies on the import a program's first line made.
+    """
+    try:
+        from google.protobuf import text_format
+
+        body = text_format.MessageToString(message, as_one_line=True)
+    except Exception:
+        body = " ".join(str(message).split())
+    print(header, body)
+
+
 def getEnumTypeName(cls, value):
     """The name a numbered kind goes by, or the first one where it names none.
 

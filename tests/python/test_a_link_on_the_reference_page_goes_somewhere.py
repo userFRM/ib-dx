@@ -73,6 +73,9 @@ def test_the_generator_sees_every_callback_the_class_carries():
     carried = {
         name for name in dir(EWrapper)
         if name.islower() and not name.startswith("_")
+        # The protobuf family's stubs are installed from Python, not parsed
+        # out of this file; the Limits page documents them.
+        and not name.endswith("_proto_buf")
     }
     assert carried, "the class carries no callbacks to see"
     assert carried <= parsed, f"callbacks the parser cannot see: {sorted(carried - parsed)[:5]}"
