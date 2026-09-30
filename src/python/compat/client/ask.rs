@@ -187,7 +187,11 @@ impl EClient {
     fn actions_for(
         &self, py: Python<'_>, contract: &Contract, start_date: &str, end_date: &str,
     ) -> PyResult<Vec<crate::control::adjustments::Adjustment>> {
-        if contract.con_id <= 0 {
+        // The unset marker the reference client carries is no id at all, and
+        // is read as zero is.
+        if contract.con_id < 0
+            || crate::client_core::ClientCore::identifier_unstated(contract.con_id)
+        {
             return Err(PyValueError::new_err(format!(
                 "corporate actions are asked for by the venue's id for the contract, \
                  and {} is not one: qualify the contract first and pass what comes back",
@@ -579,8 +583,9 @@ impl EClient {
         // Asked for by the underlying's id, as the other surface requires too:
         // sent with none, the venue's answer names the real id and matches
         // nothing waiting here, and the caller waits out the answer instead
-        // of being told.
-        if underlying_con_id == 0 {
+        // of being told. The unset marker the reference client carries is no
+        // id at all, and is read as zero is.
+        if crate::client_core::ClientCore::identifier_unstated(underlying_con_id) {
             return Err(PyRuntimeError::new_err(format!(
                 "the chain is asked for by the id of the contract the options are on, and \
                  {underlying_symbol} carries none: qualify it first ({})",

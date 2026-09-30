@@ -623,8 +623,15 @@ impl EClient {
     ) -> PyResult<()> {
         let Some(_tx) = self.tx_or_report(req_id)? else { return Ok(()) };
         let mut scan = crate::types::SpreadScan::from(scan);
-        let con_id = if scan.under_con_id > 0 { scan.under_con_id } else { contract.con_id };
-        if con_id <= 0 {
+        // An id is stated where one is carried that reads as stated: the
+        // unset marker the reference client carries names no contract, as
+        // zero names none, on the scan and on the contract alike — read the
+        // way the other surface reads it.
+        let stated = |id: i64| {
+            id > 0 && !crate::client_core::ClientCore::identifier_unstated(id)
+        };
+        let con_id = if stated(scan.under_con_id) { scan.under_con_id } else { contract.con_id };
+        if !stated(con_id) {
             return self.report_refusal(py, req_id, Refusal::validation(
                 "a spread scan names the contract to scan by the venue's id for it",
             ));

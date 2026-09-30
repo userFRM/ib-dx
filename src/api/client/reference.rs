@@ -600,6 +600,10 @@ impl EClient {
         &self, req_id: u32, con_id: i64, sec_type: &str, exchange: &str,
         start_date: &str, end_date: &str,
     ) -> Result<(), Refusal> {
+        // An id left at the unset marker the reference client carries states
+        // no contract: it is read as zero is, and refused as zero is, rather
+        // than stamped beside the request.
+        let con_id = if ClientCore::identifier_unstated(con_id) { 0 } else { con_id };
         self.send(ControlCommand::FetchAdjustments {
             req_id,
             con_id: wire_con_id(con_id, "a request for corporate actions")?,

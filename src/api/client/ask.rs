@@ -453,7 +453,9 @@ impl EClient {
         // Numbered in the band reserved for these calls, which the request
         // surface refuses to anyone else.
         let _answering = super::Answering::begin();
-        if contract.con_id == 0 {
+        // An id left at the unset marker the reference client carries is no
+        // id at all: the request is refused as one naming no contract is.
+        if crate::client_core::ClientCore::identifier_unstated(contract.con_id) {
             return Err(Refusal::validation(
                 "corporate actions are asked for by the venue's id for the contract, \
                  which this one does not carry: qualify it first".to_string(),
@@ -584,7 +586,9 @@ impl EClient {
                 }
             }
         }
-        if underlying.con_id == 0 {
+        // An id left at the unset marker the reference client carries is no
+        // id at all: the lookup is refused as one carrying none is.
+        if crate::client_core::ClientCore::identifier_unstated(underlying.con_id) {
             return Err(Refusal::validation(format!(
                 "the chain is asked for by the id of the contract the options are on, and {} \
                  carries none: qualify it first",
@@ -1211,10 +1215,12 @@ impl EClient {
     /// smart-routed US stock.
     ///
     /// Costs a round trip, so it happens only where the caller left them out.
+    /// An id left at the unset marker the reference client carries names no
+    /// contract, as zero names none, and qualifies nothing.
     pub(crate) fn named_by_the_venue<'a>(
         &self, contract: &'a Contract,
     ) -> Result<std::borrow::Cow<'a, Contract>, Refusal> {
-        if contract.con_id != 0
+        if !crate::client_core::ClientCore::identifier_unstated(contract.con_id)
             && (contract.sec_type.is_empty() || contract.exchange.is_empty())
         {
             return Ok(std::borrow::Cow::Owned(self.qualify_contract(contract)?));

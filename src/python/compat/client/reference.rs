@@ -462,8 +462,11 @@ impl EClient {
         // Narrowed the way the request surface narrows it: a contract id of
         // zero, or a negative one, names nothing and the venue answers it with
         // silence — which reads as a contract with no actions rather than a
-        // question that was never askable.
-        let con_id = u32::try_from(con_id).ok().filter(|id| *id > 0).ok_or_else(|| {
+        // question that was never askable. The unset marker the reference
+        // client carries names nothing either, and is read as zero is.
+        let con_id = u32::try_from(con_id).ok()
+            .filter(|id| *id > 0 && !ClientCore::identifier_unstated(i64::from(*id)))
+            .ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err(format!(
                 "corporate actions are asked for by the venue's id for the contract, \
                  and {con_id} is not one: qualify the contract first and pass what \

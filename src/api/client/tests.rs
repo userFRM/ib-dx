@@ -10186,6 +10186,69 @@ fn a_spread_scan_carries_its_own_text() {
     assert_eq!(rx.engine().held_scans.len(), 1, "and the second waits for the first");
 }
 
+/// An id left at the unset marker the reference client carries names no
+/// underlying: the chain lookup refuses it the way it refuses a contract
+/// carrying no id, and nothing is asked on the wire under 2147483647.
+#[test]
+fn an_option_chain_under_the_unset_marker_is_refused_as_one_carrying_no_id() {
+    let (client, rx, _shared) = test_client();
+    let marked = Contract {
+        con_id: i64::from(i32::MAX), symbol: "AAPL".into(), sec_type: "STK".into(),
+        exchange: "SMART".into(), ..Default::default()
+    };
+    let why = client.option_chain(&marked).expect_err("the marker is no id to ask under");
+    assert_eq!(why.code, Refusal::VALIDATION, "refused before anything is asked");
+    assert!(why.message.contains("carries none"), "refused as one carrying no id: {}", why.message);
+    assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
+}
+
+/// The venue-naming check reads an id left at the unset marker as no id at
+/// all: a contract carrying it beside no description is not qualified by it,
+/// and goes on to be handled as one naming no contract.
+#[test]
+fn the_venue_naming_check_reads_the_unset_marker_as_no_id() {
+    let (client, _rx, _shared) = test_client();
+    let marked = Contract { con_id: i64::from(i32::MAX), ..Default::default() };
+    let named = client
+        .named_by_the_venue(&marked)
+        .expect("the marker is not a name to ask the venue about");
+    assert!(
+        matches!(named, std::borrow::Cow::Borrowed(_)),
+        "a contract carrying the marker is handled as one carrying no id",
+    );
+}
+
+/// A spread scan reads both ids it can carry the way a gateway reads one:
+/// the unset marker names no contract, so a scan carrying it on the scan and
+/// on the contract is refused, and one carrying it beside a stated id is
+/// asked under the id that is stated.
+#[test]
+fn a_spread_scan_under_the_unset_marker_is_asked_under_no_id_but_a_stated_one() {
+    let (client, rx, _shared) = test_client();
+    let marker = i64::from(i32::MAX);
+    let scan = |under: i64| crate::types::SpreadScan {
+        version: 6, account: "DU1".into(), under_con_id: under, ..Default::default()
+    };
+    let marked = Contract {
+        con_id: marker, symbol: "SPY".into(), sec_type: "STK".into(),
+        exchange: "SMART".into(), ..Default::default()
+    };
+    let why = crate::api::client::tests::reported(&client, || {
+        client.req_spread_scan(1, &marked, &scan(marker))
+    })
+    .expect_err("the marker names no contract to scan");
+    assert_eq!(why.code, 321, "refused under the number the scan's refusal keeps: {}", why.message);
+    assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
+
+    crate::api::client::tests::reported(&client, || client.req_spread_scan(2, &spy(), &scan(marker)))
+        .expect("a scan beside a stated id is taken");
+    let Some(ControlCommand::Subscribe { spread_scan: Some(stated), .. }) = rx.try_recv().ok()
+    else {
+        panic!("the scan rides its subscription");
+    };
+    assert_eq!(stated, scan(spy().con_id).stated(), "asked under the id the contract states");
+}
+
 /// A preview carrying an algo strategy is still a preview.
 ///
 /// The flag that asks for one used to be a kind of order, so an order that was
@@ -12028,7 +12091,7 @@ fn a_quote_withdrawal_during_its_naming_opens_nothing() {
 /// deadline again for a request that will never leave.
 #[test]
 fn corporate_actions_about_an_unnumbered_contract_is_a_bad_request() {
-    let (client, _rx, _shared) = test_client();
+    let (client, rx, _shared) = test_client();
     let bare = Contract {
         symbol: "NVDA".into(), sec_type: "STK".into(), exchange: "SMART".into(),
         currency: "USD".into(), ..Default::default()
@@ -12040,6 +12103,24 @@ fn corporate_actions_about_an_unnumbered_contract_is_a_bad_request() {
 
     assert_eq!(why.code, Refusal::VALIDATION, "the number for a request that is wrong");
     assert_ne!(why.code, Refusal::NO_ANSWER, "nothing was waited for, so nothing stayed silent");
+
+    // An id left at the unset marker the reference client carries names no
+    // contract, as zero names none: both entries refuse it the way they
+    // refuse zero, and nothing is asked on the wire under 2147483647.
+    let marked = Contract { con_id: i64::from(i32::MAX), ..Default::default() };
+    let why = client
+        .corporate_actions(&marked, "20240101", "20241231")
+        .expect_err("the unset marker is no id to ask about");
+    assert_eq!(why.code, Refusal::VALIDATION, "refused as one naming no contract");
+    assert!(
+        why.message.contains("does not carry"),
+        "refused at the call, before anything is taken or sent: {}", why.message,
+    );
+    crate::api::client::tests::reported(&client, || {
+        client.req_adjustments(41, i64::from(i32::MAX), "STK", "SMART", "20240101", "20241231")
+    })
+    .expect_err("the request entry refuses the marker too");
+    assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
 }
 
 /// What an answering call reads and does not use reaches the record a caller

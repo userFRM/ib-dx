@@ -3020,6 +3020,92 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// An id left at the unset marker the reference client carries names no
+    /// contract, as zero names none: a corporate-actions request carrying it
+    /// is refused on both entries, and nothing is asked on the wire under
+    /// 2147483647.
+    #[test]
+    fn a_corporate_actions_request_under_the_unset_marker_is_refused() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, _w) = wired_client(py);
+            let why = client
+                .call_method1(
+                    py, "req_adjustments",
+                    (41i64, i64::from(i32::MAX), "STK", "SMART", "20240101", "20241231"),
+                )
+                .expect_err("the unset marker is no id to ask about");
+            assert!(why.to_string().contains("is not one"), "{why}");
+            let marked =
+                Py::new(py, Contract { con_id: i64::from(i32::MAX), ..Default::default() }).unwrap();
+            let why = client
+                .call_method1(py, "corporate_actions", (&marked, "20240101", "20241231"))
+                .expect_err("the call that asks and waits refuses it the same way");
+            assert!(why.to_string().contains("qualify the contract first"), "{why}");
+            assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
+        });
+    }
+
+    /// An option chain asked under the unset marker is refused as one
+    /// carrying no id, and nothing is asked on the wire under 2147483647.
+    #[test]
+    fn an_option_chain_under_the_unset_marker_is_refused_as_one_carrying_no_id() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, _w) = wired_client(py);
+            let why = client
+                .call_method1(py, "option_chains", ("AAPL", "", "STK", i64::from(i32::MAX)))
+                .expect_err("the unset marker is no id to ask under");
+            assert!(why.to_string().contains("carries none"), "{why}");
+            assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
+        });
+    }
+
+    /// A spread scan reads both ids it can carry the way a gateway reads one:
+    /// the unset marker names no contract, so a scan carrying it on the scan
+    /// and on the contract is refused, and one carrying it beside a stated id
+    /// is asked under the id that is stated.
+    #[test]
+    fn a_spread_scan_under_the_unset_marker_is_asked_under_no_id_but_a_stated_one() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, shared, _w) = wired_client(py);
+            let marker = i64::from(i32::MAX);
+            let scan = |under: i64| {
+                Py::new(py, crate::python::compat::contract::SpreadScan {
+                    version: 6, account: "DU1".into(), under_con_id: under,
+                    ..Default::default()
+                })
+                .unwrap()
+            };
+            let contract = |con_id: i64| {
+                Py::new(py, Contract {
+                    con_id, symbol: "SPY".into(), sec_type: "STK".into(),
+                    exchange: "SMART".into(), ..Default::default()
+                })
+                .unwrap()
+            };
+            client
+                .call_method1(py, "req_spread_scan", (1i64, &contract(marker), &scan(marker)))
+                .unwrap();
+            let refused = shared.drain_refused();
+            assert_eq!(refused.len(), 1, "the marker names no contract to scan: {refused:?}");
+            assert_eq!(refused[0].1, 321, "{}", refused[0].2);
+            assert!(rx.try_recv().is_err(), "and nothing was asked on the wire");
+
+            client
+                .call_method1(py, "req_spread_scan", (2i64, &contract(756733), &scan(marker)))
+                .unwrap();
+            let Some(ControlCommand::Subscribe { req_id: 2, spread_scan: Some(stated), .. }) =
+                rx.try_recv().ok()
+            else {
+                panic!("the scan rides its subscription");
+            };
+            assert!(stated.contains("u756733|"), "asked under the id the contract states: {stated}");
+            assert!(!stated.contains("2147483647"), "and not under the marker: {stated}");
+        });
+    }
+
     /// Backfill and then stream on one number is the ordinary way to write
     /// it. The finished lookup left the number marked as one whose bars are
     /// updates to it, and every bar of the stream was routed to

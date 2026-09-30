@@ -25,8 +25,14 @@ impl EClient {
             return;
         }
         if let Err(why) = (|| -> Result<(), Refusal> {
-            let con_id = if scan.under_con_id > 0 { scan.under_con_id } else { contract.con_id };
-            if con_id <= 0 {
+            // An id is stated where one is carried that reads as stated: the
+            // unset marker the reference client carries names no contract, as
+            // zero names none, on the scan and on the contract alike.
+            let stated = |id: i64| {
+                id > 0 && !crate::client_core::ClientCore::identifier_unstated(id)
+            };
+            let con_id = if stated(scan.under_con_id) { scan.under_con_id } else { contract.con_id };
+            if !stated(con_id) {
                 return Err(Refusal::stated(
                     321, "a spread scan names the contract to scan by the venue's id for it",
                 ));
