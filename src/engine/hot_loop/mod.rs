@@ -1772,25 +1772,13 @@ impl HotLoop {
                         req_id, &query, &mut self.secdef_conn, &mut self.hb, &self.shared,
                     );
                 }
-                ControlCommand::CancelCalendar { req_id } => {
-                    // As above: the answers already queued go with it. An
-                    // answer thrown away is a withdrawal that acted, and one
-                    // that acted says nothing beside it: refused on the
-                    // pending list alone, a caller withdrawing a request the
-                    // venue had just answered was told it was never made.
-                    let purged = self.shared.reference.purge_calendar_for(req_id);
-                    if !self.secdef.withdraw_calendar_request(req_id) && !purged {
-                        // Under the number that says nothing was waiting, not
-                        // the data service's own: a withdrawal naming nothing
-                        // is not the service reporting a difficulty with a
-                        // request it answered.
-                        push_hmds_refusal(
-                            &self.shared, req_id,
-                            crate::error_codes::NO_SUCH_SUBSCRIPTION,
-                            format!("no calendar request is waiting under request {req_id}"),
-                            false,
-                        );
-                    }
+                ControlCommand::CancelCalendar { .. } => {
+                    // Both cancels do the same thing, and neither speaks:
+                    // the metadata slot is freed, whatever is in it and
+                    // whatever number named it. Queued answers and a pending
+                    // events request are left alone — they belong to the
+                    // caller, not to the cancel.
+                    self.secdef.cancel_calendar();
                 }
                 ControlCommand::FetchOptionParams { req_id, symbol, fut_fop_exchange, underlying_sec_type, underlying_con_id } => {
                     self.ccp.ask_option_params(
@@ -8798,21 +8786,25 @@ mod tests {
         }
     }
 
-    /// A calendar withdrawal that throws away an answer already queued acted,
-    /// and is not told nothing was waiting. The answer had arrived; refusing
-    /// the withdrawal said the request was never made.
+    /// A calendar withdrawal frees the metadata slot — silently, whatever is
+    /// in it, not keyed on the caller's number — and touches nothing else:
+    /// an answer already queued still reaches its caller, and a withdrawal
+    /// naming nothing is as silent as one that freed a slot.
     #[test]
-    fn withdrawing_a_calendar_request_whose_answer_is_queued_is_not_refused() {
+    fn a_calendar_withdrawal_is_silent_and_leaves_the_queued_answer() {
         let shared = Arc::new(SharedState::new());
         let mut hl = HotLoop::new(shared.clone(), None, None);
         let (tx, rx) = std::sync::mpsc::sync_channel(4);
         hl.set_control_rx(rx);
         shared.reference.push_calendar_meta_data(7, "{}".to_string());
         tx.send(ControlCommand::CancelCalendar { req_id: 7 }).unwrap();
+        // A withdrawal naming nothing at all: as silent as the one above.
+        tx.send(ControlCommand::CancelCalendar { req_id: 99 }).unwrap();
         hl.poll_control_commands();
-        assert!(shared.reference.drain_calendar_meta_data().is_empty(), "the answer goes with the request");
         let told = shared.reference.drain_historical_errors();
-        assert!(told.is_empty(), "and a withdrawal that acted says nothing beside it: {told:?}");
+        assert!(told.is_empty(), "a withdrawal never speaks: {told:?}");
+        let queued = shared.reference.drain_calendar_meta_data();
+        assert_eq!(queued.len(), 1, "the queued answer belongs to the caller: {queued:?}");
     }
 
     fn stock(con_id: i64, symbol: &str) -> ContractRef {
@@ -10202,33 +10194,28 @@ mod withdrawal_tests {
         );
     }
 
-    /// Withdrawing a news query or a calendar query this client is not
-    /// waiting on is answered too, and under the number that says nothing was
-    /// waiting rather than the data service's own.
+    /// Withdrawing a news query this client is not waiting on is answered
+    /// too, and under the number that says nothing was waiting rather than
+    /// the data service's own.
     ///
-    /// The calendar reported under the service's number, which says the
-    /// service reported a difficulty with a request it answered. Nothing was
-    /// waiting; that is a different thing.
+    /// The calendar is not in this table: a calendar withdrawal never
+    /// speaks, whatever it names — see the silent-withdrawal test above.
     #[test]
     fn withdrawing_a_query_that_is_not_waiting_says_so() {
-        for (what, cmd) in [
-            ("news", crate::types::ControlCommand::CancelHistoricalNews { req_id: 9 }),
-            ("the calendar", crate::types::ControlCommand::CancelCalendar { req_id: 9 }),
-        ] {
-            let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
-            let (tx, rx) = std::sync::mpsc::sync_channel(4);
-            hl.set_control_rx(rx);
+        let cmd = crate::types::ControlCommand::CancelHistoricalNews { req_id: 9 };
+        let mut hl = HotLoop::new(Arc::new(SharedState::new()), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
+        hl.set_control_rx(rx);
 
-            tx.send(cmd).unwrap();
-            hl.poll_control_commands();
+        tx.send(cmd).unwrap();
+        hl.poll_control_commands();
 
-            let told = hl.shared.reference.drain_historical_errors();
-            assert_eq!(told.len(), 1, "{what}: the caller is told: {told:?}");
-            assert_eq!(
-                (told[0].0, told[0].1), (9, 300),
-                "{what}: under the number that says nothing was waiting",
-            );
-        }
+        let told = hl.shared.reference.drain_historical_errors();
+        assert_eq!(told.len(), 1, "the caller is told: {told:?}");
+        assert_eq!(
+            (told[0].0, told[0].1), (9, 300),
+            "under the number that says nothing was waiting",
+        );
     }
 
     /// Withdrawing a scan this client is not running is answered, not passed

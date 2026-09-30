@@ -252,11 +252,12 @@ impl EClient {
 
     /// Stop waiting on the event types.
     ///
-    /// The query is one message and one answer, so there is nothing at the
-    /// venue to withdraw: what is withdrawn is the answer, which would
-    /// otherwise reach a caller who has said they are done with it. A cancel
-    /// naming no waiting request says so rather than returning as though it
-    /// acted.
+    /// Both cancels do the same thing, a gateway quirk this client keeps:
+    /// either frees a metadata request that is on the wire — silently,
+    /// whatever number it names — and says nothing at all. Neither touches a
+    /// pending events request, whose answer still reaches the caller, and an
+    /// answer for the freed metadata request is dropped when it arrives. The
+    /// venue is never told: the query is one message and one answer.
     pub fn cancel_wsh_meta_data(&self, req_id: i64) {
         if let Err(why) = (|| -> Result<(), Refusal> {
             self.send(ControlCommand::CancelCalendar { req_id: wire_req_id(req_id)? })
@@ -266,7 +267,8 @@ impl EClient {
     }
 
 
-    /// Stop waiting on the calendar's events. As above.
+    /// Stop waiting on the calendar's events. As above: frees the metadata
+    /// slot, not the events request — the gateway's quirk, kept as it is.
     pub fn cancel_wsh_event_data(&self, req_id: i64) {
         if let Err(why) = (|| -> Result<(), Refusal> {
             self.send(ControlCommand::CancelCalendar { req_id: wire_req_id(req_id)? })

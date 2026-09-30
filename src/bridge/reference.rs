@@ -671,16 +671,6 @@ impl ReferenceState {
         self.head_timestamps.retain(|(id, _)| *id != req_id);
     }
 
-    /// Throw away calendar answers still queued under a request.
-    pub fn purge_calendar_for(&self, req_id: u32) -> bool {
-        let mut meta = self.calendar_meta_data.lock();
-        let mut events = self.calendar_events.lock();
-        let before = meta.len() + events.len();
-        meta.retain(|(_, (id, _))| *id != req_id);
-        events.retain(|(_, (id, _))| *id != req_id);
-        meta.len() + events.len() != before
-    }
-
     /// Throw away a report still queued under a request.
     pub fn purge_fundamental_for(&self, req_id: u32) {
         self.fundamental_data.retain(|(id, _)| *id != req_id);

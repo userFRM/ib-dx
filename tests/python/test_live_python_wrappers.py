@@ -854,22 +854,31 @@ class TestCorporateEventsCalendar:
         client.req_wsh_event_data(7203, asked)
         json.loads(self._answer(wrapper, "wsh_event_data", 7203))
 
-    @pytest.mark.parametrize("req_id,kind", [(7202, "wsh_meta_data"), (7204, "wsh_event_data")])
-    def test_a_withdrawn_question_is_answered_by_nothing(self, ib_connection, req_id, kind):
+    def test_a_withdrawal_holds_no_calendar_answer_back(self, ib_connection):
+        """Both cancels do the same thing, and neither says anything: they
+        free the metadata slot, whatever is in it. A metadata request asked
+        in a session the cache is full in is answered from it before the
+        cancel is even read, and a pending events request stays live — its
+        answer still arrives past the cancel."""
+        import json
+
         from ibkr_dx import WshEventData
 
         wrapper, client = ib_connection
-        if kind == "wsh_meta_data":
-            client.req_wsh_meta_data(req_id)
-            client.cancel_wsh_meta_data(req_id)
-        else:
-            asked = WshEventData()
-            asked.conId = AAPL_CON_ID
-            client.req_wsh_event_data(req_id, asked)
-            client.cancel_wsh_event_data(req_id)
-        time.sleep(15)
-        assert not [e for e in wrapper._get_events(kind) if e[1] == req_id], "the answer arrived anyway"
-        assert not _said(wrapper, req_id), "a withdrawal that acted says nothing"
+        if not [e for e in wrapper._get_events("wsh_meta_data") if e[1] == 7201]:
+            pytest.skip("the metadata request got no answer, so there is no cache to answer from")
+        asked = WshEventData()
+        asked.conId = AAPL_CON_ID
+        client.req_wsh_event_data(7204, asked)
+        client.cancel_wsh_event_data(7204)
+        client.req_wsh_meta_data(7202)
+        client.cancel_wsh_meta_data(7202)
+
+        schema = json.loads(self._answer(wrapper, "wsh_meta_data", 7202))
+        assert schema, "the cached answer reached the caller past the cancel"
+        json.loads(self._answer(wrapper, "wsh_event_data", 7204))
+        assert not _said(wrapper, 7202), "a withdrawal says nothing"
+        assert not _said(wrapper, 7204), "a withdrawal says nothing"
 
 
 # ═══════════════════════════════════════

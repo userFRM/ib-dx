@@ -49,23 +49,16 @@ impl SecDefState {
         Self::default()
     }
 
-    /// Stop waiting on a calendar query the caller no longer wants.
+    /// Stop waiting on the calendar's metadata.
     ///
-    /// The query is one message and one answer, so there is nothing at the
-    /// venue to withdraw; what is withdrawn is the answer, which would
-    /// otherwise be delivered to a caller who has said they are done with it.
-    /// Answers whether there was one to withdraw, so a cancel naming nothing
-    /// can say so rather than look like it acted.
-    pub(crate) fn withdraw_calendar_request(&mut self, req_id: u32) -> bool {
-        if self.meta_pending.as_ref().is_some_and(|(_, id)| *id == req_id) {
-            self.meta_pending = None;
-            return true;
-        }
-        if self.events_pending.as_ref().is_some_and(|(_, id)| *id == req_id) {
-            self.events_pending = None;
-            return true;
-        }
-        false
+    /// Both cancels do the same thing, which is a gateway's quirk: either
+    /// frees the metadata slot — silently, whatever is in it, and not keyed
+    /// on the caller's number — and neither touches a pending events
+    /// request, whose answer still reaches the caller. An answer for a
+    /// freed metadata request is dropped when it arrives, as nothing here
+    /// asked for it any more; the venue is never told to stop.
+    pub(crate) fn cancel_calendar(&mut self) {
+        self.meta_pending = None;
     }
 
     /// Ask what event types the calendar carries.
@@ -753,5 +746,44 @@ mod tests {
             state.meta_pending.is_none() && state.events_pending.is_none(),
             "and neither caller is left waiting",
         );
+    }
+
+    /// Both cancels do the same thing: the metadata slot is freed, whatever
+    /// is in it, and a pending events request stays live — its answer still
+    /// reaches the caller, while an answer for the freed metadata request is
+    /// dropped as one nothing here asked for any more.
+    #[test]
+    fn a_cancel_frees_the_metadata_slot_and_leaves_the_events_alone() {
+        let shared = SharedState::new();
+        let mut state = SecDefState::new();
+        let (conn, _peer) = Connection::for_test();
+        let mut conn = Some(conn);
+        let mut hb = HeartbeatState::new();
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
+        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
+        let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
+        state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
+
+        state.cancel_calendar();
+        assert!(state.meta_pending.is_none(), "the metadata slot is freed");
+        assert!(state.events_pending.is_some(), "and the events request stays live");
+
+        let mut meta_reply = std::collections::HashMap::new();
+        meta_reply.insert(cal::TAG_CALENDAR_KEY, "MetaDataRequest7".to_string());
+        meta_reply.insert(96, r#"{"meta_data":{"event_types":[]}}"#.to_string());
+        state.deliver(&meta_reply, false, &shared, &None);
+        assert!(
+            shared.reference.drain_calendar_meta_data_for_dispatch().is_empty(),
+            "an answer for the freed request reaches nobody",
+        );
+
+        let mut events_reply = std::collections::HashMap::new();
+        events_reply.insert(cal::TAG_CALENDAR_KEY, "CalendarRequest9".to_string());
+        events_reply.insert(96, r#"{"events":[]}"#.to_string());
+        state.deliver(&events_reply, false, &shared, &None);
+        let pushed = shared.reference.drain_calendar_events_for_dispatch();
+        assert_eq!(pushed.len(), 1, "{pushed:?}");
+        assert_eq!(pushed[0].0, 9, "the events answer still reaches its caller");
+        assert!(shared.reference.drain_historical_errors().is_empty());
     }
 }
