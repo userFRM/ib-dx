@@ -1318,7 +1318,6 @@ impl HotLoop {
         self.ccp.send_next_matching_symbols(&mut self.ccp_conn, &mut self.hb, &self.shared, &mut left);
         self.ccp.send_next_option_params(&mut self.ccp_conn, &mut self.hb, &self.shared, &mut left);
         self.ccp.sweep_completed_orders_request(&mut self.ccp_conn, &mut self.hb, &self.shared, &mut left);
-        self.secdef.send_next(&mut self.secdef_conn, &mut self.hb, &self.shared, &mut left);
         self.hmds.send_next_scanner_params(&mut self.hmds_conn, &mut self.hb, &self.shared, &mut left);
         self.send_next_historical();
         let rx = match self.control_rx.as_ref() {
@@ -2377,7 +2376,6 @@ impl HotLoop {
             + self.built_order_commands_held()
             + self.ccp.queued_matching_symbols.len()
             + self.ccp.queued_option_params.len()
-            + self.secdef.calendar_requests_held()
             + self.hmds.hist_queue.len()
             + self.hmds.scanner_params_queued
             + self.asks.len()

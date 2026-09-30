@@ -64,6 +64,14 @@ pub fn meta_data_request() -> String {
 /// scopes, or neither.
 pub const INVALID_EVENT_REQUEST: i32 = 10309;
 
+/// The number a gateway refuses a second metadata request under while one
+/// is on the wire.
+pub const DUPLICATE_META_DATA_REQUEST: i32 = 10278;
+
+/// The number a gateway refuses a second event request under while one is
+/// on the wire.
+pub const DUPLICATE_EVENT_DATA_REQUEST: i32 = 10281;
+
 /// The JSON asking for events.
 ///
 /// Exactly one scope is a request a gateway takes: a named contract, or a
