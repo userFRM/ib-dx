@@ -8071,10 +8071,11 @@ fn an_isin_asked_off_smart_is_asked_of_any_type() {
     assert!(!msg.contains("|167="), "a FIGI off SMART: {msg}");
 }
 
-/// A kind of identifier a gateway does not know is no identifier to it: the
-/// name is read exactly, so a lower-case one is not known either, and the
-/// lookup goes by symbol with the identifier left out. It was refused here,
-/// which a gateway never does.
+/// A kind of identifier a gateway does not know is no identifier to the
+/// lookup that names a contract for a request: the name is read exactly, so
+/// a lower-case one is not known either, and the lookup goes by symbol with
+/// the identifier left out. A caller's details request is refused instead,
+/// before any lookup is sent, as a gateway refuses it.
 #[test]
 fn an_identifier_of_a_kind_a_gateway_does_not_know_is_looked_up_by_symbol() {
     for kind in ["sedol", "isin", "BBGID", ""] {

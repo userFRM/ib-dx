@@ -2735,6 +2735,20 @@ impl ClientCore {
         con_id == 0 || con_id == i64::from(i32::MAX)
     }
 
+    /// A source type stated with any spelling but one of the identifier
+    /// kinds a gateway knows is refused before anything is looked up, in its
+    /// standing text as a gateway states it — the kind is matched on its
+    /// exact spelling, as an enum name is, so a lower-case one is unknown
+    /// too. An unstated kind is no kind at all and passes.
+    pub(crate) fn unknown_sec_id_type(sec_id_type: &str) -> Option<Refusal> {
+        (!sec_id_type.is_empty()
+            && !matches!(
+                sec_id_type,
+                "CUSIP" | "SEDOL" | "ISIN" | "RIC" | "FIGI" | "BB_SYMBOL"
+            ))
+        .then(|| Refusal::validation(format!("Unknown security type : {sec_id_type} ")))
+    }
+
     /// The session's zero-strike capability, as the venue states it at
     /// logon: where it is on, a zero strike counts as stated in the
     /// option-fields check.
@@ -2770,20 +2784,10 @@ impl ClientCore {
     ) -> Result<(), Refusal> {
         let resolved = Self::resolve_sec_type(sec_type);
         let unstated_id = Self::identifier_unstated(con_id);
-        // A source type stated with any spelling but one of the identifier
-        // kinds a gateway knows is refused before the description is read
-        // further, in its standing text as it states it — the kind is
-        // matched on its exact spelling, as an enum name is.
-        if !filters.sec_id_type.is_empty()
-            && !matches!(
-                filters.sec_id_type.as_str(),
-                "CUSIP" | "SEDOL" | "ISIN" | "RIC" | "FIGI" | "BB_SYMBOL"
-            )
-        {
-            return Err(Refusal::validation(format!(
-                "Unknown security type : {} ",
-                filters.sec_id_type
-            )));
+        // A source type no identifier kind of a gateway answers to is
+        // refused before the description is read further.
+        if let Some(why) = Self::unknown_sec_id_type(&filters.sec_id_type) {
+            return Err(why);
         }
         // A stated identifier counts as accompanied only where a source type
         // is stated with it — an unknown one is refused above, so a stated

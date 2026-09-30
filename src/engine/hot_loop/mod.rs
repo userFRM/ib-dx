@@ -1759,7 +1759,12 @@ impl HotLoop {
                 }
                 ControlCommand::FetchContractDetails { contract, req_id, include_expired, filters } => {
                     let ContractRef { con_id, symbol, sec_type, exchange, currency, .. } = contract;
-                    if con_id > 0
+                    // A source kind no identifier of a gateway answers to is
+                    // refused on this surface before any lookup is sent, in
+                    // its standing text as a gateway states it.
+                    if let Some(why) = crate::client_core::ClientCore::unknown_sec_id_type(&filters.sec_id_type) {
+                        self.ccp.fail_lookup(req_id, why.code, why.message, &self.shared, &self.event_tx);
+                    } else if con_id > 0
                         && !crate::client_core::ClientCore::identifier_unstated(con_id)
                     {
                         self.ccp.send_secdef_request(req_id, con_id, &exchange, &mut self.ccp_conn, &mut self.hb, &self.shared, &self.event_tx);
@@ -9377,6 +9382,42 @@ mod tests {
         assert!(!said.contains("|6008=2147483647|"), "nothing asked under the unset marker: {said}");
     }
 
+    /// A details request stating a source kind no identifier of a gateway
+    /// answers to is refused before any lookup is sent, in the gateway's
+    /// standing text for it — rather than looked up by symbol with the kind
+    /// dropped in silence. The kind is read by its exact name, so a
+    /// lower-case one is unknown too, and an unknown kind is refused with no
+    /// identifier stated beside it as well.
+    #[test]
+    fn a_details_request_stating_an_unknown_source_kind_is_refused_as_a_gateway_refuses_it() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (tx, rx) = std::sync::mpsc::sync_channel(16);
+        hl.set_control_rx(rx);
+        for (req_id, kind, sec_id) in [
+            (31u32, "FOO", "US0378331005"),
+            (32, "cusip", "US0378331005"),
+            (33, "SEDOLL", ""),
+        ] {
+            tx.send(ControlCommand::FetchContractDetails {
+                req_id, contract: stock(0, "AAPL"), include_expired: false,
+                filters: crate::types::SecDefFilters {
+                    sec_id: sec_id.into(), sec_id_type: kind.into(), ..Default::default()
+                },
+            })
+            .unwrap();
+            hl.poll_control_commands();
+            assert!(hl.ccp.pending_secdef.is_empty(), "nothing is asked for {kind}");
+            let told = shared.reference.drain_historical_errors();
+            assert_eq!(told.len(), 1, "{told:?}");
+            assert_eq!(
+                (told[0].0, told[0].1, told[0].2.as_str()),
+                (req_id, crate::error_codes::Refusal::VALIDATION,
+                 format!("Error validating request:-'' : cause - Unknown security type : {kind} ").as_str()),
+            );
+            assert_eq!(shared.reference.drain_contract_details_end(), [req_id], "and the request is ended");
+        }
+    }
 
     /// A caller asking which exchanges serve a book is answered from the
     /// market-data routing table, which states the book each serves and the

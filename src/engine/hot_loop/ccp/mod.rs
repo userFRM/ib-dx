@@ -1119,7 +1119,10 @@ pub(crate) struct PendingSchedulePair {
 /// `22`/`48` carry every kind under the character that names its source. The
 /// kind is read by its exact name, as a gateway reads it: a name it does not
 /// know, a lower-case one included, is no identifier at all, and the lookup
-/// goes by description with the identifier left out.
+/// goes by description with the identifier left out. A caller's details
+/// request never reaches a lookup with one — that surface refuses an unknown
+/// kind before anything is sent, as a gateway refuses it — so this reading
+/// serves the lookups that name a contract for a request.
 fn identifier_fields(filters: &crate::types::SecDefFilters) -> Vec<(u32, &str)> {
     let sec_id = filters.sec_id.as_str();
     if sec_id.is_empty() {
@@ -2906,8 +2909,9 @@ impl CcpState {
     }
 
     /// A caller's lookup that ends without the venue's answer: unanswered, or
-    /// cut off with the connection.
-    fn fail_lookup(
+    /// cut off with the connection. Also how a details request is refused
+    /// before any lookup is sent.
+    pub(crate) fn fail_lookup(
         &mut self,
         req_id: u32,
         code: i32,

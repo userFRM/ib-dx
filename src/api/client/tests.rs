@@ -12953,6 +12953,23 @@ fn an_undescribed_contract_is_refused_before_any_market_data_request_is_sent() {
         // An identifier accompanied by its source type names the contract.
         (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "US0378331005".into(), sec_id_type: "CUSIP".into(), ..base() },
          None, &[]),
+        // Every identifier kind a gateway answers an identifier under names
+        // the contract as well as the kind above does.
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "2593669".into(), sec_id_type: "SEDOL".into(), ..base() },
+         None, &[]),
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "US0378331005".into(), sec_id_type: "ISIN".into(), ..base() },
+         None, &[]),
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "AAPL.O".into(), sec_id_type: "RIC".into(), ..base() },
+         None, &[]),
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "BBG000B9XRY4".into(), sec_id_type: "FIGI".into(), ..base() },
+         None, &[]),
+        (Contract { symbol: String::new(), local_symbol: String::new(), sec_id: "AAPL:NASDAQ".into(), sec_id_type: "BB_SYMBOL".into(), ..base() },
+         None, &[]),
+        // A kind no identifier answers to is refused in the same text, an
+        // established identifier scheme of its own notwithstanding.
+        (Contract { sec_id: "BBG000B9XRY4".into(), sec_id_type: "BBGID".into(), ..base() },
+         Some("Unknown security type : BBGID "),
+         &["market data", "depth", "tick by tick", "real time bars"]),
         // (g) a zero strike reads as unstated under the default
         // capabilities — the wire carries it as the zero a gateway reads as
         // the unset it writes — and the description is refused unless the

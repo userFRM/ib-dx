@@ -30,8 +30,10 @@ pub struct SecDefFilters {
     pub sec_id: String,
     /// Which identifier `sec_id` is: `CUSIP`, `SEDOL`, `ISIN`, `RIC`, `FIGI`
     /// or `BB_SYMBOL`, spelled exactly so. Any other name, a lower-case one
-    /// included, is not an identifier kind to a gateway: the lookup goes by
-    /// symbol and the identifier is left out.
+    /// included, is not an identifier kind to a gateway: a details request
+    /// stating one is refused as a gateway refuses it, and the lookup naming
+    /// a contract for any other request goes by symbol with the identifier
+    /// left out.
     pub sec_id_type: String,
     /// Who issued it. A lookup that states one is answered under a fixed-income
     /// security type whatever the caller named, so it narrows the lookup the
