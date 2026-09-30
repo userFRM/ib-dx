@@ -216,11 +216,29 @@ pub fn try_init(config: &LogConfig) -> Option<LogGuard> {
     // may buffer said nothing.
     let buffered = tracing_appender::non_blocking::NonBlockingBuilder::default()
         .buffered_lines_limit(config.queue_capacity);
-    let (writer, guard) = match &config.log_dir {
-        Some(dir) => {
-            std::fs::create_dir_all(dir).expect("failed to create log directory");
-            buffered.finish(tracing_appender::rolling::daily(dir, "ibkr_dx.log"))
-        }
+    // A log directory that cannot hold the log is said on stderr and the
+    // console writer stands in, rather than a panic: this runs from the
+    // module initialiser on import and from connect, and both run before any
+    // caller code can catch — host-side configuration is a slower start, not
+    // a failed one. The appender's own builder creates the directory and
+    // reports what it could not; the convenience constructor that stood
+    // beside the panicking expect panics over the same failures.
+    let appender = config.log_dir.as_ref().and_then(|dir| {
+        tracing_appender::rolling::RollingFileAppender::builder()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("ibkr_dx.log")
+            .build(dir)
+            .map_err(|why| {
+                eprintln!(
+                    "ibkr_dx: the log directory {} cannot hold the log ({why}); logging goes to stdout instead",
+                    dir.display()
+                )
+            })
+            .ok()
+    });
+    let to_stdout = appender.is_none();
+    let (writer, guard) = match appender {
+        Some(appender) => buffered.finish(appender),
         None => buffered.finish(std::io::stdout()),
     };
 
@@ -235,7 +253,7 @@ pub fn try_init(config: &LogConfig) -> Option<LogGuard> {
             tracing_subscriber::fmt::layer()
                 .with_timer(NanoTimestamp)
                 .with_writer(writer)
-                .with_ansi(config.log_dir.is_none()),
+                .with_ansi(to_stdout),
         )
         .try_init()
         .ok()
@@ -363,5 +381,24 @@ mod tests {
             ),
         }
         assert_eq!(set_level("info=loud"), Err(LevelNotMoved::NotALevel), "and a level is a level");
+    }
+
+    /// A log directory that cannot hold the log degrades to the console
+    /// writer and says so, rather than panicking: import and connect both
+    /// reach this, and a panic there takes the host process with it.
+    #[test]
+    fn an_uncreatable_log_directory_degrades_rather_than_panicking() {
+        // A path through a regular file can never be a directory, for any
+        // user: create_dir_all answers ENOTDIR rather than EACCES, which no
+        // permission can make succeed.
+        let regular_file = std::env::temp_dir().join(format!("ibkr_dx_log_test_{}", std::process::id()));
+        std::fs::write(&regular_file, b"not a directory").unwrap();
+        let config = LogConfig {
+            log_dir: Some(regular_file.join("logs")),
+            ..Default::default()
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| try_init(&config)));
+        let _ = std::fs::remove_file(&regular_file);
+        assert!(outcome.is_ok(), "a log directory that cannot be created panicked try_init");
     }
 }
