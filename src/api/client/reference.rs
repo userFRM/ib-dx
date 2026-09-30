@@ -236,7 +236,8 @@ impl EClient {
     /// The events depend on this, not the other way: a gateway keeps the
     /// calendar metadata in a cache written only by this request's answer,
     /// and an event request in a session the cache is empty in is refused
-    /// under 10282 rather than sent.
+    /// under 10282 rather than sent. A second metadata request in a session
+    /// the cache is full in is answered from it at once rather than sent.
     pub fn req_wsh_meta_data(&self, req_id: i64) {
         if let Err(why) = self.try_req_wsh_meta_data(req_id) {
             self.refuse_request(req_id, &why);

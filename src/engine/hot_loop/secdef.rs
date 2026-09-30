@@ -76,6 +76,15 @@ impl SecDefState {
         hb: &mut HeartbeatState,
         shared: &SharedState,
     ) {
+        // A session a metadata answer already reached is completed from the
+        // cache: the caller is answered at once with what that answer
+        // carried, nothing goes on the wire and no slot is claimed. The
+        // cache is consulted before the slot, as a gateway consults it.
+        if let Some(cached) = &self.meta_answered {
+            log::info!("Returning cached WSH meta data for req_id={req_id}");
+            shared.reference.push_calendar_meta_data(req_id, cached.clone());
+            return;
+        }
         // One slot per kind: a second metadata request while the first is on
         // the wire is refused under the gateway's number and words.
         if self.meta_pending.is_some() {
@@ -476,6 +485,30 @@ mod tests {
         assert!(state.events_pending.is_some(), "and the request is on the wire");
     }
 
+    /// A second metadata request in a session a metadata answer already
+    /// reached is completed from the cache: nothing goes on the wire, no
+    /// slot is claimed, and the caller is answered at once with what the
+    /// first answer carried.
+    #[test]
+    fn a_second_metadata_request_is_answered_from_the_first() {
+        let shared = SharedState::new();
+        let mut state = SecDefState::new();
+        let (conn, _peer) = Connection::for_test();
+        let mut conn = Some(conn);
+        let mut hb = HeartbeatState::new();
+        answered_metadata(&mut state, &mut conn, &mut hb, &shared, 7);
+        state.send_calendar_meta_data_request(8, &mut conn, &mut hb, &shared);
+        assert!(state.meta_pending.is_none(), "nothing goes on the wire");
+        assert!(
+            shared.reference.drain_historical_errors().is_empty(),
+            "a cached answer is not a refusal",
+        );
+        let pushed = shared.reference.drain_calendar_meta_data_for_dispatch();
+        assert_eq!(pushed.len(), 1, "{pushed:?}");
+        assert_eq!(pushed[0].0, 8, "{pushed:?}");
+        assert_eq!(pushed[0].1, r#"{"meta_data":{"event_types":[]}}"#, "{pushed:?}");
+    }
+
     /// A metadata request answered this session, which is the only way a
     /// gateway's calendar cache is written.
     fn answered_metadata(
@@ -547,7 +580,9 @@ mod tests {
         let shared = SharedState::new();
         let mut state = SecDefState::new();
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
+        // The send path completes a metadata request from the cache once an
+        // answer filled it, so the slot is set the way the wire leaves it.
+        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
@@ -684,7 +719,7 @@ mod tests {
         let mut state = SecDefState::new();
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
+        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
         state.send_calendar_events_request(7, &query, &mut conn, &mut hb, &shared);
         assert!(
             shared.reference.drain_historical_errors().is_empty(),
@@ -706,7 +741,7 @@ mod tests {
         let mut state = SecDefState::new();
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.send_calendar_meta_data_request(7, &mut conn, &mut hb, &shared);
+        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
         let reject = fix::fix_build(&[(fix::TAG_MSG_TYPE, "3"), (58, "refused")], 1);
