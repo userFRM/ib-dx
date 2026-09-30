@@ -1040,25 +1040,15 @@ pub struct IbKeyChallenge {
 /// vault) or return an `io::Error` to abort.
 ///
 /// Called on its own thread so the gate can keep answering the server's
-/// keepalives while it waits. A provider cannot be interrupted: taking the
-/// login back waits for it to return, so bound any work it can block on.
+/// keepalives while it waits. A provider cannot be interrupted, but it is
+/// not waited on either: the gate ends at its deadline or on the client's
+/// cancel whatever the provider is doing, and a worker still parked then is
+/// left to finish on its own, its answer discarded. Bound any work it can
+/// block on all the same — a parked worker holds its thread until it
+/// returns.
 pub type CodeProvider = std::sync::Arc<
     dyn Fn(IbKeyChallenge) -> io::Result<String> + Send + Sync,
 >;
-
-/// A provider belongs to its logon, even when the gate is taken back.
-#[derive(Default)]
-struct ProviderThread<'scope>(Option<std::thread::ScopedJoinHandle<'scope, ()>>);
-
-impl Drop for ProviderThread<'_> {
-    fn drop(&mut self) {
-        if let Some(worker) = self.0.take()
-            && let Err(payload) = worker.join()
-        {
-            std::mem::forget(payload);
-        }
-    }
-}
 
 fn check_gate_cancel(cancel: Option<&AtomicBool>) -> io::Result<()> {
     if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
@@ -1117,6 +1107,7 @@ fn provider_panicked() -> io::Error {
 fn send_a_waiting_code<S: Write>(
     stream: &mut S,
     pending_code: &mut Option<std::sync::mpsc::Receiver<io::Result<String>>>,
+    provider_thread: &mut Option<std::thread::JoinHandle<()>>,
     code_submitted: &mut bool,
     deadline: std::time::Instant,
     cancel: Option<&AtomicBool>,
@@ -1128,6 +1119,12 @@ fn send_a_waiting_code<S: Write>(
     match rx.try_recv() {
         Ok(result) => {
             *pending_code = None;
+            // The code is in hand, so the worker has sent it and has nothing
+            // left to do; a gate that consumed the provider's code leaves no
+            // thread behind.
+            if let Some(worker) = provider_thread.take() {
+                let _ = worker.join();
+            }
             if std::time::Instant::now() < deadline {
                 submit_swcr_code(stream, &result?)?;
                 *code_submitted = true;
@@ -1270,8 +1267,6 @@ pub fn do_security_code_2fa<S: Read + Write>(
     code_provider: Option<&CodeProvider>,
     cancel: Option<&AtomicBool>,
 ) -> io::Result<IbKeyOutcome> {
-    std::thread::scope(|scope| {
-
     use std::time::Instant;
 
     let Some(provider) = code_provider else {
@@ -1290,25 +1285,23 @@ pub fn do_security_code_2fa<S: Read + Write>(
     if Instant::now() >= deadline {
         return Err(ib_key_err(io::ErrorKind::TimedOut, "security-code gate timed out (client deadline)"));
     }
-    let mut provider_thread = ProviderThread::default();
+    // Detached over fully owned inputs, so this wait can end at its deadline
+    // or on the client's cancel while the provider is still parked: nothing
+    // joins the worker on the way out, and its send into a dropped receiver
+    // is inert. The cancel checks the worker used to carry shaped a result
+    // nobody reads then; every path that does read the result checks the
+    // cancel itself, before it.
     let (tx, rx) = std::sync::mpsc::channel();
-    {
-        let provider = provider.clone();
-        provider_thread.0 = Some(std::thread::Builder::new()
-            .name("ib-security-code".into())
-            .spawn_scoped(scope, move || {
-                let result = (|| {
-                    check_gate_cancel(cancel)?;
-                    let result = provider(IbKeyChallenge {
-                        factor: SecondFactor::AuthenticatorCode,
-                        ..Default::default()
-                    });
-                    check_gate_cancel(cancel)?;
-                    result
-                })();
-                let _ = tx.send(result);
-            })?);
-    }
+    let provider = provider.clone();
+    let mut provider_thread = Some(std::thread::Builder::new()
+        .name("ib-security-code".into())
+        .spawn(move || {
+            let result = provider(IbKeyChallenge {
+                factor: SecondFactor::AuthenticatorCode,
+                ..Default::default()
+            });
+            let _ = tx.send(result);
+        })?);
     let mut sent = false;
     let mut reader = GateReader::default();
 
@@ -1353,6 +1346,12 @@ pub fn do_security_code_2fa<S: Read + Write>(
         if !sent && quiet {
             match rx.try_recv() {
                 Ok(result) => {
+                    // The code is in hand, so the worker has sent it and has
+                    // nothing left to do; a gate that consumed the provider's
+                    // code leaves no thread behind.
+                    if let Some(worker) = provider_thread.take() {
+                        let _ = worker.join();
+                    }
                     check_gate_cancel(cancel)?;
                     let code = result?;
                     if code.trim().is_empty() {
@@ -1467,7 +1466,6 @@ pub fn do_security_code_2fa<S: Read + Write>(
         }
     }
 
-    })
 }
 
 /// Execute the second-factor approval gate that follows SRP on a live login.
@@ -1496,12 +1494,13 @@ pub fn do_ib_key_2fa<S: Read + Write>(
     code_provider: Option<&CodeProvider>,
     cancel: Option<&AtomicBool>,
 ) -> io::Result<IbKeyOutcome> {
-    std::thread::scope(|scope| {
-
     use std::time::Instant;
 
     check_gate_cancel(cancel)?;
-    let mut provider_thread = ProviderThread::default();
+    // Detached over fully owned inputs, as the sibling gate's: the deadline
+    // and the cancel below end this wait whatever the worker is doing, and
+    // its send into a dropped receiver is inert.
+    let mut provider_thread: Option<std::thread::JoinHandle<()>> = None;
 
     // Send SWCR_TOKEN state=1. The username slot is empty in state=1; the
     // tokenSubType (account-specific, typically "2a") is the only non-empty
@@ -1580,7 +1579,7 @@ pub fn do_ib_key_2fa<S: Read + Write>(
             // The operator's code can arrive in that silence, and reading it
             // only when the venue next spoke left it sitting — on a socket
             // the venue keeps quiet, until this wait's own deadline.
-            send_a_waiting_code(stream, &mut pending_code, &mut code_submitted, deadline, cancel)?;
+            send_a_waiting_code(stream, &mut pending_code, &mut provider_thread, &mut code_submitted, deadline, cancel)?;
             continue;
         };
 
@@ -1617,15 +1616,10 @@ pub fn do_ib_key_2fa<S: Read + Write>(
                             avth_url: approval_url.clone(),
                         };
                         let (tx, rx) = std::sync::mpsc::channel();
-                        provider_thread.0 = Some(std::thread::Builder::new()
+                        provider_thread = Some(std::thread::Builder::new()
                             .name("ibkey-code-provider".into())
-                            .spawn_scoped(scope, move || {
-                                let result = (|| {
-                                    check_gate_cancel(cancel)?;
-                                    let result = provider(challenge_info);
-                                    check_gate_cancel(cancel)?;
-                                    result
-                                })();
+                            .spawn(move || {
+                                let result = provider(challenge_info);
                                 let _ = tx.send(result);
                             })?);
                         // An unattended provider (vault, env, file) resolves at
@@ -1636,6 +1630,13 @@ pub fn do_ib_key_2fa<S: Read + Write>(
                         // falls through to the probe-driven path below.
                         match rx.recv_timeout(IB_KEY_PROVIDER_FAST_PATH_GRACE) {
                             Ok(result) => {
+                                // The code is in hand, so the worker has sent
+                                // it and has nothing left to do; a gate that
+                                // consumed the provider's code leaves no
+                                // thread behind.
+                                if let Some(worker) = provider_thread.take() {
+                                    let _ = worker.join();
+                                }
                                 check_gate_cancel(cancel)?;
                                 // Same rule as the polled path below: the grace
                                 // period can straddle the deadline, and a code
@@ -1752,10 +1753,8 @@ pub fn do_ib_key_2fa<S: Read + Write>(
         }
 
         // A provider that outlived the grace period yields here instead.
-        send_a_waiting_code(stream, &mut pending_code, &mut code_submitted, deadline, cancel)?;
+        send_a_waiting_code(stream, &mut pending_code, &mut provider_thread, &mut code_submitted, deadline, cancel)?;
     }
-
-    })
 }
 
 /// Result of soft token authentication attempt.

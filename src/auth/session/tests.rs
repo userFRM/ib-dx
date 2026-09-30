@@ -2119,8 +2119,12 @@ fn a_site_that_is_down_is_not_the_credentials_being_refused() {
     );
 }
 
+/// The cancel exists so the program regains control while the human is
+/// absent: the wait ends at the flag, not when the parked provider happens
+/// to return. A worker still parked then is left to finish on its own, its
+/// answer discarded.
 #[test]
-fn taking_back_a_code_wait_waits_for_its_provider_and_submits_nothing() {
+fn taking_back_a_code_wait_returns_while_its_provider_still_waits() {
     use std::time::{Duration, Instant};
     let cancel = Arc::new(AtomicBool::new(false));
     let (entered, provider_entered) = std::sync::mpsc::channel();
@@ -2135,19 +2139,69 @@ fn taking_back_a_code_wait_waits_for_its_provider_and_submits_nothing() {
         let cancel = Arc::clone(&cancel);
         std::thread::spawn(move || {
             let mut stream = RepliesAfterWrite::with_preface(Vec::new(), vec![0xff], Vec::new());
-            let result = do_security_code_2fa(&mut stream, NS_VERSION, Instant::now() + Duration::from_secs(5), Some(&provider), Some(&cancel));
+            let result = do_security_code_2fa(&mut stream, NS_VERSION, Instant::now() + Duration::from_secs(60), Some(&provider), Some(&cancel));
             (result, stream.written)
         })
     };
     provider_entered.recv_timeout(Duration::from_secs(30))
         .expect("the login never entered the code provider");
     cancel.store(true, Ordering::Release);
-    std::thread::sleep(Duration::from_millis(30));
-    assert!(!worker.is_finished(), "the code provider still belongs to this login");
-    release.send(()).unwrap();
+    // Bounded, because what this guards is a wait that has no bound: the
+    // gate used to join the parked worker on its way out and could not
+    // return at all.
+    let bound = Instant::now() + Duration::from_secs(10);
+    while !worker.is_finished() && Instant::now() < bound {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let finished = worker.is_finished();
+    release.send(()).unwrap(); // let the worker go; its answer is discarded
+    assert!(finished, "the cancel did not end the wait: the parked provider outlived it");
     let (result, written) = worker.join().unwrap();
     assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Interrupted);
     assert!(written.is_empty(), "a code for a taken-back login is never submitted");
+}
+
+/// The same for the deadline on the approval gate: the documented wait
+/// ("how long to wait for the second factor before giving up") ends at the
+/// deadline with the provider still parked on a human, and the constructed
+/// timeout reaches the caller rather than dying in a thread join.
+#[test]
+fn a_parked_provider_does_not_outlive_the_second_factor_deadline() {
+    use std::time::{Duration, Instant};
+    let (entered, provider_entered) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let released = std::sync::Mutex::new(released);
+    let provider: CodeProvider = Arc::new(move |_| {
+        entered.send(()).unwrap();
+        released.lock().unwrap().recv().unwrap();
+        Ok("123456".into())
+    });
+    let challenge = xyz::xyz_build(xyz::XYZ_MSG_SWCR_TOKEN, 2, "user", &[
+        "10a447bc4f269b5161a6133b0265cf590c9dc714",
+        "399 830",
+        "https://x.example/u",
+    ]);
+    let worker = std::thread::spawn(move || {
+        let mut stream = ProbingGateway::new(frame_xyz(&challenge), Vec::new(), Vec::new());
+        let result = do_ib_key_2fa(&mut stream, NS_VERSION, "2a", Instant::now() + Duration::from_secs(2), Some(&provider), None);
+        (result, stream.written)
+    });
+    provider_entered.recv_timeout(Duration::from_secs(30))
+        .expect("the gate never reached the code provider");
+    let bound = Instant::now() + Duration::from_secs(10);
+    while !worker.is_finished() && Instant::now() < bound {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let finished = worker.is_finished();
+    release.send(()).unwrap(); // let the worker go; its answer is discarded
+    assert!(finished, "the deadline did not end the wait: the parked provider outlived it");
+    let (result, written) = worker.join().unwrap();
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut, "the deadline's own error reaches the caller");
+    let submission = frame_xyz(&xyz::xyz_build_swcr_token_code_submission("123456"));
+    assert!(
+        !written.windows(submission.len()).any(|f| f == submission),
+        "a code for a login the deadline abandoned is never submitted",
+    );
 }
 
 #[test]
