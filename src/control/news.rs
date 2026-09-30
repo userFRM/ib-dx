@@ -150,22 +150,17 @@ pub fn validate_news_providers(
 /// session is subscribed to, and an article id holding something.
 ///
 /// A gateway checks the provider first, then the article id, and refuses both
-/// before the venue is asked anything. Each refusal carries the standing wrap
-/// naming the field checked, so the wrap is stated here whole rather than left
-/// to the wire text, whose slot is always empty.
+/// before the venue is asked anything. Each refusal states its cause alone:
+/// the standing wire wrap, whose field slot a gateway always leaves empty, is
+/// added where the refusal goes out.
 pub fn validate_news_article(
     provider_code: &str, article_id: &str, session: &[crate::types::NewsProvider],
 ) -> Result<(), String> {
     if !session.iter().any(|p| p.code.eq_ignore_ascii_case(provider_code)) {
-        return Err(format!(
-            "Error validating request:-'{provider_code}' : cause - \
-             Not subscribed for '{provider_code}' provider"
-        ));
+        return Err(format!("Not subscribed for '{provider_code}' provider"));
     }
     if article_id.trim().is_empty() {
-        return Err(format!(
-            "Error validating request:-'{article_id}' : cause - Article ID must not be empty"
-        ));
+        return Err("Article ID must not be empty".to_string());
     }
     Ok(())
 }

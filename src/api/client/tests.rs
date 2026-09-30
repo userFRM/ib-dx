@@ -6493,6 +6493,16 @@ fn a_headline_query_naming_an_unsubscribed_provider_is_refused() {
         .try_req_historical_news(4, 265598, "BRFG", "", "", 10)
         .expect_err("a session holding nothing asked the venue");
     assert_eq!(err.message, "Not subscribed for 'BRFG' provider");
+
+    // A query both misnamed and miscounted: the providers are checked before
+    // the count, so the provider refusal is the one that goes out.
+    shared.reference.set_news_providers(vec![
+        crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+    ]);
+    let err = client
+        .try_req_historical_news(4, 265598, "BRFG+DJNL", "", "", 0)
+        .expect_err("a doubly invalid query was taken");
+    assert_eq!(err.message, "Not subscribed for 'DJNL' provider");
 }
 
 /// `total_results` is the TWS API's `int`, taken as a gateway takes it: no
@@ -6548,8 +6558,8 @@ fn req_news_article_sends_fetch() {
 
 /// An article request is checked at the door as a gateway checks it: the
 /// provider first, then the article id, each refusal in a gateway's own words
-/// under the standing wrap naming the field checked, and the venue is asked
-/// nothing.
+/// under the standing wrap — whose field slot a gateway always leaves empty —
+/// and the venue is asked nothing.
 #[test]
 fn a_news_article_an_unsubscribed_provider_or_a_blank_id_names_is_refused() {
     let (client, rx, shared) = test_client();
@@ -6559,19 +6569,23 @@ fn a_news_article_an_unsubscribed_provider_or_a_blank_id_names_is_refused() {
     client.req_news_article(1, "DJNL", "DJNL$1");
     client.req_news_article(2, "BRFG", "");
     client.req_news_article(3, "BRFG", "   ");
+    // Both halves invalid: the provider is checked first, so its refusal is
+    // the one that goes out.
+    client.req_news_article(4, "DJNL", "");
     assert!(rx.try_recv().is_err(), "the venue was asked");
     let refused = shared.drain_refused();
     assert_eq!(
         refused.iter().map(|r| (r.0, r.1, r.2.as_str())).collect::<Vec<_>>(),
         [
-            (1, 321, "Error validating request:-'DJNL' : cause - Not subscribed for 'DJNL' provider"),
+            (1, 321, "Error validating request:-'' : cause - Not subscribed for 'DJNL' provider"),
             (2, 321, "Error validating request:-'' : cause - Article ID must not be empty"),
-            (3, 321, "Error validating request:-'   ' : cause - Article ID must not be empty"),
+            (3, 321, "Error validating request:-'' : cause - Article ID must not be empty"),
+            (4, 321, "Error validating request:-'' : cause - Not subscribed for 'DJNL' provider"),
         ],
     );
     // A subscribed provider is found whichever way it is written, and its
     // article is asked of the venue.
-    client.req_news_article(4, "brfg", "BRFG$1");
+    client.req_news_article(5, "brfg", "BRFG$1");
     assert!(matches!(rx.try_recv().unwrap(), ControlCommand::FetchNewsArticle { .. }));
 }
 

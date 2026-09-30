@@ -37,15 +37,13 @@ pub(crate) const MATCHING_SYMBOLS_FEATURE: &str = "SECDEFTA";
 /// states — then the pattern: one holding nothing to search for answers
 /// "Pattern must not be empty", and one holding anything but visible
 /// characters and spaces answers "Invalid pattern: '<p>'". Every refusal
-/// carries the standing wrap naming the pattern, so the wrap is stated here
-/// whole rather than left to the wire text, whose slot is always empty. What
+/// states its cause alone: the standing wire wrap, whose field slot a gateway
+/// always leaves empty, is added where the refusal goes out. What
 /// passes goes out trimmed with its runs of spaces collapsed, as a gateway
 /// sends it: sent as the caller wrote it, `"  APPLE   INC "` asked the search
 /// service about a name nothing is listed under.
 pub(crate) fn matching_symbols_pattern(pattern: &str, feature_on: bool) -> Result<String, Refusal> {
-    let refused = |cause: String| {
-        Refusal::validation(format!("Error validating request:-'{pattern}' : cause - {cause}"))
-    };
+    let refused = |cause: String| Refusal::validation(cause);
     if !feature_on {
         return Err(refused("Failed to request matching symbols".to_string()));
     }
@@ -898,8 +896,9 @@ mod tests {
     }
 
     /// The pattern goes out as the venue would have sent it, and what a
-    /// gateway refuses is refused here in its own words, under the standing
-    /// wrap naming the pattern, rather than asked.
+    /// gateway refuses is refused here in its own words rather than asked:
+    /// the cause alone on this surface, the standing wrap — whose field slot
+    /// a gateway always leaves empty — added where the refusal is reported.
     #[test]
     fn a_matching_symbols_pattern_is_sent_as_the_venue_sends_it() {
         use crate::types::ControlCommand;
@@ -920,10 +919,7 @@ mod tests {
         let why = client
             .try_req_matching_symbols(8, "AAPL")
             .expect_err("a session without the feature asked the venue");
-        assert_eq!(
-            why.message,
-            "Error validating request:-'AAPL' : cause - Failed to request matching symbols",
-        );
+        assert_eq!(why.message, "Failed to request matching symbols");
         shared.reference.set_enabled_features(vec!["SECDEFTA".into()]);
 
         for (nothing_to_search_for, cause) in [
@@ -935,10 +931,7 @@ mod tests {
             let why = client
                 .try_req_matching_symbols(8, nothing_to_search_for)
                 .expect_err("the venue refuses this rather than answering it");
-            assert_eq!(
-                why.message,
-                format!("Error validating request:-'{nothing_to_search_for}' : cause - {cause}"),
-            );
+            assert_eq!(why.message, cause);
         }
         assert!(rx.try_recv().is_err(), "and nothing was asked");
     }

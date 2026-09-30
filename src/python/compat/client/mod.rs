@@ -4620,7 +4620,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
             assert_eq!(refused.len(), 2, "the caller is told");
             assert_eq!(
                 (refused[0].1, refused[0].2.as_str()),
-                (321, "Error validating request:-'DJNL' : cause - Not subscribed for 'DJNL' provider"),
+                (321, "Error validating request:-'' : cause - Not subscribed for 'DJNL' provider"),
             );
             assert_eq!(
                 (refused[1].1, refused[1].2.as_str()),

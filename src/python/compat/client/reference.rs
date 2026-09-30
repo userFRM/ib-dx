@@ -1250,7 +1250,7 @@ mod tests {
             assert_eq!(refused.len(), 1, "the caller is told");
             assert_eq!(
                 (refused[0].1, refused[0].2.as_str()),
-                (321, "Error validating request:-'   ' : cause - Pattern must not be empty"),
+                (321, "Error validating request:-'' : cause - Pattern must not be empty"),
             );
         });
     }
