@@ -586,7 +586,7 @@ mod tests {
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
         // The send path completes a metadata request from the cache once an
         // answer filled it, so the slot is set the way the wire leaves it.
-        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
+        state.meta_pending = Some(("MetaDataRequest7".to_string(), 7));
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
@@ -723,7 +723,7 @@ mod tests {
         let mut state = SecDefState::new();
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
+        state.meta_pending = Some(("MetaDataRequest7".to_string(), 7));
         state.send_calendar_events_request(7, &query, &mut conn, &mut hb, &shared);
         assert!(
             shared.reference.drain_historical_errors().is_empty(),
@@ -745,7 +745,7 @@ mod tests {
         let mut state = SecDefState::new();
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
+        state.meta_pending = Some(("MetaDataRequest7".to_string(), 7));
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
         let reject = fix::fix_build(&[(fix::TAG_MSG_TYPE, "3"), (58, "refused")], 1);
@@ -771,7 +771,7 @@ mod tests {
         let mut conn = Some(conn);
         let mut hb = HeartbeatState::new();
         answered_metadata(&mut state, &mut conn, &mut hb, &shared, 5);
-        state.meta_pending = Some((format!("MetaDataRequest7"), 7));
+        state.meta_pending = Some(("MetaDataRequest7".to_string(), 7));
         let query = crate::types::CalendarQuery { con_id: Some(265598), ..Default::default() };
         state.send_calendar_events_request(9, &query, &mut conn, &mut hb, &shared);
 
