@@ -533,20 +533,30 @@ fn an_unknown_fundamental_report_type_is_forwarded_as_stated() {
     }
 }
 
-/// A second head timestamp under a live number is refused in the wrapper a
-/// gateway wraps it in, and the first keeps answering: held as a second
-/// pending entry, the 5-second wait later fires a timeout for a request that
-/// was already answered. The gateway keeps head timestamps and histograms in
-/// one shared map, so a live histogram under the number refuses a head
-/// timestamp as well.
+/// A gateway keeps head timestamps and histograms in two lists apart, and
+/// the duplicate check on either request reads the head-timestamp list
+/// alone: a second head timestamp under a live head-timestamp number is
+/// refused in the wrapper a gateway wraps it in, and so is a histogram under
+/// that number — while a head timestamp under a live histogram is taken and
+/// served, as a second histogram under a live histogram is. Held where a
+/// gateway refuses, the 5-second wait later fires a timeout for a request
+/// that was already answered; refused where a gateway serves, the caller
+/// hears a duplicate that is none and the answer it was due never comes.
 #[test]
-fn a_second_head_timestamp_under_a_live_req_id_is_refused() {
+fn a_duplicate_head_timestamp_or_histogram_is_refused_as_a_gateway_refuses_it() {
     let aapl = crate::types::ContractRef {
         con_id: 265598, sec_type: "STK".into(), exchange: "SMART".into(),
         ..Default::default()
     };
-    // The query already live under the number when the head timestamp arrives.
-    for live in ["head-timestamp", "histogram"] {
+    // The query already live under the number, the one arriving, and what the
+    // caller hears: a refusal's reason, or nothing where it is served.
+    for (live, asked, reason) in [
+        ("head-timestamp", "head-timestamp", Some("Duplicate head time stamp query for tickid")),
+        ("histogram", "head-timestamp", None),
+        ("head-timestamp", "histogram", Some("Duplicate histogram query for tickid")),
+        ("histogram", "histogram", None),
+    ] {
+        let label = format!("{live} live, {asked} asked");
         let mut hmds = HmdsState::new();
         let shared = SharedState::new();
         let mut hb = HeartbeatState::new();
@@ -554,21 +564,31 @@ fn a_second_head_timestamp_under_a_live_req_id_is_refused() {
         let mut conn = Some(conn);
         if live == "head-timestamp" {
             hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
-            assert_eq!(hmds.pending_head_ts.len(), 1, "the first is held");
+            assert_eq!(hmds.pending_head_ts.len(), 1, "{label}: the first is held");
         } else {
             hmds.pending_histogram.push(("hg_1".to_string(), 7));
         }
 
-        hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
+        if asked == "head-timestamp" {
+            hmds.send_head_timestamp_request(7, &aapl, "TRADES", true, false, 1, &mut conn, &mut hb, &shared);
+        } else {
+            hmds.send_histogram_request(7, 265598, "STK", "SMART", true, "3 M", &mut conn, &mut hb, &shared);
+            assert_eq!(
+                hmds.pending_histogram.len(),
+                usize::from(live == "histogram") + usize::from(reason.is_none()),
+                "{label}: the arrival is held only where a gateway serves it",
+            );
+        }
 
-        let held = usize::from(live == "head-timestamp");
-        assert_eq!(hmds.pending_head_ts.len(), held, "{live}: the second is not held");
         let errors = shared.reference.drain_historical_errors();
-        assert_eq!(
-            errors,
-            vec![(7, 321, "Error validating request:-'' : cause - Duplicate head time stamp query for tickid".to_string())],
-            "{live}",
-        );
+        match reason {
+            Some(reason) => assert_eq!(
+                errors,
+                vec![(7, 321, format!("Error validating request:-'' : cause - {reason}"))],
+                "{label}",
+            ),
+            None => assert!(errors.is_empty(), "{label}: taken and served, nothing refused"),
+        }
     }
 }
 

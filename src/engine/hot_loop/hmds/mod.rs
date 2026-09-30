@@ -3262,15 +3262,15 @@ fn build_tbt_query(
             super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::NO_DEFINITION, told, false);
             return;
         };
-        // A gateway keeps head timestamps and histograms in one shared map, so
-        // a second head timestamp under a number either kind is live under is
-        // refused when the request registers — after the fields it carries are
-        // read and validated, which a gateway does while reading it. Held
-        // instead, its 5-second wait later fires a timeout for a request the
-        // first already answered.
-        if self.pending_head_ts.iter().any(|(_, id, ..)| *id == req_id)
-            || self.pending_histogram.iter().any(|(_, id)| *id == req_id)
-        {
+        // A gateway keeps head timestamps and histograms in two lists apart,
+        // and this check reads the head-timestamp one alone: a head timestamp
+        // collides only with another head timestamp, and one under a live
+        // histogram is taken and served. The refusal comes when the request
+        // registers — after the fields it carries are read and validated,
+        // which a gateway does while reading it. Held instead, the second's
+        // 5-second wait later fires a timeout for a request the first already
+        // answered.
+        if self.pending_head_ts.iter().any(|(_, id, ..)| *id == req_id) {
             super::push_hmds_refusal(
                 shared,
                 req_id,
@@ -3892,6 +3892,21 @@ fn build_tbt_query(
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn send_histogram_request(&mut self, req_id: u32, con_id: u32, sec_type: &str, exchange: &str, use_rth: bool, period: &str, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
         if self.refused_as_a_second_query(req_id, shared) {
+            return;
+        }
+        // The head-timestamp check's twin, and the one that reads across: a
+        // gateway's duplicate check on a histogram reads the head-timestamp
+        // list, so a histogram under a live head-timestamp number is refused
+        // when the request registers — sent instead, both answer under the one
+        // number. A second histogram under a live histogram is taken.
+        if self.pending_head_ts.iter().any(|(_, id, ..)| *id == req_id) {
+            super::push_hmds_refusal(
+                shared,
+                req_id,
+                crate::error_codes::Refusal::VALIDATION,
+                "Duplicate histogram query for tickid".into(),
+                false,
+            );
             return;
         }
         let req = crate::control::histogram::HistogramRequest {
