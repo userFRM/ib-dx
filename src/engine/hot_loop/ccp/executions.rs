@@ -23,14 +23,17 @@ const ORDER_REJECTED_ERROR_CODE: i32 = 201;
 
 /// How long an order stands, spelled the way a caller reads it.
 ///
-/// Stated but unmapped is reported as stated: the venue is authoritative when
-/// it says anything, and a code this does not name is still better seen than
-/// replaced by an unrelated local value.
+/// The shared table `decode_tif` holds: a code the venue states decodes to
+/// the name a gateway publishes and never to the raw character, and a life
+/// not stated decodes to empty, which is what makes the fallbacks at the
+/// joins below reachable.
 fn tif_api_name(stated: &str) -> &str {
-    match stated {
-        "0" => "DAY", "1" => "GTC", "3" => "IOC", "4" => "FOK",
-        "2" => "OPG", "6" => "GTD", "8" => "AUC",
-        other => other,
+    match *stated.as_bytes() {
+        [] => "",
+        [byte] => decode_tif(byte),
+        // A life stated longer than a single code is not a code; it is
+        // reported as stated.
+        _ => stated,
     }
 }
 
@@ -2946,16 +2949,13 @@ impl CcpState {
                 parsed.get(&18).map(String::as_str).unwrap_or_default(),
             );
 
-            // Unknown maps to empty, which is what `decode_tif` means by it and
-            // what makes the fallback below reachable. A catch-all of `DAY`
-            // reported a perfectly ordinary value for a code this does not know
-            // and for an absent tag alike, so a caller reconciling its own
-            // orders saw a plausible answer that disagreed with what it sent
-            // and nothing said so.
-            //
-            // The sibling above passes the raw tag through instead; that works
-            // there because an absent tag leaves it empty, while any non-empty
-            // TIF code would suppress the fallback that knows the real answer.
+            // Unstated maps to empty, which is what makes the fallback below
+            // reachable. A catch-all of `DAY` reported a perfectly ordinary
+            // value for an absent tag, so a caller reconciling its own orders
+            // saw a plausible answer that disagreed with what it sent and
+            // nothing said so. A code the shared table does not name publishes
+            // as a gateway publishes it — "???" — never raw, and a stated code
+            // suppresses the fallback as any stated value does.
             let tif_str = tif_api_name(tif_tag);
 
             let action = match parsed.get(&54).map(|s| s.as_str()) {

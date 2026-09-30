@@ -3154,11 +3154,12 @@ fn a_fill_that_recovers_an_order_books_its_shares_once() {
     assert_eq!(context.position(order.instrument), 40.0, "and the position moved by the fill");
 }
 
-/// An unrecognised or absent tag 59 leaves the wire match with nothing to
-/// report, so the fallback that knows what the caller submitted can run. An
-/// arm producing `DAY` for those cases keeps the fallback from ever
-/// running, and `DAY` is an ordinary value: a caller reconciling its own
-/// orders gets a plausible answer that disagrees with what it sent.
+/// An absent tag 59 leaves the wire match with nothing to report, so the
+/// fallback that knows what the caller submitted can run. An arm producing
+/// `DAY` for that case keeps the fallback from ever running, and `DAY` is
+/// an ordinary value: a caller reconciling its own orders gets a plausible
+/// answer that disagrees with what it sent. A stated code is always taken
+/// from the wire, decoded through the shared table.
 #[test]
 fn an_unknown_time_in_force_falls_back_to_the_one_that_was_submitted() {
     // A tracked order submitted GTC, so a wrong answer is visibly wrong.
@@ -3191,10 +3192,14 @@ fn an_unknown_time_in_force_falls_back_to_the_one_that_was_submitted() {
     let (mut ccp, mut context, shared) = ord_status_test_state();
     assert_eq!(tracked(&mut ccp, &mut context, &shared, Some("4")), "FOK");
 
-    // Including a code this does not name: seen as stated rather than
-    // silently replaced by the local order's unrelated value.
+    // Including a code the shared table names — published as the name a
+    // gateway publishes, never as the raw character — and one it does not
+    // name at all, which publishes as the escape a gateway states. Neither
+    // is silently replaced by the local order's unrelated value.
     let (mut ccp, mut context, shared) = ord_status_test_state();
-    assert_eq!(tracked(&mut ccp, &mut context, &shared, Some("5")), "5");
+    assert_eq!(tracked(&mut ccp, &mut context, &shared, Some("5")), "GTX");
+    let (mut ccp, mut context, shared) = ord_status_test_state();
+    assert_eq!(tracked(&mut ccp, &mut context, &shared, Some("7")), "???");
 }
 
 /// An order the venue replayed is paired with the number it is reachable under
@@ -5446,9 +5451,11 @@ fn lean_position_feed_does_not_clobber_marks() {
     assert_eq!(pi.unrealized_pnl, 100 * PRICE_SCALE);
 }
 
-// The TIF decoder must be the exact inverse of the outbound
-// encoder. The old map decoded '7' (never emitted) as OPG and dropped
-// OPG and AUC to "".
+// The TIF decoder publishes the gateway's whole table: every code a venue
+// restates decodes to the name a gateway publishes for it, a code the table
+// does not name decodes to "???" rather than passing through raw, and the
+// outbound encoder takes both names of the minute peg, as a gateway's
+// inbound one does.
 #[test]
 fn tif_round_trips_through_encoder_and_decoder() {
     for tif in ["DAY", "GTC", "OPG", "IOC", "FOK", "GTD", "GTX", "AUC"] {
@@ -5462,8 +5469,24 @@ fn tif_round_trips_through_encoder_and_decoder() {
     // not carry the difference — the flag does.
     let dtc = api::Order { tif: "DTC".to_string(), ..Default::default() };
     assert_eq!(decode_tif(dtc.tif_byte()), "GTC");
-    // Unknown bytes decode to empty, not a wrong TIF.
-    assert_eq!(decode_tif(b'7'), "");
+    // The minute peg round-trips under the name a venue publishes: a report
+    // restates its code as "Minutes", and an order placed under that name —
+    // one re-placed from what a callback published — carries the same code
+    // back out.
+    let minutes = api::Order { tif: "Minutes".to_string(), ..Default::default() };
+    assert_eq!(minutes.tif_byte(), b'p', "the published name places the minute peg");
+    assert_eq!(decode_tif(b'p'), "Minutes");
+    // The rest of the gateway's table, and its escapes: a code the table
+    // does not name publishes as "???", never raw, and the code a gateway's
+    // encoder names invalid publishes as "[INVALID]".
+    assert_eq!(decode_tif(b'r'), "DTC");
+    assert_eq!(decode_tif(b'j'), "OVERNIGHT");
+    assert_eq!(decode_tif(b'b'), "OVERNIGHT + DAY");
+    assert_eq!(decode_tif(b'?'), "[INVALID]");
+    assert_eq!(decode_tif(b'7'), "???");
+    // An unset life decodes to empty: an order that never named one says
+    // nothing, and the fallbacks that read empty keep what the order had.
+    assert_eq!(decode_tif(0), "");
 }
 
 /// A refusal naming a request of another kind does not answer a definition

@@ -1109,7 +1109,10 @@ impl Order {
             // byte, and a name taken without one would be a plain DAY order
             // under an overnight name. A name for a life is not proof the
             // field carries it.
-            "NMIN" => b'p',
+            // Both names of the minute peg: a gateway's inbound decoder takes
+            // its UI name and the name it publishes back for the code alike,
+            // so an order re-placed from a report carries the same code out.
+            "NMIN" | "Minutes" => b'p',
             _ => b'0', // DAY
         }
     }

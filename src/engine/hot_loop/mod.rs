@@ -4399,16 +4399,22 @@ pub(crate) fn parse_qty_tag(val: Option<&String>) -> Option<Qty> {
         .map(|scaled| scaled as Qty)
 }
 
-/// Decode a wire TIF byte to the API TIF string. Exact inverse of
-/// `api::types::Order::tif_byte`.
+/// Decode a wire TIF byte to the API TIF string — the whole table a
+/// gateway's order encoder publishes.
 ///
-/// The old inline map decoded '7' (never emitted) as OPG and dropped
-/// OPG ('2') and AUC ('8') to "".
+/// A byte the table does not name is never published raw: any other
+/// character decodes as "???", and the character a gateway's own encoder
+/// names invalid decodes as "[INVALID]". Unset (zero) decodes as empty —
+/// an order that never named a life says nothing, and the fallbacks that
+/// read empty keep what the order had.
 pub(crate) fn decode_tif(tif: u8) -> &'static str {
     match tif {
+        b'\0' => "",
         b'0' => "DAY", b'1' => "GTC", b'2' => "OPG", b'3' => "IOC",
         b'4' => "FOK", b'5' => "GTX", b'6' => "GTD", b'8' => "AUC",
-        _ => "",
+        b'p' => "Minutes", b'r' => "DTC", b'j' => "OVERNIGHT",
+        b'b' => "OVERNIGHT + DAY", b'?' => "[INVALID]",
+        _ => "???",
     }
 }
 
