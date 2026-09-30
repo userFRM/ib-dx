@@ -6,22 +6,18 @@
 //! stated, and a default of zero or true here went on the wire as a trigger
 //! the caller never asked for — the opposite direction from the one an omitted
 //! reading meant.
+//!
+//! How a condition reads as text — its sentence and its repr — is written on
+//! the Python surface, in the reference client's own words; nothing here
+//! renders one.
 
-// The other families, and the two helpers every class here uses.
+// The other families, and the helper every class here uses.
 use super::contract::set_from_keywords;
 use pyo3::prelude::*;
 
 use super::{camel_aliases_copy, camel_aliases_owned};
 use crate::types::*;
 use super::super::types::PRICE_SCALE_F;
-
-/// A field nobody set, as Python says one: `None`.
-fn stated<T: std::fmt::Display>(held: Option<T>) -> String {
-    match held {
-        Some(held) => held.to_string(),
-        None => "None".to_string(),
-    }
-}
 
 /// Price condition: trigger when an instrument's price crosses a threshold.
 #[pyclass(from_py_object)]
@@ -60,11 +56,6 @@ impl PriceCondition {
         let made = Py::new(py, Self { con_id, exchange, price, is_more, trigger_method, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        let op = if self.is_more == Some(true) { ">" } else { "<" };
-        format!("PriceCondition(conId={}, price {} {})", stated(self.con_id), op, stated(self.price))
     }
 }
 
@@ -123,11 +114,6 @@ impl TimeCondition {
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
     }
-
-    fn __repr__(&self) -> String {
-        let op = if self.is_more == Some(true) { ">" } else { "<" };
-        format!("TimeCondition(time {} '{}')", op, stated(self.time.clone()))
-    }
 }
 
 impl TimeCondition {
@@ -167,10 +153,6 @@ impl MarginCondition {
         let made = Py::new(py, Self { percent, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        format!("MarginCondition({}% {})", stated(self.percent), if self.is_more == Some(true) { "above" } else { "below" })
     }
 }
 
@@ -213,10 +195,6 @@ impl ExecutionCondition {
         let made = Py::new(py, Self { symbol, exchange, sec_type, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        format!("ExecutionCondition(symbol='{}', exchange='{}')", stated(self.symbol.clone()), stated(self.exchange.clone()))
     }
 }
 
@@ -267,11 +245,6 @@ impl VolumeCondition {
         let made = Py::new(py, Self { con_id, exchange, volume, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        let op = if self.is_more == Some(true) { ">" } else { "<" };
-        format!("VolumeCondition(conId={}, volume {} {})", stated(self.con_id), op, stated(self.volume))
     }
 }
 
@@ -326,11 +299,6 @@ impl PercentChangeCondition {
         let made = Py::new(py, Self { con_id, exchange, change_percent, is_more, is_conjunction_connection })?;
         set_from_keywords(made.bind(py).as_any(), keywords)?;
         Ok(made)
-    }
-
-    fn __repr__(&self) -> String {
-        let op = if self.is_more == Some(true) { ">" } else { "<" };
-        format!("PercentChangeCondition(conId={}, {}% {})", stated(self.con_id), op, self.change_percent)
     }
 }
 

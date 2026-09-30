@@ -2,13 +2,15 @@
 
 The six condition classes are the engine's own; the reference client's
 programs build them through their base, `OrderCondition`, read each
-condition's trigger figure as text and take one back (ibapi
+condition's trigger figure as text and take one back, and print each as a
+sentence chained through the shared operator and contract wordings (ibapi
 order_condition.py). The base is plain Python and the six are not its
 subclasses, so each is registered against it — `isinstance` and `issubclass`
 then answer as the reference's own inheritance answers — and each carries the
-reference's own text algorithms for the field it watches. The execution
-condition carries no text pair, as there: it derives from the base, not from
-the operator condition. The wire builders stay out — the wire here is Rust.
+reference's own text algorithms for the field it watches, its own sentence
+and the Object base's repr. The execution condition carries no text pair, as
+there: it derives from the base, not from the operator condition. The wire
+builders stay out — the wire here is Rust.
 """
 
 #: The six kinds, in the order the reference client's module defines them.
@@ -68,12 +70,66 @@ def _time_set_value_from_string(self, text: str) -> None:
     self.time = text
 
 
+# The sentences, chained as the reference chains its classes: the operator
+# wording every operator condition shares, the contract wording the three
+# contract conditions share, and each class's own sentence around them —
+# spaces included, for they are what its strings hold.
+
+def _operator_str(cond) -> str:
+    sb = ">= " if cond.isMore else "<= "
+    return f" {sb} {cond.valueToString()}"
+
+
+def _contract_str(cond) -> str:
+    return f"{cond.conId} on {cond.exchange} is {_operator_str(cond)} "
+
+
+def _price_str(self):
+    return (f"{self.TriggerMethodEnum.toStr(self.triggerMethod)} "
+            f"price of {_contract_str(self)} ")
+
+
+def _margin_str(self):
+    return f"the margin cushion percent {_operator_str(self)} "
+
+
+def _time_str(self):
+    return f"time is {_operator_str(self)} "
+
+
+def _execution_str(self):
+    # Concatenation, as there: a name nobody stated raises TypeError rather
+    # than printing.
+    return ("trade occurs for " + self.symbol + " symbol on "
+            + self.exchange + " exchange for " + self.secType
+            + " security type")
+
+
+def _percent_change_str(self):
+    return f"percent change of {_contract_str(self)} "
+
+
+def _volume_str(self):
+    return f"volume of {_contract_str(self)} "
+
+
+_STRINGS = {
+    "PriceCondition": _price_str,
+    "MarginCondition": _margin_str,
+    "TimeCondition": _time_str,
+    "ExecutionCondition": _execution_str,
+    "PercentChangeCondition": _percent_change_str,
+    "VolumeCondition": _volume_str,
+}
+
+
 def install(surface) -> None:
     """Claim the six condition classes for the base they answer to."""
     base = surface["OrderCondition"]
     for name in _KINDS:
         base.register(surface[name])
 
+    object_repr = surface["Object"].__repr__
     for name, reads, takes in (
         ("PriceCondition", _price_value_to_string, _price_set_value_from_string),
         ("MarginCondition", _margin_value_to_string, _margin_set_value_from_string),
@@ -84,3 +140,8 @@ def install(surface) -> None:
         cls = surface[name]
         cls.valueToString = reads
         cls.setValueFromString = takes
+
+    for name in _KINDS:
+        cls = surface[name]
+        cls.__str__ = _STRINGS[name]
+        cls.__repr__ = object_repr
