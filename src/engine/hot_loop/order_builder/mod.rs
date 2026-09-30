@@ -403,8 +403,10 @@ pub(crate) fn drain_and_send_orders(
                     (100, &destination),
                     (6210, &destination),
                     (15, &currency),
+                    (6088, ORIGINATOR),   // Connection type
                     (204, CUSTOMER),
                     (6122, origin_code(0)),
+                    (6211, ""),           // Empty where no alert placed it
                 ];
                 parent_fields.extend_from_slice(&identity);
                 parent_fields.extend(parent_numbers.iter().map(|(t, v)| (*t, v.as_str())));
@@ -441,8 +443,10 @@ pub(crate) fn drain_and_send_orders(
                     (100, &destination),
                     (6210, &destination),
                     (15, &currency),
+                    (6088, ORIGINATOR),   // Connection type
                     (204, CUSTOMER),
                     (6122, origin_code(0)),
+                    (6211, ""),           // Empty where no alert placed it
                     (6107, &parent_str),            // ParentOrderID
                     (583, &oca_group),              // OCAGroup
                     (6209, "ReduceOnFillNonBlock"), // OCA type: gateway default 3
@@ -478,8 +482,10 @@ pub(crate) fn drain_and_send_orders(
                     (100, &destination),
                     (6210, &destination),
                     (15, &currency),
+                    (6088, ORIGINATOR),   // Connection type
                     (204, CUSTOMER),
                     (6122, origin_code(0)),
+                    (6211, ""),           // Empty where no alert placed it
                     (6107, &parent_str),            // ParentOrderID
                     (583, &oca_group),              // OCAGroup
                     (6209, "ReduceOnFillNonBlock"), // OCA type: gateway default 3

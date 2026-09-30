@@ -3187,6 +3187,40 @@ mod outside_rth_polarity_tests {
         assert!(sent.contains("|6008=893091670|"), "the fraction carries the id: {sent}");
     }
 
+    /// The bracket legs build their own frames rather than going through the
+    /// shared encoder, and the hand-built frames dropped the two originator
+    /// tags every other placement states: the connection type, and the
+    /// placing alert — written unconditionally, empty where no alert placed
+    /// the order.
+    #[test]
+    fn every_bracket_leg_states_the_originator_and_the_placing_alert() {
+        let mut context = Context::new();
+        let instrument = context.register_instrument(756733);
+        context.set_symbol(instrument, "SPY".to_string());
+        context.pending_orders.push(crate::types::OrderRequest::SubmitBracket { con_id: 0,
+            parent_id: 1,
+            tp_id: 2,
+            sl_id: 3,
+            instrument,
+            side: Side::Buy,
+            qty: 100 * crate::types::QTY_SCALE,
+            entry_price: 150 * crate::types::PRICE_SCALE,
+            take_profit: 155 * crate::types::PRICE_SCALE,
+            stop_loss: 145 * crate::types::PRICE_SCALE,
+        });
+        let sent = drain(&mut context);
+        assert_eq!(
+            sent.matches("|6088=Socket|").count(),
+            3,
+            "all three legs state the originator: {sent}",
+        );
+        assert_eq!(
+            sent.matches("|6211=|").count(),
+            3,
+            "all three legs state the placing alert, empty: {sent}",
+        );
+    }
+
     /// A cancel states tag 38 as the quantity the order carries, so a
     /// fractional order is cancelled for the fraction it was placed for
     /// rather than for a quantity of zero.
