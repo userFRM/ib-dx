@@ -30,7 +30,6 @@ pub(crate) fn order_command(cmd: ControlCommand) -> Result<ControlCommand, Contr
     match cmd {
         ControlCommand::Place(_)
         | ControlCommand::CancelOrder { .. }
-        | ControlCommand::CancelOrderByPermId { .. }
         | ControlCommand::GlobalCancel { .. }
         | ControlCommand::Exercise(_)
         | ControlCommand::Bracket(_) => Ok(cmd),
@@ -402,10 +401,6 @@ impl HotLoop {
             ControlCommand::CancelOrder { order_id, stated } => {
                 let (order_id, stated) = (*order_id, stated.clone());
                 self.take_cancel(order_id, &stated)
-            }
-            ControlCommand::CancelOrderByPermId { perm_id } => {
-                let perm_id = *perm_id;
-                self.take_cancel_by_perm_id(perm_id)
             }
             ControlCommand::GlobalCancel { stated } => {
                 let stated = stated.clone();
@@ -1268,52 +1263,6 @@ impl HotLoop {
         Step::Done
     }
 
-    fn take_cancel_by_perm_id(&mut self, perm_id: i64) -> Step {
-        // After the venue has named the working set, as a withdrawal by number
-        // is read: the order this exists for is one carried over from a
-        // previous session.
-        if self.shared.orders.replay_settled().is_none() {
-            return Step::Waits;
-        }
-        let carrying: Vec<u64> = self
-            .shared
-            .orders
-            .drain_open_orders()
-            .into_iter()
-            .filter(|(_, info)| info.order.perm_id == perm_id)
-            .map(|(order_id, _)| order_id)
-            .collect();
-        // One order under a number, as a gateway holds its orders. Where more
-        // than one record carries the number, it names the order a report
-        // under that number reaches: the one held under the number itself, or
-        // the one the venue's name for it was learned for. Taken as the first
-        // record the book happened to yield, the withdrawal reached either.
-        // And of those, the one the engine holds: a record can outlast the
-        // order it was kept for.
-        let number = perm_id as u64;
-        let named: Vec<u64> = [Some(number), self.ccp.the_order_named(number)]
-            .into_iter()
-            .flatten()
-            .filter(|order_id| carrying.contains(order_id))
-            .chain(carrying.iter().copied())
-            .collect();
-        let found = named.iter().copied()
-            .find(|order_id| self.context.order(*order_id).is_some())
-            .or_else(|| named.first().copied());
-        let Some(order_id) = found else {
-            let why = Refusal::stated(
-                NO_SUCH_ORDER,
-                format!("cancel_order_by_perm_id: permId {perm_id} not found in open orders"),
-            );
-            self.shared.push_refused(ErrorOrigin::Session, i64::from(why.code), why.message);
-            return Step::Done;
-        };
-        // Withdrawn under the number the order's own reports carry in this
-        // session, as a withdrawal by that number is.
-        self.withdraw_kept_placement(order_id);
-        self.take_cancel(order_id, &api::OrderCancel::default())
-    }
-
     fn take_global_cancel(&mut self, stated: &api::OrderCancel) -> Step {
         // The venue names what the account is working after the connect, so
         // the withdrawal waits for that naming and covers what was named.
@@ -2049,12 +1998,6 @@ impl HotLoop {
                     inactive(order_id, OrderOp::Place, never_placed.clone());
                 }
             }
-            // Names no order of its own, so it is said under none.
-            ControlCommand::CancelOrderByPermId { .. } => self.shared.push_refused(
-                ErrorOrigin::Session,
-                i64::from(Refusal::NOT_CONNECTED),
-                stands("cancellation"),
-            ),
             ControlCommand::GlobalCancel { .. } => self.shared.push_refused(
                 ErrorOrigin::Session,
                 i64::from(Refusal::NOT_CONNECTED),

@@ -257,7 +257,6 @@ ib_async's transport, has a method by that name.
 | `calendarSchema` | venue | · | · | · | ● | ● |
 | `cancelAdjustments` | venue | · | · | · | ● | ● |
 | `cancelHistoricalNews` | venue | · | · | · | ● | ● |
-| `cancelOrderByPermId` | venue | · | · | · | ● | ● |
 | `ccpSessionId` | venue | · | · | · | ● | ● |
 | `chainModelParameters` | venue | · | · | · | ● | ● |
 | `checkConnected` | this client | · | · | · | — | ● |

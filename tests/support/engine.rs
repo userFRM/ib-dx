@@ -53,7 +53,6 @@ impl Engine {
             cmd,
             ControlCommand::Place(_)
                 | ControlCommand::CancelOrder { .. }
-                | ControlCommand::CancelOrderByPermId { .. }
                 | ControlCommand::GlobalCancel { .. }
                 | ControlCommand::Exercise(_)
                 | ControlCommand::Bracket(_)

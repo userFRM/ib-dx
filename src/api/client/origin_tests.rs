@@ -221,51 +221,6 @@ fn a_global_cancel_refused_is_the_sessions() {
     assert!(told.0[0].starts_with(&format!("{:?} ", ErrorOrigin::Session)), "{:?}", told.0);
 }
 
-/// A withdrawal by permanent id is refused under the number the order's own
-/// reports carry in this session, as a cancel; one naming no order of this
-/// session's is the session's.
-#[test]
-fn a_cancel_by_permanent_id_is_refused_under_the_orders_own_number() {
-    let (client, rx, shared) = test_client();
-    shared.orders.set_replay_done();
-    shared.orders.push_order_info(
-        4242,
-        crate::bridge::RichOrderInfo {
-            contract: spy(),
-            order: Order { order_id: 4242, perm_id: 777_001, ..limit() },
-            order_state: OrderState { status: "Submitted".into(), ..Default::default() },
-            last_exec: Default::default(),
-        },
-    );
-    // And the venue has since said the order finished, so the withdrawal the
-    // order is found for is refused.
-    shared.orders.push_order_update(crate::types::OrderUpdate {
-        order_id: 4242,
-        instrument: 0,
-        status: crate::types::OrderStatus::Filled,
-        filled_qty: 1.0,
-        remaining_qty: 0.0,
-        avg_price: 0,
-        perm_id: 777_001,
-        parent_id: 0,
-        timestamp_ns: 0,
-    });
-    client.cancel_order_by_perm_id(777_001);
-    client.cancel_order_by_perm_id(1);
-    rx.pump();
-    let mut told = Told::default();
-    client.process_msgs(&mut told);
-    told.0.retain(|e| e.starts_with("Order") || e.starts_with("Session"));
-    let origins: Vec<&str> = told.0.iter().map(|e| e.rsplit_once(' ').unwrap().0).collect();
-    assert_eq!(
-        origins,
-        [
-            format!("{:?}", ErrorOrigin::Order { id: 4242, op: OrderOp::Cancel }),
-            format!("{:?}", ErrorOrigin::Session),
-        ],
-    );
-}
-
 /// An advisor's question about a partition carries no number; replacing one
 /// does.
 #[test]

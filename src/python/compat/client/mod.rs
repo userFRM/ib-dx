@@ -3883,31 +3883,6 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
-    /// `permId` is what survives a restart; the local order id does not.
-    #[test]
-    fn an_order_can_be_cancelled_by_its_perm_id() {
-        Python::initialize();
-        Python::attach(|py| {
-            let (client, rx, shared, _w) = wired_client(py);
-            let rx = crate::api::client::tests::Engine::new(rx, &shared);
-            // An order the venue named as working, under the permanent number
-            // its reports carry.
-            shared.orders.set_replay_done();
-            shared.orders.push_order_info(77, crate::bridge::RichOrderInfo {
-                contract: ApiContract { con_id: 756733, symbol: "SPY".into(), ..Default::default() },
-                order: ApiOrder { order_id: 77, total_quantity: 1.0, perm_id: 91011, ..Default::default() },
-                order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
-                last_exec: Default::default(),
-            });
-
-            client.call_method1(py, "cancel_order_by_perm_id", (91011i64,)).unwrap();
-            match rx.try_recv().expect("a cancel must reach the engine") {
-                ControlCommand::Order(OrderRequest::Cancel { order_id, .. }) => assert_eq!(order_id, 77),
-                other => panic!("expected a Cancel, got {other:?}"),
-            }
-        });
-    }
-
     /// The per-request market-data mode is what keeps a thinly-traded name
     /// streaming after hours; without it this surface can only ask for realtime.
     #[test]

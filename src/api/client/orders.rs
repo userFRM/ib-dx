@@ -365,40 +365,6 @@ impl EClient {
         }
     }
 
-
-    /// Cancel an order identified by `permId` — stable across sessions.
-    ///
-    /// `permId` is the number an order goes to the venue under, as `open_order`
-    /// and `order_status` state it. Useful for cancelling an order placed in a
-    /// prior session, where the local `order_id` is not retained.
-    ///
-    /// The withdrawal names an order by its number, so the engine looks the
-    /// number up from `permId` among the orders the venue is working, once it
-    /// has named them, and withdraws it as [`cancel_order`](Self::cancel_order)
-    /// does. Where more than one record of a working order carries it, the
-    /// order held under that number is the one withdrawn, as a gateway holds
-    /// one order under a number, and of those records the one whose order the
-    /// engine holds. A `perm_id` no working order carries is refused under no
-    /// number.
-    pub fn cancel_order_by_perm_id(&self, perm_id: i64) {
-        let asked = || -> Result<(), Refusal> {
-            self.refuse_if_trading_is_over("a withdrawal")?;
-            self.core.refuse_if_readonly("a cancel").map_err(Refusal::validation)?;
-            if perm_id == 0 {
-                return Err("cancel_order_by_perm_id: perm_id must be non-zero".into());
-            }
-            // Found once the venue has named the working set, as a withdrawal
-            // by number is read: the order this exists for is one carried over
-            // from a previous session. Withdrawn, and refused, under the
-            // number the order's own reports carry in this session; refused
-            // under none where no order carries it.
-            self.send(ControlCommand::CancelOrderByPermId { perm_id })
-        };
-        if let Err(why) = asked() {
-            self.refuse_session(&why);
-        }
-    }
-
     /// Cancel every order the account is working. Matches `reqGlobalCancel`
     /// in C++.
     ///

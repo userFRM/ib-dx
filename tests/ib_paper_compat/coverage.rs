@@ -68,10 +68,6 @@ const KNOWN_CONTROL_COMMAND_GAPS: &[(&str, &str)] = &[
          here asks for one",
     ),
     (
-        "CancelOrderByPermId",
-        "No phase here withdraws an order by the venue's number for it",
-    ),
-    (
         "GlobalCancel",
         "Withdraws every order the account has working, including what the \
          phases beside it are working",

@@ -935,7 +935,6 @@ fn every_request_keeps_its_outcome_between_the_surrounding_records() {
             c.exercise_options(9, &super::tests::spy(), 1, 1, "DU123", false, Default::default())
         }),
         ("cancel_order", |c| c.cancel_order(9, "")),
-        ("cancel_order_by_perm_id", |c| c.cancel_order_by_perm_id(9)),
         ("req_global_cancel", |c| c.req_global_cancel("")),
         ("req_ids", |c| c.req_ids(1)),
         ("req_open_orders", |c| c.req_open_orders()),

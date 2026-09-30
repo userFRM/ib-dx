@@ -406,31 +406,6 @@ impl EClient {
         Ok(())
     }
 
-    /// Cancel an order identified by `permId` — stable across sessions, unlike
-    /// the local order id. The cancel frame is orderId-only, so the local id is
-    /// looked up from the open-order cache; fails if `perm_id` is not tracked.
-    /// Where more than one working order's record carries it, the order held
-    /// under that number is the one withdrawn, as a gateway holds one order
-    /// under a number, and of those records the one whose order the engine
-    /// holds.
-    fn cancel_order_by_perm_id(&self, py: Python<'_>, perm_id: i64) -> PyResult<()> {
-        if let Err(why) = self.core.refuse_if_readonly("a cancel") {
-            return self.report_refusal(py, -1, Refusal::validation(why));
-        }
-        if perm_id == 0 {
-            return self.report_refusal(py, -1, Refusal::validation(
-                "cancel_order_by_perm_id: perm_id must be non-zero",
-            ));
-        }
-        let Some(tx) = self.tx_or_report_for_trading(crate::types::model::ErrorOrigin::Session)? else { return Ok(()) };
-        // Found once the venue has named the working set, as on the other
-        // surface, and withdrawn under the number its reports carry here.
-        if let Err(why) = self.send_control(&tx, ControlCommand::CancelOrderByPermId { perm_id }) {
-            return self.report_refusal(py, -1, Refusal::not_connected(why.to_string()));
-        }
-        Ok(())
-    }
-
     /// Cancel every order the account is working.
     ///
     /// This wire carries no request to withdraw everything, so it is composed

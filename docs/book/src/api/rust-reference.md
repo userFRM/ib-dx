@@ -1024,20 +1024,6 @@ pub fn cancel_order( &self, order_id: i64, order_cancel: impl Into<crate::types:
 
 ---
 
-#### `cancel_order_by_perm_id`
-
-Cancel an order identified by `permId` — stable across sessions. `permId` is the number an order goes to the venue under, as `open_order` and `order_status` state it. Useful for cancelling an order placed in a prior session, where the local `order_id` is not retained. The withdrawal names an order by its number, so the engine looks the number up from `permId` among the orders the venue is working, once it has named them, and withdraws it as `cancel_order` does. Where more than one record of a working order carries it, the order held under that number is the one withdrawn, as a gateway holds one order under a number, and of those records the one whose order the engine holds. A `perm_id` no working order carries is refused under no number.
-
-```rust
-pub fn cancel_order_by_perm_id(&self, perm_id: i64)
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `perm_id` | `i64` | The order's permanent id: the number it goes to the venue under. |
-
----
-
 #### `req_global_cancel`
 
 Cancel every order the account is working. This wire carries no request to withdraw everything, so it is composed here: one cancel for each order held, which is what a caller asking for everything back is asking for. What is held is what the venue named as working at connect and what this session placed since. The venue names the former after the connect returns, so a global cancel issued straight away waits for that naming, as asking for the open orders does, and covers what was named. Where the naming does not finish within the wait, what had been named is still withdrawn and the call says so rather than returning as though every order were covered: a partial cancel that reads as one beats the same cancel in silence, which reads as a complete answer. What the withdrawal states — who is withdrawing and whether a person entered it — travels on every cancel, as a gateway states it on every order it withdraws. A time does not: the reference client writes none on a withdrawal of everything, so a gateway never reads one, and one stated here goes the same way.

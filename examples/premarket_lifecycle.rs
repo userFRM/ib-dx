@@ -197,9 +197,18 @@ fn run_cancel() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("[skip] [{label}] has no permId — cannot cancel cross-session");
             continue;
         }
-        println!("cancelling [{label}] permId={perm}");
+        // The withdrawal names an order by the number this session holds for
+        // it, and a carried-over order gets that number from the open-order
+        // hydration above: resolve the permanent id against it.
+        let Some(oid) = state.lock().unwrap().open.iter()
+            .find(|(_, p, _)| *p == perm)
+            .map(|(o, _, _)| *o) else {
+            eprintln!("[skip] [{label}] permId={perm} is not among the hydrated open orders");
+            continue;
+        };
+        println!("cancelling [{label}] permId={perm} oid={oid}");
         // A refusal arrives on `error`, and the pump below reads it.
-        client.cancel_order_by_perm_id(perm);
+        client.cancel_order(oid, "");
         let done = pump_until(&client, &mut w, &state, Duration::from_secs(15), |s| {
             s.statuses.iter().any(|(_, st, p)| *p == perm && st == "Cancelled")
         });

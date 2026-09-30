@@ -1620,7 +1620,6 @@ impl HotLoop {
                 // Taken by the order intake above.
                 ControlCommand::Place(_)
                 | ControlCommand::CancelOrder { .. }
-                | ControlCommand::CancelOrderByPermId { .. }
                 | ControlCommand::GlobalCancel { .. }
                 | ControlCommand::Exercise(_)
                 | ControlCommand::Bracket(_) => {}
@@ -10390,8 +10389,8 @@ mod admission_tests {
     fn order_commands_released_by_the_replay_share_the_laps_sixty_four() {
         let (mut hl, shared, client) = stopped();
         shared.orders.replay_is_pending();
-        for perm_id in 1..=130 {
-            shared.admit(&client.control_tx, ControlCommand::CancelOrderByPermId { perm_id }).unwrap();
+        for order_id in 1..=130 {
+            shared.admit(&client.control_tx, ControlCommand::CancelOrder { order_id, stated: Default::default() }).unwrap();
         }
         for _ in 0..3 {
             hl.poll_control_commands();

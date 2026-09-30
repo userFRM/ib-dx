@@ -1415,8 +1415,6 @@ mod readonly_tests {
 
         assert!(client.try_place_order(1, &spy, &order).is_err(), "an order is refused");
         assert!(crate::api::client::tests::reported(&client, || client.cancel_order(1, "")).is_err(), "a cancel is refused");
-        client.cancel_order_by_perm_id(1);
-        assert_eq!(client.shared.drain_refused().len(), 1, "a cancel by permanent id is refused");
         assert!(crate::api::client::tests::reported(&client, || client.req_global_cancel("")).is_err(), "a global cancel is refused");
         assert!(
             crate::api::client::tests::reported(&client, || client.exercise_options(1, &spy, 1, 1, "", false, Default::default())).is_err(),

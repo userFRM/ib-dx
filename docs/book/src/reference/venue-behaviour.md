@@ -562,9 +562,6 @@ every report on the order repeats, and each is kept as the order it is:
   places and every working order it states to it, and not by the executions
   the venue restates. An order the session holds under that number is
   modified as usual.
-- `cancel_order_by_perm_id` withdraws the order held under the number, where
-  more than one working order's record carries it; of the records carrying it,
-  the one whose order the engine holds.
 
 ## Attached cancellation groups
 

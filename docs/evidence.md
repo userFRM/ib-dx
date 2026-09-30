@@ -18,10 +18,10 @@ Verification runs against a paper account on IBKR production servers, and the or
 
 | | |
 | --- | --- |
-| Requests | 86. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
+| Requests | 85. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,468 offline, and 183 more that live in the suites run against a broker session |
+| Tests | 4,465 offline, and 182 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,11 +72,11 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,259 | No |
+| Rust unit and integration | 3,257 | No |
 | Rust, live | 9 | Yes |
-| Python | 1,209 | No |
+| Python | 1,208 | No |
 | Python, live | 123 | Yes |
-| Paper compatibility suite (154 phases) | 51 tests | Yes |
+| Paper compatibility suite (154 phases) | 50 tests | Yes |
 
 Counted rather than stated: `scripts/check_status_counts.py` names every test
 in each suite and fails the gate when this table disagrees with it, so a figure
@@ -176,7 +176,7 @@ stops holding.
 
 | What is guaranteed | Where it stands |
 | --- | --- |
-| A call never returns success having sent nothing | 86 requests, none silent |
+| A call never returns success having sent nothing | 85 requests, none silent |
 | A field a caller sets is never quietly ignored | 159 order fields, none dropped |
 | A field the server sends is never thrown away | What this client has no name for is kept under its tag number — 49 such fields on an equity definition, 46 on a bond |
 
