@@ -404,6 +404,9 @@ impl EClient {
         historical_news_options: Option<Vec<Py<PyAny>>>,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // The contract is read before anything is validated, as a gateway
+        // reads the request before it checks what it states.
+        let contract = super::wire_con_id("a request for headlines", con_id)?;
         if let Some(why) = self.options_refused(py, &crate::client_core::HISTORICAL_NEWS_OPTIONS, historical_news_options)? {
             return self.report_refusal(py, req_id, why);
         }
@@ -423,7 +426,7 @@ impl EClient {
         }
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHistoricalNews {
                 req_id: wire_req_id(req_id)?,
-                con_id: super::wire_con_id("a request for headlines", con_id)?,
+                con_id: contract,
                 provider_codes: provider_codes.to_string(),
                 start_time: start_date_time.to_string(),
                 end_time: end_date_time.to_string(),
