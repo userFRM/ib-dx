@@ -6603,6 +6603,18 @@ impl ClientCore {
         Err(Refusal::stated(code, message))
     }
 
+    /// The exchange a request of the historical family states, read off the
+    /// contract as the caller stated it: one naming no venue — a contract
+    /// given by id alone included — is refused before anything is looked up
+    /// or sent, in the sentence a gateway refuses it in (no trailing period,
+    /// which the book refusal has). Whitespace states no venue either.
+    pub fn validate_exchange_stated(exchange: &str) -> Result<(), Refusal> {
+        if exchange.trim().is_empty() {
+            return Err(Refusal::validation("Please enter exchange"));
+        }
+        Ok(())
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized

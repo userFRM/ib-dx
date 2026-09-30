@@ -150,10 +150,13 @@ impl EClient {
         &self, req_id: i64, contract: &Contract, what_to_show: &str, use_rth: bool,
         format_date: i32,
     ) -> Result<(), Refusal> {
+        // The exchange is read off the contract as the caller stated it and
+        // refused empty before anything is looked up or sent, as a gateway
+        // refuses it — a contract given by id alone included. What such a
+        // contract still leaves the venue is its naming, which the engine
+        // asks for by id before the query goes.
+        ClientCore::validate_exchange_stated(&contract.exchange)?;
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         self.send(ControlCommand::FetchHeadTimestamp {
             contract: contract.into(),
             req_id: wire_req_id(req_id)?,

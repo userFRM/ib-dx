@@ -3355,6 +3355,33 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// What a gateway refuses in the historical family of requests before it
+    /// asks the venue is refused on this surface too, in the same words and
+    /// with nothing sent — each refusal the one the Rust surface gives,
+    /// wire-wrapped as a gateway wraps a refusal it raised itself.
+    #[test]
+    fn the_historical_family_a_gateway_refuses_is_refused_here_too() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, _shared, w) = wired_client(py);
+            let no_exchange = Py::new(py, Contract { con_id: 756733, ..Default::default() }).unwrap();
+
+            client
+                .call_method1(py, "req_head_time_stamp", (1i64, &no_exchange, "TRADES", 1i32, 1i32))
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for a head timestamp naming no exchange");
+
+            client.call_method0(py, "poll").unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            let said: Vec<(i64, i64, String)> = py
+                .eval(c"[(c[1], c[3], c[4]) for c in w.calls if c[0] == 'error']", Some(&g), None)
+                .unwrap().extract().unwrap();
+            let wire = |text: &str| format!("Error validating request:-'' : cause - {text}");
+            assert!(said.contains(&(1, 321, wire("Please enter exchange"))), "{said:?}");
+        });
+    }
+
     /// A number naming no market-data type is refused under -1 on this
     /// surface as on the Rust one, in the wire form a gateway wraps a
     /// refusal it raised itself in, and the feeds stay as they were.

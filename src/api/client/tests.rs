@@ -4924,6 +4924,30 @@ fn req_head_time_stamp_sends_fetch() {
     }
 }
 
+/// A head timestamp request naming no exchange is refused at intake in the
+/// sentence a gateway refuses it in — the exchange read off the contract as
+/// the caller stated it, a contract given by id alone included — before
+/// anything is looked up or sent. Whitespace states no venue either.
+#[test]
+fn a_head_timestamp_request_naming_no_exchange_is_refused() {
+    let (client, rx, _shared) = test_client();
+    for contract in [
+        Contract { con_id: 495_512_563, ..Default::default() },
+        Contract { symbol: "SPY".into(), sec_type: "STK".into(), ..Default::default() },
+        Contract { con_id: 495_512_563, exchange: "   ".into(), ..Default::default() },
+    ] {
+        let err = client
+            .try_req_head_time_stamp(6, &contract, "TRADES", true, 1)
+            .expect_err("no exchange named");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (Refusal::VALIDATION, "Please enter exchange"),
+            "{contract:?}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {contract:?}");
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Contract details
 // ═══════════════════════════════════════════════════════════════════
@@ -9846,13 +9870,17 @@ fn an_answering_call_does_not_wait_on_itself_to_name_a_contract_given_by_id() {
 #[test]
 fn a_request_given_by_id_alone_is_named_by_the_engine_not_the_call() {
     let by_id_alone = Contract { con_id: 495_512_563, ..Default::default() };
+    // The requests a gateway reads the exchange off of state one; what they
+    // still leave the venue is the contract's type, so the engine still
+    // names them by id.
+    let venue_stated = Contract { con_id: 495_512_563, exchange: "SMART".into(), ..Default::default() };
     let described = Contract {
         symbol: "AAPL".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "USD".into(),
         ..Default::default()
     };
     let (client, rx, shared) = test_client();
     client.try_req_historical_data(1, &by_id_alone, "", "1 D", "1 hour", "TRADES", true, 1, false).expect("handed over");
-    client.try_req_head_time_stamp(2, &by_id_alone, "TRADES", true, 1).expect("handed over");
+    client.try_req_head_time_stamp(2, &venue_stated, "TRADES", true, 1).expect("handed over");
     client.try_req_histogram_data(3, &by_id_alone, true, "1 week").expect("handed over");
     crate::api::client::tests::reported(&client, || client.req_historical_ticks(4, &by_id_alone, "20250101 00:00:00", "", 10, "TRADES", true, false))
         .expect("handed over");

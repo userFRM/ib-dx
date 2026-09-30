@@ -110,12 +110,17 @@ impl EClient {
         format_date: i32,
     ) -> PyResult<()> {
         let Some(tx) = self.tx_or_report(req_id)? else { return Ok(()) };
+        // The exchange is read off the contract as the caller stated it and
+        // refused empty before anything is looked up or sent, as a gateway
+        // refuses it — a contract given by id alone included. What such a
+        // contract still leaves the venue is its naming, which the engine
+        // asks for by id before the query goes.
+        if let Err(why) = ClientCore::validate_exchange_stated(&contract.exchange) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
-        // A contract given by id alone is named by the engine before the
-        // request goes: a request states the contract's type and its
-        // exchange, and both are the venue's to say.
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchHeadTimestamp {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,
