@@ -5157,6 +5157,32 @@ fn req_contract_details_sends_fetch() {
     }
 }
 
+/// A contract-details request on a combination is refused at intake, after
+/// the expiry is read as a gateway reads the shared contract checks first,
+/// in a gateway's own sentence — which names the canonical spelling
+/// whatever the caller wrote, the COMB spelling folded onto BAG as a
+/// gateway folds it.
+#[test]
+fn a_contract_details_request_on_a_combination_is_refused_in_a_gateways_words() {
+    let (client, rx, _shared) = test_client();
+    for sec_type in ["BAG", "bag", "COMB"] {
+        let contract = Contract {
+            symbol: "SPY".into(), sec_type: sec_type.into(), exchange: "SMART".into(),
+            ..Default::default()
+        };
+        let err = client.try_req_contract_details(7, &contract).expect_err("a combination");
+        assert_eq!(
+            (err.code, err.message.as_str()),
+            (
+                Refusal::VALIDATION,
+                "'BAG' isn't supported for contract data request. Please enter a valid security type",
+            ),
+            "{sec_type}",
+        );
+        assert!(rx.try_recv().is_err(), "something was sent for {sec_type}");
+    }
+}
+
 #[test]
 fn req_contract_details_forwards_filter_fields() {
     // /: a by-symbol lookup must carry the disambiguation

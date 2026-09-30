@@ -159,6 +159,10 @@ impl EClient {
         if let Err(why) = crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month) {
             return self.report_refusal(py, req_id, why);
         }
+        // After the shared contract checks, as a gateway runs them first.
+        if let Err(why) = ClientCore::validate_contract_details_sec_type(&contract.sec_type) {
+            return self.report_refusal(py, req_id, why);
+        }
         if let Err(why) = self.send_control(&tx, ControlCommand::FetchContractDetails {
                 contract: contract.into(),
                 req_id: wire_req_id(req_id)?,

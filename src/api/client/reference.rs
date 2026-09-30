@@ -186,6 +186,8 @@ impl EClient {
     /// caller rather than pushed into the session's order.
     pub(crate) fn try_req_contract_details(&self, req_id: i64, contract: &Contract) -> Result<(), Refusal> {
         crate::client_core::ClientCore::validate_contract_expiry(&contract.last_trade_date_or_contract_month)?;
+        // After the shared contract checks, as a gateway runs them first.
+        crate::client_core::ClientCore::validate_contract_details_sec_type(&contract.sec_type)?;
         self.send(ControlCommand::FetchContractDetails {
             contract: contract.into(),
             req_id: wire_req_id(req_id)?,

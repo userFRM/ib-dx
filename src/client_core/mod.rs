@@ -6668,6 +6668,21 @@ impl ClientCore {
         Ok(number_of_ticks as u32)
     }
 
+    /// The type a contract-details request states, refused where a gateway
+    /// refuses it — after the shared contract checks it runs first — for a
+    /// type that folds onto a combination, however the caller spelled it,
+    /// with COMB folded onto BAG as a gateway folds it: the sentence names
+    /// the canonical spelling whatever the request said, as a gateway's
+    /// names the type it folded the one it read onto.
+    pub fn validate_contract_details_sec_type(sec_type: &str) -> Result<(), Refusal> {
+        if Self::resolve_sec_type(sec_type) == Some("BAG") {
+            return Err(Refusal::validation(
+                "'BAG' isn't supported for contract data request. Please enter a valid security type",
+            ));
+        }
+        Ok(())
+    }
+
     /// Validate historical-request arguments before anything reaches the
     /// engine: an unrecognized bar_size falls back to 5-minute bars
     /// silently through two divergent tables, and an unrecognized

@@ -3358,7 +3358,8 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
     /// What a gateway refuses in the historical family of requests before it
     /// asks the venue is refused on this surface too, in the same words and
     /// with nothing sent — each refusal the one the Rust surface gives,
-    /// wire-wrapped as a gateway wraps a refusal it raised itself.
+    /// wire-wrapped as a gateway wraps a refusal it raised itself. The
+    /// combination a contract-details request names is refused beside them.
     #[test]
     fn the_historical_family_a_gateway_refuses_is_refused_here_too() {
         Python::initialize();
@@ -3420,6 +3421,10 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 )
                 .unwrap();
             assert!(rx.try_recv().is_err(), "nothing was sent for ticks counting none");
+            client
+                .call_method1(py, "req_contract_details", (8i64, &combo))
+                .unwrap();
+            assert!(rx.try_recv().is_err(), "nothing was sent for contract details on a combination");
 
             client.call_method0(py, "poll").unwrap();
             let g = pyo3::types::PyDict::new(py);
@@ -3436,6 +3441,7 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
                 (5, "Exchange must not be empty"),
                 (6, "Combo types are not supported"),
                 (7, "Number of ticks must be > 0"),
+                (8, "'BAG' isn't supported for contract data request. Please enter a valid security type"),
             ] {
                 assert!(said.contains(&(id, 321, wire(text))), "{id}: {said:?}");
             }
