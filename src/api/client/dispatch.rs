@@ -846,10 +846,21 @@ impl EClient {
             // What the venue said about the order, under the status this
             // client names it by — as the report that changed the status
             // stated it, not as the order's record stands at the read.
-            let state = OrderState {
+            let mut state = OrderState {
                 status: status.to_string(),
                 ..state.map(|stated| stated.order_state.clone()).unwrap_or_default()
             };
+            // A completed time publishes as a gateway publishes it, on the
+            // clock the session's datetime-format setting names; the record
+            // kept holds the venue's stamp. An unstated time publishes as
+            // nothing, as it reads as nothing.
+            let settings = self.shared.settings();
+            state.completed_time = crate::protocol::datetime::published_execution_time(
+                &state.completed_time,
+                &settings.timezone,
+                settings.datetime_format,
+                self.shared.reference.instrument_zone(tracked.contract.con_id).as_deref(),
+            );
             wrapper.open_order(
                 self.core.api_order_id(update.order_id), &tracked.contract, &tracked.order, &state,
             );
@@ -998,6 +1009,7 @@ impl EClient {
                 // Copied before anything is called back: a callback may ask
                 // for these again, and the lock is not re-entrant.
                 let completed = self.completed.lock().unwrap().clone();
+                let settings = self.shared.settings();
                 for (_, contract, order, state, _) in &completed {
                     // Kept whole in the archive and filtered on the way out,
                     // so the same session can ask for all of them and for the
@@ -1007,7 +1019,17 @@ impl EClient {
                     ) {
                         continue;
                     }
-                    wrapper.completed_order(contract, order, state);
+                    // The completed time publishes as a gateway publishes it,
+                    // on the clock the datetime-format setting names; the
+                    // archive keeps the venue's stamp.
+                    let mut published = state.clone();
+                    published.completed_time = crate::protocol::datetime::published_execution_time(
+                        &state.completed_time,
+                        &settings.timezone,
+                        settings.datetime_format,
+                        self.shared.reference.instrument_zone(contract.con_id).as_deref(),
+                    );
+                    wrapper.completed_order(contract, order, &published);
                 }
                 wrapper.completed_orders_end();
             }

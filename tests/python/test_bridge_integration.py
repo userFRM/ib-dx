@@ -660,7 +660,10 @@ class TestReqCompletedOrdersOrderState:
         # `order_state.completed_status` (AttributeError).
         assert state["status"] == "Filled"
         assert state["completed_status"] == "Filled"
-        assert state["completed_time"] == "20260430-15:30:00"
+        # Published as a gateway publishes it: the venue's UTC stamp rendered
+        # on the clock the datetime-format setting names — the operator's,
+        # UTC by default — never the raw dash shape.
+        assert state["completed_time"] == "20260430 15:30:00 UTC"
         assert state["commission_and_fees_currency"] == "USD"
         assert state["warning_text"] == "warning_xyz"
         assert abs(state["commission_and_fees"] - 2.50) < 1e-6
@@ -692,7 +695,7 @@ class TestReqCompletedOrdersOrderState:
         assert len(again) == 1, f"the second request answered with {len(again)} orders"
         assert again[0][1].symbol == "SPY", "and with the contract, not a default one"
         assert again[0][2].totalQuantity == 100.0, "and the order it was placed for"
-        assert again[0][3]["completed_time"] == "20260430-15:30:00"
+        assert again[0][3]["completed_time"] == "20260430 15:30:00 UTC"
 
 
 class TestOrderAllocation:

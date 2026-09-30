@@ -460,7 +460,15 @@ impl EClient {
             }
             // A preview and nothing else, answered on the order itself.
             Record::WhatIf(wi) => {
-                let state = OrderState::from_api(&crate::types::model::OrderState::from(&wi));
+                // A preview states no completed time; the rendering of none
+                // is none, on whatever clock the session names.
+                let settings = shared.settings();
+                let state = OrderState::from_api(
+                    &crate::types::model::OrderState::from(&wi),
+                    &settings.timezone,
+                    settings.datetime_format,
+                    None,
+                );
                 // The preview is complete before the callback can place the
                 // order under this number or interrupt the read.
                 let tracked = self.core.open_orders.lock().unwrap().remove(&wi.order_id);
@@ -1110,7 +1118,14 @@ impl EClient {
                 status: status.to_string(),
                 ..stated_state.map(|stated| stated.order_state.clone()).unwrap_or_default()
             };
-            let state_py = Py::new(py, OrderState::from_api(&stated))?.into_any();
+            let settings = shared.settings();
+            let instrument_zone = shared.reference.instrument_zone(tracked.contract.con_id);
+            let state_py = Py::new(py, OrderState::from_api(
+                &stated,
+                &settings.timezone,
+                settings.datetime_format,
+                instrument_zone.as_deref(),
+            ))?.into_any();
             call_wrapper!(self, py, shared, "open_order",
                 (self.core.api_order_id(update.order_id), &contract_py, &order_py, &state_py));
         }
@@ -1284,6 +1299,7 @@ impl EClient {
                 // Copied before anything is called back: a callback may ask
                 // for these again, and the lock is not re-entrant.
                 let completed = self.completed.lock().unwrap().clone();
+                let settings = shared.settings();
                 for (_, contract, order, state, _) in &completed {
                     // Kept whole in the archive and filtered on the way out.
                     if api_only && !shared.orders.was_entered_through_an_api(
@@ -1293,7 +1309,13 @@ impl EClient {
                     }
                     let c_py = Py::new(py, Contract::from_api(py, contract)?)?.into_any();
                     let o_py = Py::new(py, Order::from_api(py, order)?)?.into_any();
-                    let state_py = Py::new(py, OrderState::from_api(state))?.into_any();
+                    let instrument_zone = shared.reference.instrument_zone(contract.con_id);
+                    let state_py = Py::new(py, OrderState::from_api(
+                        state,
+                        &settings.timezone,
+                        settings.datetime_format,
+                        instrument_zone.as_deref(),
+                    ))?.into_any();
                     owed!(out, py, "completed_order", (&c_py, &o_py, &state_py));
                 }
                 owed!(out, py, "completed_orders_end", ());

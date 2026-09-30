@@ -726,9 +726,18 @@ impl EClient {
         self.core.untrack_order(order_id as u64);
         drop(shared.orders.drain_order_notices_for_dispatch(|id| id != order_id as u64));
         match answered? {
-            Ok(answer) => Ok(super::super::contract::OrderState::from_api(
-                &crate::types::model::OrderState::from(&answer),
-            )),
+            // A preview states no completed time; the rendering of none is
+            // none, on whatever clock the session names.
+            Ok(answer) => {
+                let settings = shared.settings();
+                let instrument_zone = shared.reference.instrument_zone(contract.con_id);
+                Ok(super::super::contract::OrderState::from_api(
+                    &crate::types::model::OrderState::from(&answer),
+                    &settings.timezone,
+                    settings.datetime_format,
+                    instrument_zone.as_deref(),
+                ))
+            }
             Err((code, message)) => Err(PyRuntimeError::new_err(format!("{message} ({code})"))),
         }
     }

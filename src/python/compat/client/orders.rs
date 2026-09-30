@@ -1517,14 +1517,18 @@ w = W()",
                 heard
             };
             let order = |perm_id: i64, time: &str| (perm_id, time.to_string());
+            // The completed time publishes as a gateway publishes it: the
+            // venue's UTC stamp rendered on the clock the session's
+            // datetime-format setting names — the operator's, UTC by
+            // default — never the raw dash shape.
             assert_eq!(heard(), [
-                order(1787685160171345, "20260924-14:02:28"),
-                order(1787685160171345, "20260924-14:04:18"),
-                order(1787685160171345, "20260924-14:04:54"),
-                order(1787685160171345, "20260924-14:10:15"),
-                order(1787685160171345, "20260924-15:01:48"),
-                order(1787685160171371, "20260925-09:55:06"),
-                order(1787685160171371, "20260925-15:01:02"),
+                order(1787685160171345, "20260924 14:02:28 UTC"),
+                order(1787685160171345, "20260924 14:04:18 UTC"),
+                order(1787685160171345, "20260924 14:04:54 UTC"),
+                order(1787685160171345, "20260924 14:10:15 UTC"),
+                order(1787685160171345, "20260924 15:01:48 UTC"),
+                order(1787685160171371, "20260925 09:55:06 UTC"),
+                order(1787685160171371, "20260925 15:01:02 UTC"),
             ], "each order the venue finished, once");
 
             // The venue takes one of them back: the other under its number
@@ -1542,7 +1546,7 @@ w = W()",
             ));
             assert_eq!(
                 heard().into_iter().filter(|(perm_id, _)| *perm_id == 1787685160171371).collect::<Vec<_>>(),
-                [order(1787685160171371, "20260925-09:55:06")],
+                [order(1787685160171371, "20260925 09:55:06 UTC")],
                 "the order taken back leaves, and the other under its number stays",
             );
         });

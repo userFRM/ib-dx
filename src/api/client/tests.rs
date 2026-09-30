@@ -9266,14 +9266,17 @@ fn every_order_the_venue_has_finished_comes_back_though_numbers_repeat() {
     let order = |perm_id: i64, symbol: &str, time: &str, status: &str| {
         (perm_id, symbol.to_string(), time.to_string(), status.to_string())
     };
+    // The completed time publishes as a gateway publishes it: the venue's
+    // UTC stamp rendered on the clock the session's datetime-format setting
+    // names — the operator's, UTC by default — never the raw dash shape.
     assert_eq!(heard.completed, [
-        order(1787685160171345, "SPY", "20260924-14:02:28", "Cancelled"),
-        order(1787685160171345, "SPY", "20260924-14:04:18", "Cancelled"),
-        order(1787685160171345, "SPY", "20260924-14:04:54", "Cancelled"),
-        order(1787685160171345, "SPY", "20260924-14:10:15", "Inactive"),
-        order(1787685160171345, "SPY", "20260924-15:01:48", "Filled"),
-        order(1787685160171371, "MES", "20260925-09:55:06", "Cancelled"),
-        order(1787685160171371, "SPY", "20260925-15:01:02", "Filled"),
+        order(1787685160171345, "SPY", "20260924 14:02:28 UTC", "Cancelled"),
+        order(1787685160171345, "SPY", "20260924 14:04:18 UTC", "Cancelled"),
+        order(1787685160171345, "SPY", "20260924 14:04:54 UTC", "Cancelled"),
+        order(1787685160171345, "SPY", "20260924 14:10:15 UTC", "Inactive"),
+        order(1787685160171345, "SPY", "20260924 15:01:48 UTC", "Filled"),
+        order(1787685160171371, "MES", "20260925 09:55:06 UTC", "Cancelled"),
+        order(1787685160171371, "SPY", "20260925 15:01:02 UTC", "Filled"),
     ], "each order the venue finished, once");
     assert_eq!(
         heard.working, [(1787685160171371, "Submitted".to_string())],

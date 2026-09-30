@@ -1497,7 +1497,16 @@ pub struct OrderState {
 
 impl OrderState {
     /// The same order state, as the Python side names it.
-    pub(crate) fn from_api(s: &crate::types::model::OrderState) -> Self {
+    ///
+    /// The completed time is published as a gateway publishes it, on the
+    /// clock the session's datetime-format setting names; the record stored
+    /// keeps the venue's own stamp.
+    pub(crate) fn from_api(
+        s: &crate::types::model::OrderState,
+        zone: &str,
+        format: crate::settings::DatetimeFormat,
+        instrument_zone: Option<&str>,
+    ) -> Self {
         Self {
             status: s.status.clone(),
             init_margin_before: s.init_margin_before.clone(),
@@ -1514,7 +1523,12 @@ impl OrderState {
             max_commission_and_fees: s.max_commission_and_fees,
             commission_and_fees_currency: s.commission_and_fees_currency.clone(),
             warning_text: s.warning_text.clone(),
-            completed_time: s.completed_time.clone(),
+            completed_time: crate::protocol::datetime::published_execution_time(
+                &s.completed_time,
+                zone,
+                format,
+                instrument_zone,
+            ),
             completed_status: s.completed_status.clone(),
             margin_currency: s.margin_currency.clone(),
             init_margin_before_outside_rth: s.init_margin_before_outside_rth,
@@ -1904,7 +1918,9 @@ mod unstated_figure_tests {
                 equity_with_loan_after: stated.into(),
                 ..Default::default()
             };
-            let written = super::OrderState::from_api(&held);
+            let written = super::OrderState::from_api(
+                &held, "UTC", crate::settings::DatetimeFormat::OperatorTimezone, None,
+            );
             for figure in [
                 written.init_margin_before, written.maint_margin_before, written.equity_with_loan_before,
                 written.init_margin_change, written.maint_margin_change, written.equity_with_loan_change,
