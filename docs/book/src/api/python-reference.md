@@ -200,12 +200,12 @@ def validate_order_parameters(order)
 The attached-order field a session below level 218 cannot carry, named as the reference client names it, or `None`. Its own check ported (ibapi/client.py:2853), read against the order's own fields: an id counts as stated when it is off the unset value it is born with and a type when it is not empty.
 
 ```python
-def validate_attached_orders_parameters(order)
+def validate_attached_orders_parameters(attached_orders)
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `order` | `Order` | Order parameters (action, quantity, type, price, TIF, etc.). |
+| `attached_orders` | `Order` | Order parameters (action, quantity, type, price, TIF, etc.). |
 
 ---
 

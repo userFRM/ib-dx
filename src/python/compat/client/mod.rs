@@ -982,20 +982,20 @@ impl EClient {
     /// it is not empty.
     fn validate_attached_orders_parameters(
         &self,
-        order: &super::class_orders::Order,
+        attached_orders: &super::class_orders::Order,
     ) -> Option<&'static str> {
         if self.server_version().unwrap_or(0) < 218 {
             let unset = i64::from(i32::MAX);
-            if order.sl_order_id != unset {
+            if attached_orders.sl_order_id != unset {
                 return Some("slOrderId");
             }
-            if !order.sl_order_type.is_empty() {
+            if !attached_orders.sl_order_type.is_empty() {
                 return Some("slOrderType");
             }
-            if order.pt_order_id != unset {
+            if attached_orders.pt_order_id != unset {
                 return Some("ptOrderId");
             }
-            if !order.pt_order_type.is_empty() {
+            if !attached_orders.pt_order_type.is_empty() {
                 return Some("ptOrderType");
             }
         }

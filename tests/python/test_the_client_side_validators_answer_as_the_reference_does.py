@@ -62,6 +62,10 @@ def test_an_attached_order_field_below_its_level_is_named():
     order = ibkr_dx.Order()
     order.slOrderId = 7
     assert c.validateAttachedOrdersParameters(order) == "slOrderId"
+    # The keyword the reference client's own signature names reaches the
+    # check, and so does its snake_case spelling.
+    assert c.validateAttachedOrdersParameters(attachedOrders=order) == "slOrderId"
+    assert c.validateAttachedOrdersParameters(attached_orders=order) == "slOrderId"
     order.slOrderId = 2147483647  # back to the unset value it is born with
     order.ptOrderType = "STP"
     assert c.validateAttachedOrdersParameters(order) == "ptOrderType"
