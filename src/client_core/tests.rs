@@ -1661,6 +1661,20 @@ mod contract_gate_tests {
                 .expect_err("and without one it names a whole chain");
             assert!(err.contains(st), "the refusal names the type: {err}");
         }
+        // The unset marker the reference client carries on an id it does not
+        // state reads as unstated, exactly as zero does: an option or a future
+        // under it with an incomplete identity is refused the same way, and one
+        // with an identity passes.
+        let unset = i64::from(i32::MAX);
+        for st in ["OPT", "FUT", "FOP", "WAR"] {
+            assert!(
+                ClientCore::validate_order_contract(unset, st, "20260619|230|C|100").is_ok(),
+                "{st} under the marker with an identity names one contract",
+            );
+            let err = ClientCore::validate_order_contract(unset, st, "")
+                .expect_err("and under the marker without one it names a whole chain");
+            assert!(err.contains(st), "the refusal names the type: {err}");
+        }
         // Everything else is named completely by its symbol and the contract id
         // and local symbol that travel with it. Requiring an expiry or a strike
         // of a kind that has neither refused it forever: an index and a crypto

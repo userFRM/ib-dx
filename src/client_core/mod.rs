@@ -7070,7 +7070,10 @@ impl ClientCore {
     /// Refuse an order whose contract does not name one contract:
     /// a symbol alone names a whole option chain.
     pub fn validate_order_contract(con_id: i64, sec_type: &str, identity: &str) -> Result<(), String> {
-        if con_id != 0 {
+        // The id is read as a gateway reads one: an id left at the unset marker
+        // the reference client carries states none, as zero states none, so the
+        // identity check below runs for both.
+        if !Self::identifier_unstated(con_id) {
             return Ok(());
         }
         // A currency pair is fully identified by what an order already carries:
