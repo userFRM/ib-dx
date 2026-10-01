@@ -4,6 +4,7 @@
 //! These are plain Rust structs (no PyO3) shared by both the Rust EClient and the Python bridge.
 
 use crate::types::*;
+pub use crate::types::decimal::{Decimal, UNSET_DECIMAL};
 
 /// What a fixed-point price is divided by to reach money.
 pub const PRICE_SCALE_F: f64 = PRICE_SCALE as f64;

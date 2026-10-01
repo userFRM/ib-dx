@@ -364,7 +364,7 @@ impl EClient {
                 wrapper.tick_by_tick_all_last(
                     req_id, kind, trade.timestamp as i64,
                     trade.price as f64 / PRICE_SCALE_F,
-                    trade.size as f64 / QTY_SCALE_F,
+                    crate::types::model::Decimal::from(trade.size as f64 / QTY_SCALE_F),
                     &attrib_last, &trade.exchange, &trade.conditions,
                 );
             }
@@ -376,8 +376,8 @@ impl EClient {
                 wrapper.tick_by_tick_bid_ask(
                     quote.req_id, quote.timestamp as i64,
                     quote.bid as f64 / PRICE_SCALE_F, quote.ask as f64 / PRICE_SCALE_F,
-                    quote.bid_size as f64 / QTY_SCALE_F,
-                    quote.ask_size as f64 / QTY_SCALE_F,
+                    crate::types::model::Decimal::from(quote.bid_size as f64 / QTY_SCALE_F),
+                    crate::types::model::Decimal::from(quote.ask_size as f64 / QTY_SCALE_F),
                     &attrib_ba,
                 );
             }
@@ -397,9 +397,9 @@ impl EClient {
             }
             Record::DepthUpdate(du) => {
                 if du.market_maker.is_empty() {
-                    wrapper.update_mkt_depth(du.req_id as i64, du.position, du.operation, du.side, du.price, du.size);
+                    wrapper.update_mkt_depth(du.req_id as i64, du.position, du.operation, du.side, du.price, du.size.into());
                 } else {
-                    wrapper.update_mkt_depth_l2(du.req_id as i64, du.position, &du.market_maker, du.operation, du.side, du.price, du.size, du.is_smart_depth);
+                    wrapper.update_mkt_depth_l2(du.req_id as i64, du.position, &du.market_maker, du.operation, du.side, du.price, du.size.into(), du.is_smart_depth);
                 }
             }
             // News goes to every subscriber of the contract, as its quotes do
@@ -499,7 +499,7 @@ impl EClient {
                 wrapper.real_time_bar(
                     req_id as i64, bar.timestamp as i64,
                     bar.open, bar.high, bar.low, bar.close,
-                    bar.volume, bar.wap, bar.count,
+                    bar.volume.into(), bar.wap.into(), bar.count,
                 );
             }
             // The bar still forming of a request kept up to date, stamped at
@@ -664,7 +664,7 @@ impl EClient {
             }
             Record::FundamentalData((req_id, data)) => wrapper.fundamental_data(req_id as i64, &data),
             Record::HistogramData((req_id, entries)) => {
-                let items: Vec<(f64, i64)> = entries.iter().map(|e| (e.price, e.count)).collect();
+                let items: Vec<(f64, crate::types::model::Decimal)> = entries.iter().map(|e| (e.price, e.count.into())).collect();
                 wrapper.histogram_data(req_id as i64, &items);
             }
             // Historical ticks route to the variant-specific callback, as in
@@ -778,7 +778,7 @@ impl EClient {
         if own {
             let why_held = self.core.why_held(&self.shared, fill.order_id, status_str);
             wrapper.order_status(
-                self.core.api_order_id(fill.order_id), status_str, qty_to_f64(fill.cum_qty), qty_to_f64(fill.remaining),
+                self.core.api_order_id(fill.order_id), status_str, qty_to_f64(fill.cum_qty).into(), qty_to_f64(fill.remaining).into(),
                 avg_price_f, perm_id, parent_id, price_f, i64::from(client), &why_held, 0.0,
             );
             // Unsolicited executions carry request id -1. A market-data
@@ -868,8 +868,8 @@ impl EClient {
         if own {
             let why_held = self.core.why_held(&self.shared, update.order_id, status);
             wrapper.order_status(
-                self.core.api_order_id(update.order_id), status, update.filled_qty,
-                update.remaining_qty, avg, update.perm_id, parent_id, last_fill,
+                self.core.api_order_id(update.order_id), status, update.filled_qty.into(),
+                update.remaining_qty.into(), avg, update.perm_id, parent_id, last_fill,
                 i64::from(client), &why_held, 0.0,
             );
         }
@@ -898,7 +898,7 @@ impl EClient {
                 for pi in &self.shared.portfolio.position_infos() {
                     let c = self.position_contract(pi);
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
-                    wrapper.position(&self.account_id, &c, pi.position, avg_cost);
+                    wrapper.position(&self.account_id, &c, pi.position.into(), avg_cost);
                 }
                 wrapper.position_end();
                 let watching = self.multi_position_watchers();
@@ -907,7 +907,7 @@ impl EClient {
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     for req_id in &watching {
                         if self.core.positions_account(&self.shared, *req_id) != self.account_id { continue; }
-                        wrapper.position_multi(*req_id, &self.account_id, &self.core.positions_model(*req_id), &c, pi.position, avg_cost);
+                        wrapper.position_multi(*req_id, &self.account_id, &self.core.positions_model(*req_id), &c, pi.position.into(), avg_cost);
                     }
                 }
             }
@@ -931,11 +931,11 @@ impl EClient {
                     let contract = self.position_contract(pi);
                     let cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     if account == self.account_id && self.positions_requested.load(Ordering::Acquire) {
-                        wrapper.position(&account, &contract, pi.position, cost);
+                        wrapper.position(&account, &contract, pi.position.into(), cost);
                     }
                     for old in self.multi_position_watchers() {
                         if old != req_id && self.core.positions_account(&self.shared, old) == account {
-                            wrapper.position_multi(old, &account, &self.core.positions_model(old), &contract, pi.position, cost);
+                            wrapper.position_multi(old, &account, &self.core.positions_model(old), &contract, pi.position.into(), cost);
                         }
                     }
                 }
@@ -945,7 +945,7 @@ impl EClient {
                 for pi in portfolio.position_infos().into_iter().filter(|pi| pi.position != 0.0) {
                     let contract = self.position_contract(&pi);
                     wrapper.position_multi(
-                        req_id, &account, &model_code, &contract, pi.position,
+                        req_id, &account, &model_code, &contract, pi.position.into(),
                         pi.avg_cost as f64 / PRICE_SCALE_F,
                     );
                 }
@@ -997,7 +997,7 @@ impl EClient {
                     wrapper.open_order(api_id, &tracked.contract, &tracked.order, &state);
                     let why_held = self.core.why_held(&self.shared, order_id, &tracked.status);
                     wrapper.order_status(
-                        api_id, &tracked.status, tracked.filled, tracked.remaining,
+                        api_id, &tracked.status, tracked.filled.into(), tracked.remaining.into(),
                         tracked.avg_fill_price, tracked.order.perm_id, tracked.order.parent_id,
                         tracked.last_fill_price, i64::from(tracked.order.client_id), &why_held, 0.0,
                     );
@@ -1010,8 +1010,8 @@ impl EClient {
                 let asking = self.shared.orders.api_client_id();
                 for (_, tracked) in self.core.orders_in_processing() {
                     wrapper.order_status(
-                        tracked.order.order_id, "ApiPending", 0.0,
-                        (tracked.order.total_quantity as i64) as f64,
+                        tracked.order.order_id, "ApiPending", crate::types::model::Decimal::from(0.0),
+                        crate::types::model::Decimal::from((tracked.order.total_quantity as i64) as f64),
                         0.0, 0, tracked.order.parent_id, 0.0,
                         i64::from(asking), "", 0.0,
                     );
@@ -1155,7 +1155,7 @@ impl EClient {
                     ..Default::default()
                 });
             wrapper.update_portfolio(
-                &contract, entry.position, entry.market_price, entry.market_value,
+                &contract, entry.position.into(), entry.market_price, entry.market_value,
                 entry.avg_cost, entry.unrealized_pnl, entry.realized_pnl, &account,
             );
         }
@@ -1184,13 +1184,13 @@ impl EClient {
                 let contract = self.position_contract(pi);
                 let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                 if on_position {
-                    wrapper.position(&self.account_id, &contract, pi.position, avg_cost);
+                    wrapper.position(&self.account_id, &contract, pi.position.into(), avg_cost);
                 }
                 // The account this session opened under, whatever the request
                 // named, as the answer to the request itself states.
                 for req_id in &per_request {
                     if self.core.positions_account(&self.shared, *req_id) != self.account_id { continue; }
-                    wrapper.position_multi(*req_id, &self.account_id, &self.core.positions_model(*req_id), &contract, pi.position, avg_cost);
+                    wrapper.position_multi(*req_id, &self.account_id, &self.core.positions_model(*req_id), &contract, pi.position.into(), avg_cost);
                 }
             }
         }
@@ -1199,7 +1199,7 @@ impl EClient {
             let contract = self.position_contract(&pi);
             for req_id in self.multi_position_watchers() {
                 if self.core.positions_account(&self.shared, req_id) == account {
-                    wrapper.position_multi(req_id, &account, &self.core.positions_model(req_id), &contract, pi.position, pi.avg_cost as f64 / PRICE_SCALE_F);
+                    wrapper.position_multi(req_id, &account, &self.core.positions_model(req_id), &contract, pi.position.into(), pi.avg_cost as f64 / PRICE_SCALE_F);
                 }
             }
         }
@@ -1223,7 +1223,7 @@ impl EClient {
             wrapper.pnl(update.req_id, update.daily_pnl, update.unrealized_pnl, update.realized_pnl);
         }
         for update in pnl_single {
-            wrapper.pnl_single(update.req_id, update.pos, update.daily_pnl, update.unrealized_pnl, update.realized_pnl, update.value);
+            wrapper.pnl_single(update.req_id, update.pos.into(), update.daily_pnl, update.unrealized_pnl, update.realized_pnl, update.value);
         }
 
         // The account's own figures, where it is subscribed.
@@ -1314,7 +1314,7 @@ impl EClient {
                         );
                         wrapper.tick_price(id, tick.tick_type, tick.value, &attrib);
                     } else {
-                        wrapper.tick_size(id, tick.tick_type, tick.value);
+                        wrapper.tick_size(id, tick.tick_type, tick.value.into());
                     }
                     // The reference client's decoder hands a size over beside
                     // every price it delivers, streaming or snapshot: a
@@ -1322,7 +1322,7 @@ impl EClient {
                     // message, so a program hears the pair however the size
                     // moved.
                     if let Some((size_tick, size)) = result.size_beside(tick.tick_type) {
-                        wrapper.tick_size(id, size_tick, size);
+                        wrapper.tick_size(id, size_tick, size.into());
                         paired.push((id, size_tick));
                     }
                 }
@@ -1363,7 +1363,7 @@ impl EClient {
                     );
                     wrapper.tick_price(tick.req_id, tick.tick_type, tick.value, &attrib);
                 } else {
-                    wrapper.tick_size(tick.req_id, tick.tick_type, tick.value);
+                    wrapper.tick_size(tick.req_id, tick.tick_type, tick.value.into());
                 }
             }
             for st in &result.snapshot_strings {
@@ -1638,8 +1638,8 @@ mod delivered_size_tests {
             fn tick_price(&mut self, _: i64, tick_type: i32, value: f64, _: &crate::types::model::TickAttrib) {
                 self.said.push(('p', tick_type, value));
             }
-            fn tick_size(&mut self, _: i64, tick_type: i32, value: f64) {
-                self.said.push(('s', tick_type, value));
+            fn tick_size(&mut self, _: i64, tick_type: i32, value: crate::types::model::Decimal) {
+                self.said.push(('s', tick_type, value.into()));
             }
             fn tick_snapshot_end(&mut self, _: i64) {
                 self.said.push(('e', -1, 0.0));
@@ -1720,8 +1720,8 @@ mod delivered_size_tests {
             fn tick_price(&mut self, _: i64, tick_type: i32, value: f64, _: &crate::types::model::TickAttrib) {
                 self.said.push(('p', tick_type, value));
             }
-            fn tick_size(&mut self, _: i64, tick_type: i32, value: f64) {
-                self.said.push(('s', tick_type, value));
+            fn tick_size(&mut self, _: i64, tick_type: i32, value: crate::types::model::Decimal) {
+                self.said.push(('s', tick_type, value.into()));
             }
         }
         let price = |p: f64| (p * PRICE_SCALE as f64) as i64;
@@ -1935,17 +1935,17 @@ mod delivered_size_tests {
 
     impl Wrapper for Sizes {
         fn tick_by_tick_all_last(
-            &mut self, _req_id: i64, _kind: i32, _time: i64, _price: f64, size: f64,
+            &mut self, _req_id: i64, _kind: i32, _time: i64, _price: f64, size: crate::types::model::Decimal,
             _attrib: &TickAttribLast, _exchange: &str, _conditions: &str,
         ) {
-            self.0.push(size);
+            self.0.push(size.into());
         }
         fn tick_by_tick_bid_ask(
             &mut self, _req_id: i64, _time: i64, _bid: f64, _ask: f64,
-            bid_size: f64, ask_size: f64, _attrib: &TickAttribBidAsk,
+            bid_size: crate::types::model::Decimal, ask_size: crate::types::model::Decimal, _attrib: &TickAttribBidAsk,
         ) {
-            self.0.push(bid_size);
-            self.0.push(ask_size);
+            self.0.push(bid_size.into());
+            self.0.push(ask_size.into());
         }
     }
 
@@ -2037,7 +2037,7 @@ mod delivered_size_tests {
 
     impl Wrapper for Prints {
         fn order_status(
-            &mut self, _order_id: i64, status: &str, _filled: f64, _remaining: f64,
+            &mut self, _order_id: i64, status: &str, _filled: crate::types::model::Decimal, _remaining: crate::types::model::Decimal,
             avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
             last_fill_price: f64, _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
         ) {
@@ -2138,7 +2138,7 @@ mod delivered_size_tests {
         struct Holds(Vec<(String, String)>);
         impl Wrapper for Holds {
             fn order_status(
-                &mut self, _order_id: i64, status: &str, _filled: f64, _remaining: f64,
+                &mut self, _order_id: i64, status: &str, _filled: crate::types::model::Decimal, _remaining: crate::types::model::Decimal,
                 _avg_fill_price: f64, _perm_id: i64, _parent_id: i64,
                 _last_fill_price: f64, _client_id: i64, why_held: &str, _mkt_cap_price: f64,
             ) {
@@ -2233,7 +2233,7 @@ mod delivered_size_tests {
             assert_eq!(order.order_id, order_id, "the order it holds, not a blank one");
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, _filled: f64, _remaining: f64,
+            &mut self, order_id: i64, status: &str, _filled: crate::types::model::Decimal, _remaining: crate::types::model::Decimal,
             _avg_fill_price: f64, _perm_id: i64, parent_id: i64,
             _last_fill_price: f64, _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
         ) {
@@ -2361,7 +2361,7 @@ mod ownership_tests {
             self.0.push(format!("open_order {order_id}"));
         }
         fn order_status(
-            &mut self, order_id: i64, _status: &str, _filled: f64, _remaining: f64,
+            &mut self, order_id: i64, _status: &str, _filled: crate::types::model::Decimal, _remaining: crate::types::model::Decimal,
             _avg_fill_price: f64, _perm_id: i64, _parent_id: i64, _last_fill_price: f64,
             _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
         ) {
@@ -2504,7 +2504,7 @@ mod ownership_tests {
                 self.0.push(format!("open_order {order_id}"));
             }
             fn order_status(
-                &mut self, order_id: i64, status: &str, filled: f64, remaining: f64,
+                &mut self, order_id: i64, status: &str, filled: crate::types::model::Decimal, remaining: crate::types::model::Decimal,
                 _avg_fill_price: f64, _perm_id: i64, _parent_id: i64, _last_fill_price: f64,
                 client_id: i64, _why_held: &str, _mkt_cap_price: f64,
             ) {

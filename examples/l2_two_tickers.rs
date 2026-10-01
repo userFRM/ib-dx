@@ -100,19 +100,19 @@ impl Wrapper for DepthWrapper {
 
     fn update_mkt_depth(
         &mut self, req_id: i64, position: i32, operation: i32,
-        side: i32, price: f64, size: f64,
+        side: i32, price: f64, size: ibkr_dx::api::Decimal,
     ) {
         if let Some(book) = self.books.get_mut(&req_id) {
-            book.apply(position, "", operation, side, price, size);
+            book.apply(position, "", operation, side, price, size.into());
         }
     }
 
     fn update_mkt_depth_l2(
         &mut self, req_id: i64, position: i32, market_maker: &str,
-        operation: i32, side: i32, price: f64, size: f64, _is_smart_depth: bool,
+        operation: i32, side: i32, price: f64, size: ibkr_dx::api::Decimal, _is_smart_depth: bool,
     ) {
         if let Some(book) = self.books.get_mut(&req_id) {
-            book.apply(position, market_maker, operation, side, price, size);
+            book.apply(position, market_maker, operation, side, price, size.into());
         }
     }
 }

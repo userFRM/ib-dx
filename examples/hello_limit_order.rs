@@ -20,7 +20,7 @@ struct OrderWrapper {
 
 impl Wrapper for OrderWrapper {
     fn order_status(
-        &mut self, order_id: i64, status: &str, _filled: f64, _remaining: f64,
+        &mut self, order_id: i64, status: &str, _filled: ibkr_dx::api::Decimal, _remaining: ibkr_dx::api::Decimal,
         _avg_fill: f64, _perm_id: i64, _parent_id: i64, _last_fill: f64,
         _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
     ) {

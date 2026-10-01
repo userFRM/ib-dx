@@ -2681,7 +2681,7 @@ One size of a quote, and which size it is: 0 bid, 3 ask, 5 last, 8 the day's vol
 |-----------|------|-------------|
 | `req_id` | `i64` | Request identifier. Used to match responses to requests. |
 | `tick_type` | `i32` | Tick type ID or tick-by-tick type string. |
-| `size` | `f64` | Tick size. |
+| `size` | `Decimal` | Tick size. |
 
 ---
 
@@ -2738,8 +2738,8 @@ Where an order stands now: stated as the venue reports on the order, again on ea
 |-----------|------|-------------|
 | `order_id` | `i64` | Order identifier. Must be unique per session. |
 | `status` | `&str` | Order status string (`"Submitted"`, `"Filled"`, `"Cancelled"`, etc.). |
-| `filled` | `f64` | Cumulative filled quantity. |
-| `remaining` | `f64` | Remaining quantity. |
+| `filled` | `Decimal` | Cumulative filled quantity. |
+| `remaining` | `Decimal` | Remaining quantity. |
 | `avg_fill_price` | `f64` | Average fill price. |
 | `perm_id` | `i64` | The order's permanent id: the number it goes to the venue under. |
 | `parent_id` | `i64` | Parent order ID (0 if no parent). |
@@ -2821,7 +2821,7 @@ One position, as the venue values it now.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `contract` | `&Contract` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `position` | `f64` | Book position (row index) or position size. |
+| `position` | `Decimal` | Book position (row index) or position size. |
 | `market_price` | `f64` | Current market price. |
 | `market_value` | `f64` | Current market value of position. |
 | `average_cost` | `f64` | Average cost basis. |
@@ -2883,7 +2883,7 @@ One position held, on any account this login may act for.
 |-----------|------|-------------|
 | `account` | `&str` | Account ID. |
 | `contract` | `&Contract` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `pos` | `f64` | Position size (decimal shares). |
+| `pos` | `Decimal` | Position size (decimal shares). |
 | `avg_cost` | `f64` | Average cost per share. |
 
 ---
@@ -2914,7 +2914,7 @@ A holding, answering `req_positions_multi`. Separate from `position`: a caller a
 | `account` | `&str` | Account ID. |
 | `model_code` | `&str` | Model portfolio code (empty for default). |
 | `contract` | `&Contract` | Contract specification (symbol, secType, exchange, currency, etc.). |
-| `pos` | `f64` | Position size (decimal shares). |
+| `pos` | `Decimal` | Position size (decimal shares). |
 | `avg_cost` | `f64` | Average cost per share. |
 
 ---
@@ -2974,7 +2974,7 @@ The same for one position, with the size held.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `req_id` | `i64` | Request identifier. Used to match responses to requests. |
-| `pos` | `f64` | Position size (decimal shares). |
+| `pos` | `Decimal` | Position size (decimal shares). |
 | `daily_pnl` | `f64` | Daily profit/loss. |
 | `unrealized_pnl` | `f64` | Unrealized profit/loss. |
 | `realized_pnl` | `f64` | Realized profit/loss. |
@@ -3069,7 +3069,7 @@ One trade, as it happens. `tick_attrib_last` says whether it was past a limit an
 | `tick_type` | `i32` | Tick type ID or tick-by-tick type string. |
 | `time` | `i64` | Tick timestamp (Unix seconds). |
 | `price` | `f64` | Tick price. |
-| `size` | `f64` | Tick size. |
+| `size` | `Decimal` | Tick size. |
 | `attrib` | `&TickAttribLast` | Tick attributes. |
 | `exchange` | `&str` | Exchange name. |
 | `special_conditions` | `&str` | Special trade conditions. |
@@ -3086,8 +3086,8 @@ One change to the top of the book, as it happens.
 | `time` | `i64` | Tick timestamp (Unix seconds). |
 | `bid_price` | `f64` | Bid price. |
 | `ask_price` | `f64` | Ask price. |
-| `bid_size` | `f64` | Bid size. |
-| `ask_size` | `f64` | Ask size. |
+| `bid_size` | `Decimal` | Bid size. |
+| `ask_size` | `Decimal` | Ask size. |
 | `attrib` | `&TickAttribBidAsk` | Tick attributes. |
 
 ---
@@ -3217,8 +3217,8 @@ One five-second bar of a live stream.
 | `high` | `f64` | High price. |
 | `low` | `f64` | Low price. |
 | `close` | `f64` | Close price. |
-| `volume` | `f64` | Volume. |
-| `wap` | `f64` | Volume-weighted average price. |
+| `volume` | `Decimal` | Volume. |
+| `wap` | `Decimal` | Volume-weighted average price. |
 | `count` | `i32` | Trade count. |
 
 ---
@@ -3508,7 +3508,7 @@ How much traded at each price over a window.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `req_id` | `i64` | Request identifier. Used to match responses to requests. |
-| `items` | `&[(f64, i64` | Histogram entries `[(price, count)]`. |
+| `items` | `&[(f64, Decimal` | Histogram entries `[(price, count)]`. |
 
 ---
 
@@ -3577,7 +3577,7 @@ One level of a book that names no venue. `operation` is 0 to insert, 1 to update
 | `operation` | `i32` | Book operation: 0=insert, 1=update, 2=delete. |
 | `side` | `i32` | Book side: 0=ask, 1=bid. Or order side `"BOT"`/`"SLD"`. |
 | `price` | `f64` | Tick price. |
-| `size` | `f64` | Tick size. |
+| `size` | `Decimal` | Tick size. |
 
 ---
 
@@ -3593,7 +3593,7 @@ One level of a book that names the venue it stands on. Every level from this cli
 | `operation` | `i32` | Book operation: 0=insert, 1=update, 2=delete. |
 | `side` | `i32` | Book side: 0=ask, 1=bid. Or order side `"BOT"`/`"SLD"`. |
 | `price` | `f64` | Tick price. |
-| `size` | `f64` | Tick size. |
+| `size` | `Decimal` | Tick size. |
 | `is_smart_depth` | `bool` | If `true`, aggregate depth from multiple exchanges via SMART. |
 
 ---

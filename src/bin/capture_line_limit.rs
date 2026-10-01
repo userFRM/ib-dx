@@ -40,7 +40,7 @@ impl Wrapper for Heard {
     ) {
         self.ticking.insert(req_id);
     }
-    fn tick_size(&mut self, req_id: i64, _field: i32, _size: f64) {
+    fn tick_size(&mut self, req_id: i64, _field: i32, _size: ibkr_dx::api::Decimal) {
         self.ticking.insert(req_id);
     }
 }

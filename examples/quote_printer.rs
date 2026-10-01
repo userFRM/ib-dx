@@ -19,7 +19,7 @@ impl Wrapper for QuotePrinter {
         println!("req_id={req_id} {label}={price:.2}");
     }
 
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: f64) {
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ibkr_dx::api::Decimal) {
         let label = match tick_type {
             0 => "bid_size",
             3 => "ask_size",

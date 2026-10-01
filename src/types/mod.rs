@@ -16,6 +16,9 @@
 /// one this engine's.
 pub mod model;
 
+/// The decimal quantity sizes, positions and volumes are stated in.
+pub mod decimal;
+
 /// An order as this client holds it.
 pub mod orders;
 pub use orders::*;

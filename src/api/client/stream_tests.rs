@@ -43,8 +43,8 @@ impl Wrapper for Heard {
         &mut self,
         order_id: i64,
         status: &str,
-        filled: f64,
-        remaining: f64,
+        filled: crate::types::model::Decimal,
+        remaining: crate::types::model::Decimal,
         avg_fill_price: f64,
         _: i64,
         _: i64,
@@ -69,7 +69,7 @@ impl Wrapper for Heard {
     fn commission_and_fees_report(&mut self, report: &CommissionAndFeesReport) {
         self.0.push(format!("charge:{}", report.exec_id));
     }
-    fn position(&mut self, _: &str, contract: &Contract, pos: f64, _: f64) {
+    fn position(&mut self, _: &str, contract: &Contract, pos: crate::types::model::Decimal, _: f64) {
         self.0.push(format!("position:{}:{pos}", contract.con_id));
     }
     fn position_end(&mut self) {
@@ -778,10 +778,10 @@ fn each_positions_answer_keeps_the_account_its_request_named() {
             account: &str,
             _: &str,
             _: &Contract,
-            position: f64,
+            position: crate::types::model::Decimal,
             _: f64,
         ) {
-            self.0.push((req_id, account.into(), position));
+            self.0.push((req_id, account.into(), position.into()));
         }
     }
     let (client, _rx, shared) = test_client();

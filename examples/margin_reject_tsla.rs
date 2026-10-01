@@ -59,7 +59,7 @@ impl Wrapper for RejectWrapper {
         self.state.lock().unwrap().preview = Some(st.clone());
     }
     fn order_status(
-        &mut self, order_id: i64, status: &str, _filled: f64, _remaining: f64,
+        &mut self, order_id: i64, status: &str, _filled: ibkr_dx::api::Decimal, _remaining: ibkr_dx::api::Decimal,
         _avg: f64, _perm: i64, _parent: i64, _last: f64, _cid: i64, _why: &str, _cap: f64,
     ) {
         println!("[status] oid={order_id} status={status}");

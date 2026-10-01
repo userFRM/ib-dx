@@ -4272,7 +4272,7 @@ fn a_days_bar_kept_up_to_date_rolls_over_at_midnight_utc() {
         }
         #[allow(clippy::too_many_arguments)]
         fn real_time_bar(
-            &mut self, _: i64, time: i64, open: f64, _: f64, _: f64, _: f64, volume: f64, _: f64, _: i32,
+            &mut self, _: i64, time: i64, open: f64, _: f64, _: f64, _: f64, volume: crate::types::model::Decimal, _: crate::types::model::Decimal, _: i32,
         ) {
             self.0.push(format!("bar {time} {open} {volume}"));
         }

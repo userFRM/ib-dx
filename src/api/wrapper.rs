@@ -72,7 +72,7 @@ pub trait Wrapper {
     fn tick_price(&mut self, req_id: i64, tick_type: i32, price: f64, attrib: &TickAttrib) {}
     /// One size of a quote, and which size it is: 0 bid, 3 ask, 5 last, 8
     /// the day's volume.
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: f64) {}
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: Decimal) {}
     /// A quote's value that is not a number — a timestamp, an exchange
     /// map, a set of ids.
     fn tick_string(&mut self, req_id: i64, tick_type: i32, value: &str) {}
@@ -95,7 +95,7 @@ pub trait Wrapper {
     /// venue's next report on it states it so. `filled` and `remaining` are
     /// shares, `avg_fill_price` the average of what has filled so far.
     fn order_status(
-        &mut self, order_id: i64, status: &str, filled: f64, remaining: f64,
+        &mut self, order_id: i64, status: &str, filled: Decimal, remaining: Decimal,
         avg_fill_price: f64, perm_id: i64, parent_id: i64,
         last_fill_price: f64, client_id: i64, why_held: &str, mkt_cap_price: f64,
     ) {}
@@ -123,7 +123,7 @@ pub trait Wrapper {
     fn update_account_value(&mut self, key: &str, value: &str, currency: &str, account_name: &str) {}
     /// One position, as the venue values it now.
     fn update_portfolio(
-        &mut self, contract: &Contract, position: f64, market_price: f64,
+        &mut self, contract: &Contract, position: Decimal, market_price: f64,
         market_value: f64, average_cost: f64, unrealized_pnl: f64,
         realized_pnl: f64, account_name: &str,
     ) {}
@@ -138,7 +138,7 @@ pub trait Wrapper {
     /// Every figure answering this request has been stated.
     fn account_summary_end(&mut self, req_id: i64) {}
     /// One position held, on any account this login may act for.
-    fn position(&mut self, account: &str, contract: &Contract, pos: f64, avg_cost: f64) {}
+    fn position(&mut self, account: &str, contract: &Contract, pos: Decimal, avg_cost: f64) {}
     /// Every position has been stated.
     fn position_end(&mut self) {}
     /// A question's cancel, confirmed where it stands: `cancel_positions`
@@ -153,7 +153,7 @@ pub trait Wrapper {
     /// a caller asks per account or model and is answered per request.
     fn position_multi(
         &mut self, req_id: i64, account: &str, model_code: &str,
-        contract: &Contract, pos: f64, avg_cost: f64,
+        contract: &Contract, pos: Decimal, avg_cost: f64,
     ) {
     }
     /// Every position answering this request has been stated.
@@ -170,7 +170,7 @@ pub trait Wrapper {
     /// has been realised.
     fn pnl(&mut self, req_id: i64, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64) {}
     /// The same for one position, with the size held.
-    fn pnl_single(&mut self, req_id: i64, pos: f64, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {}
+    fn pnl_single(&mut self, req_id: i64, pos: Decimal, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {}
 
     // ── Historical Data ──
 
@@ -202,12 +202,12 @@ pub trait Wrapper {
     /// past a limit and whether it goes unreported to the tape.
     fn tick_by_tick_all_last(
         &mut self, req_id: i64, tick_type: i32, time: i64, price: f64,
-        size: f64, attrib: &TickAttribLast, exchange: &str, special_conditions: &str,
+        size: Decimal, attrib: &TickAttribLast, exchange: &str, special_conditions: &str,
     ) {}
     /// One change to the top of the book, as it happens.
     fn tick_by_tick_bid_ask(
         &mut self, req_id: i64, time: i64, bid_price: f64, ask_price: f64,
-        bid_size: f64, ask_size: f64, attrib: &TickAttribBidAsk,
+        bid_size: Decimal, ask_size: Decimal, attrib: &TickAttribBidAsk,
     ) {}
     /// One change to the midpoint, as it happens.
     fn tick_by_tick_mid_point(&mut self, req_id: i64, time: i64, mid_point: f64) {}
@@ -252,7 +252,7 @@ pub trait Wrapper {
     /// One five-second bar of a live stream.
     fn real_time_bar(
         &mut self, req_id: i64, date: i64, open: f64, high: f64,
-        low: f64, close: f64, volume: f64, wap: f64, count: i32,
+        low: f64, close: f64, volume: Decimal, wap: Decimal, count: i32,
     ) {}
 
     // ── Historical Ticks ──
@@ -392,7 +392,7 @@ pub trait Wrapper {
     // ── Histogram ──
 
     /// How much traded at each price over a window.
-    fn histogram_data(&mut self, req_id: i64, items: &[(f64, i64)]) {}
+    fn histogram_data(&mut self, req_id: i64, items: &[(f64, Decimal)]) {}
 
     // ── Market Rules ──
 
@@ -428,13 +428,13 @@ pub trait Wrapper {
     /// insert, 1 to update, 2 to delete; `side` is 0 ask, 1 bid.
     fn update_mkt_depth(
         &mut self, req_id: i64, position: i32, operation: i32,
-        side: i32, price: f64, size: f64,
+        side: i32, price: f64, size: Decimal,
     ) {}
     /// One level of a book that names the venue it stands on. Every
     /// level from this client names one.
     fn update_mkt_depth_l2(
         &mut self, req_id: i64, position: i32, market_maker: &str,
-        operation: i32, side: i32, price: f64, size: f64, is_smart_depth: bool,
+        operation: i32, side: i32, price: f64, size: Decimal, is_smart_depth: bool,
     ) {}
     /// Every exchange the venue names, in the two sections it names
     /// them in: shares and derivatives.
@@ -534,7 +534,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.tick_price(req_id, tick_type, price, attrib);
         self.kept.tick_price(req_id, tick_type, price, attrib);
     }
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: f64) {
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: Decimal) {
         self.asked.tick_size(req_id, tick_type, size);
         self.kept.tick_size(req_id, tick_type, size);
     }
@@ -554,7 +554,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.market_data_type(req_id, market_data_type);
         self.kept.market_data_type(req_id, market_data_type);
     }
-    fn order_status(&mut self, order_id: i64, status: &str, filled: f64, remaining: f64, avg_fill_price: f64, perm_id: i64, parent_id: i64, last_fill_price: f64, client_id: i64, why_held: &str, mkt_cap_price: f64) {
+    fn order_status(&mut self, order_id: i64, status: &str, filled: Decimal, remaining: Decimal, avg_fill_price: f64, perm_id: i64, parent_id: i64, last_fill_price: f64, client_id: i64, why_held: &str, mkt_cap_price: f64) {
         self.asked.order_status(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price, client_id, why_held, mkt_cap_price);
         self.kept.order_status(order_id, status, filled, remaining, avg_fill_price, perm_id, parent_id, last_fill_price, client_id, why_held, mkt_cap_price);
     }
@@ -582,7 +582,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.update_account_value(key, value, currency, account_name);
         self.kept.update_account_value(key, value, currency, account_name);
     }
-    fn update_portfolio(&mut self, contract: &Contract, position: f64, market_price: f64, market_value: f64, average_cost: f64, unrealized_pnl: f64, realized_pnl: f64, account_name: &str) {
+    fn update_portfolio(&mut self, contract: &Contract, position: Decimal, market_price: f64, market_value: f64, average_cost: f64, unrealized_pnl: f64, realized_pnl: f64, account_name: &str) {
         self.asked.update_portfolio(contract, position, market_price, market_value, average_cost, unrealized_pnl, realized_pnl, account_name);
         self.kept.update_portfolio(contract, position, market_price, market_value, average_cost, unrealized_pnl, realized_pnl, account_name);
     }
@@ -602,7 +602,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.account_summary_end(req_id);
         self.kept.account_summary_end(req_id);
     }
-    fn position(&mut self, account: &str, contract: &Contract, pos: f64, avg_cost: f64) {
+    fn position(&mut self, account: &str, contract: &Contract, pos: Decimal, avg_cost: f64) {
         self.asked.position(account, contract, pos, avg_cost);
         self.kept.position(account, contract, pos, avg_cost);
     }
@@ -614,7 +614,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.question_retired(q);
         self.kept.question_retired(q);
     }
-    fn position_multi(&mut self, req_id: i64, account: &str, model_code: &str, contract: &Contract, pos: f64, avg_cost: f64) {
+    fn position_multi(&mut self, req_id: i64, account: &str, model_code: &str, contract: &Contract, pos: Decimal, avg_cost: f64) {
         self.asked.position_multi(req_id, account, model_code, contract, pos, avg_cost);
         self.kept.position_multi(req_id, account, model_code, contract, pos, avg_cost);
     }
@@ -634,7 +634,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.pnl(req_id, daily_pnl, unrealized_pnl, realized_pnl);
         self.kept.pnl(req_id, daily_pnl, unrealized_pnl, realized_pnl);
     }
-    fn pnl_single(&mut self, req_id: i64, pos: f64, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {
+    fn pnl_single(&mut self, req_id: i64, pos: Decimal, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {
         self.asked.pnl_single(req_id, pos, daily_pnl, unrealized_pnl, realized_pnl, value);
         self.kept.pnl_single(req_id, pos, daily_pnl, unrealized_pnl, realized_pnl, value);
     }
@@ -666,11 +666,11 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.symbol_samples(req_id, descriptions);
         self.kept.symbol_samples(req_id, descriptions);
     }
-    fn tick_by_tick_all_last(&mut self, req_id: i64, tick_type: i32, time: i64, price: f64, size: f64, attrib: &TickAttribLast, exchange: &str, special_conditions: &str) {
+    fn tick_by_tick_all_last(&mut self, req_id: i64, tick_type: i32, time: i64, price: f64, size: Decimal, attrib: &TickAttribLast, exchange: &str, special_conditions: &str) {
         self.asked.tick_by_tick_all_last(req_id, tick_type, time, price, size, attrib, exchange, special_conditions);
         self.kept.tick_by_tick_all_last(req_id, tick_type, time, price, size, attrib, exchange, special_conditions);
     }
-    fn tick_by_tick_bid_ask(&mut self, req_id: i64, time: i64, bid_price: f64, ask_price: f64, bid_size: f64, ask_size: f64, attrib: &TickAttribBidAsk) {
+    fn tick_by_tick_bid_ask(&mut self, req_id: i64, time: i64, bid_price: f64, ask_price: f64, bid_size: Decimal, ask_size: Decimal, attrib: &TickAttribBidAsk) {
         self.asked.tick_by_tick_bid_ask(req_id, time, bid_price, ask_price, bid_size, ask_size, attrib);
         self.kept.tick_by_tick_bid_ask(req_id, time, bid_price, ask_price, bid_size, ask_size, attrib);
     }
@@ -710,7 +710,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.news_article(req_id, article_type, article_text);
         self.kept.news_article(req_id, article_type, article_text);
     }
-    fn real_time_bar(&mut self, req_id: i64, date: i64, open: f64, high: f64, low: f64, close: f64, volume: f64, wap: f64, count: i32) {
+    fn real_time_bar(&mut self, req_id: i64, date: i64, open: f64, high: f64, low: f64, close: f64, volume: Decimal, wap: Decimal, count: i32) {
         self.asked.real_time_bar(req_id, date, open, high, low, close, volume, wap, count);
         self.kept.real_time_bar(req_id, date, open, high, low, close, volume, wap, count);
     }
@@ -810,7 +810,7 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.win_error(text, last_error);
         self.kept.win_error(text, last_error);
     }
-    fn histogram_data(&mut self, req_id: i64, items: &[(f64, i64)]) {
+    fn histogram_data(&mut self, req_id: i64, items: &[(f64, Decimal)]) {
         self.asked.histogram_data(req_id, items);
         self.kept.histogram_data(req_id, items);
     }
@@ -834,11 +834,11 @@ impl<A: Wrapper + ?Sized, B: Wrapper + ?Sized> Wrapper for Tee<'_, A, B> {
         self.asked.fundamental_data(req_id, data);
         self.kept.fundamental_data(req_id, data);
     }
-    fn update_mkt_depth(&mut self, req_id: i64, position: i32, operation: i32, side: i32, price: f64, size: f64) {
+    fn update_mkt_depth(&mut self, req_id: i64, position: i32, operation: i32, side: i32, price: f64, size: Decimal) {
         self.asked.update_mkt_depth(req_id, position, operation, side, price, size);
         self.kept.update_mkt_depth(req_id, position, operation, side, price, size);
     }
-    fn update_mkt_depth_l2(&mut self, req_id: i64, position: i32, market_maker: &str, operation: i32, side: i32, price: f64, size: f64, is_smart_depth: bool) {
+    fn update_mkt_depth_l2(&mut self, req_id: i64, position: i32, market_maker: &str, operation: i32, side: i32, price: f64, size: Decimal, is_smart_depth: bool) {
         self.asked.update_mkt_depth_l2(req_id, position, market_maker, operation, side, price, size, is_smart_depth);
         self.kept.update_mkt_depth_l2(req_id, position, market_maker, operation, side, price, size, is_smart_depth);
     }
@@ -954,7 +954,7 @@ pub mod tests {
         }
         fn position_multi(
             &mut self, req_id: i64, account: &str, _model_code: &str,
-            contract: &Contract, pos: f64, _avg_cost: f64,
+            contract: &Contract, pos: Decimal, _avg_cost: f64,
         ) {
             self.events.push(format!("position_multi:{req_id}:{account}:{}:{pos}", contract.symbol));
         }
@@ -979,7 +979,7 @@ pub mod tests {
         fn tick_price(&mut self, req_id: i64, tick_type: i32, price: f64, _: &TickAttrib) {
             self.events.push(format!("tick_price:{req_id}:{tick_type}:{price}"));
         }
-        fn tick_size(&mut self, req_id: i64, tick_type: i32, size: f64) {
+        fn tick_size(&mut self, req_id: i64, tick_type: i32, size: Decimal) {
             self.events.push(format!("tick_size:{req_id}:{tick_type}:{size}"));
         }
         fn tick_req_params(&mut self, ticker_id: i64, min_tick: f64, bbo_exchange: &str, snapshot_permissions: i64) {
@@ -989,7 +989,7 @@ pub mod tests {
             self.events.push(format!("historical_data_update:{req_id}:{}", bar.date));
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, filled: f64, remaining: f64,
+            &mut self, order_id: i64, status: &str, filled: Decimal, remaining: Decimal,
             avg_fill_price: f64, _: i64, parent_id: i64, _: f64, _: i64, _: &str, _: f64,
         ) {
             self.events.push(format!("order_status:{order_id}:{status}:{filled}:{remaining}:{avg_fill_price}"));
@@ -1029,22 +1029,22 @@ pub mod tests {
         }
         fn tick_by_tick_all_last(
             &mut self, req_id: i64, tick_type: i32, time: i64, price: f64,
-            size: f64, _: &TickAttribLast, exchange: &str, _: &str,
+            size: Decimal, _: &TickAttribLast, exchange: &str, _: &str,
         ) {
             self.events.push(format!("tbt_last:{req_id}:{tick_type}:{time}:{price}:{size}:{exchange}"));
         }
         fn tick_by_tick_bid_ask(
             &mut self, req_id: i64, time: i64, bid_price: f64, ask_price: f64,
-            bid_size: f64, ask_size: f64, _: &TickAttribBidAsk,
+            bid_size: Decimal, ask_size: Decimal, _: &TickAttribBidAsk,
         ) {
             self.events.push(format!("tbt_bidask:{req_id}:{time}:{bid_price}:{ask_price}:{bid_size}:{ask_size}"));
         }
-        fn position(&mut self, account: &str, contract: &Contract, pos: f64, avg_cost: f64) {
+        fn position(&mut self, account: &str, contract: &Contract, pos: Decimal, avg_cost: f64) {
             self.events.push(format!("position:{account}:{}:{pos}:{avg_cost}", contract.con_id));
         }
         fn real_time_bar(
             &mut self, req_id: i64, date: i64, open: f64, high: f64,
-            low: f64, close: f64, _volume: f64, _wap: f64, _count: i32,
+            low: f64, close: f64, _volume: Decimal, _wap: Decimal, _count: i32,
         ) {
             self.events.push(format!("real_time_bar:{req_id}:{date}:{open}:{high}:{low}:{close}"));
         }
@@ -1059,7 +1059,7 @@ pub mod tests {
         ) {
             self.events.push(format!("tick_news:{provider_code}:{article_id}:{headline}"));
         }
-        fn histogram_data(&mut self, req_id: i64, items: &[(f64, i64)]) {
+        fn histogram_data(&mut self, req_id: i64, items: &[(f64, Decimal)]) {
             self.events.push(format!("histogram_data:{req_id}:{}", items.len()));
         }
         fn market_rule(&mut self, id: i64, increments: &[PriceIncrement]) {
@@ -1132,7 +1132,7 @@ pub mod tests {
         fn pnl(&mut self, req_id: i64, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64) {
             self.events.push(format!("pnl:{req_id}:{daily_pnl}:{unrealized_pnl}:{realized_pnl}"));
         }
-        fn pnl_single(&mut self, req_id: i64, pos: f64, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {
+        fn pnl_single(&mut self, req_id: i64, pos: Decimal, daily_pnl: f64, unrealized_pnl: f64, realized_pnl: f64, value: f64) {
             self.events.push(format!("pnl_single:{req_id}:{pos}:{daily_pnl}:{unrealized_pnl}:{realized_pnl}:{value}"));
         }
         fn account_summary(&mut self, req_id: i64, account: &str, tag: &str, value: &str, currency: &str) {
@@ -1182,7 +1182,7 @@ pub mod tests {
     #[test]
     fn recording_wrapper_records_order_status() {
         let mut w = RecordingWrapper::default();
-        w.order_status(42, "Filled", 100.0, 0.0, 150.0, 0, 0, 150.0, 0, "", 0.0);
+        w.order_status(42, "Filled", 100.0.into(), 0.0.into(), 150.0, 0, 0, 150.0, 0, "", 0.0);
         assert_eq!(w.events, vec!["order_status:42:Filled:100:0:150"]);
     }
 
@@ -1208,7 +1208,7 @@ pub mod tests {
     fn recording_wrapper_records_position() {
         let mut w = RecordingWrapper::default();
         let c = Contract { con_id: 265598, ..Default::default() };
-        w.position("DU1234567", &c, 100.0, 150.25);
+        w.position("DU1234567", &c, 100.0.into(), 150.25);
         assert_eq!(w.events, vec!["position:DU1234567:265598:100:150.25"]);
     }
 
@@ -1233,7 +1233,7 @@ pub mod tests {
         let mut w = NoOpWrapper;
         w.connect_ack();
         w.tick_price(0, 0, 0.0, &TickAttrib::default());
-        w.order_status(0, "", 0.0, 0.0, 0.0, 0, 0, 0.0, 0, "", 0.0);
+        w.order_status(0, "", 0.0.into(), 0.0.into(), 0.0, 0, 0, 0.0, 0, "", 0.0);
         // If this compiles, all defaults are valid.
     }
 }

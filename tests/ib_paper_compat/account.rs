@@ -406,8 +406,8 @@ pub(super) fn phase_enriched_order_cache(conns: Conns) -> Conns {
             self.completed.push((contract.clone(), order.clone(), state.clone()));
         }
         fn completed_orders_end(&mut self) {}
-        fn position(&mut self, account: &str, contract: &api::Contract, pos: f64, avg_cost: f64) {
-            self.positions.push((account.to_string(), contract.clone(), pos, avg_cost));
+        fn position(&mut self, account: &str, contract: &api::Contract, pos: ibkr_dx::api::Decimal, avg_cost: f64) {
+            self.positions.push((account.to_string(), contract.clone(), pos.into(), avg_cost));
         }
         fn position_end(&mut self) {}
         fn open_order(&mut self, _: i64, _: &api::Contract, _: &api::Order, _: &api::OrderState) {}
@@ -513,7 +513,7 @@ pub(super) fn phase_enriched_order_cache(conns: Conns) -> Conns {
             ..Default::default()
         });
         let avg_cost = pi.avg_cost as f64 / PRICE_SCALE as f64;
-        wrapper.position(&account_id, &c, pi.position, avg_cost);
+        wrapper.position(&account_id, &c, pi.position.into(), avg_cost);
     }
 
     let gt_account = account_id.clone();
@@ -726,8 +726,8 @@ pub(super) fn phase_enriched_positions(conns: Conns) -> Conns {
         positions: Vec<(String, api::Contract, f64, f64)>,
     }
     impl Wrapper for PosWrapper {
-        fn position(&mut self, account: &str, contract: &api::Contract, pos: f64, avg_cost: f64) {
-            self.positions.push((account.to_string(), contract.clone(), pos, avg_cost));
+        fn position(&mut self, account: &str, contract: &api::Contract, pos: ibkr_dx::api::Decimal, avg_cost: f64) {
+            self.positions.push((account.to_string(), contract.clone(), pos.into(), avg_cost));
         }
         fn position_end(&mut self) {}
     }
@@ -781,7 +781,7 @@ pub(super) fn phase_enriched_positions(conns: Conns) -> Conns {
             ..Default::default()
         });
         let avg_cost = pi.avg_cost as f64 / PRICE_SCALE as f64;
-        wrapper.position(&account_id, &c, pi.position, avg_cost);
+        wrapper.position(&account_id, &c, pi.position.into(), avg_cost);
     }
 
     let gt_account = account_id.clone();
@@ -841,7 +841,7 @@ pub(super) fn phase_enriched_exec_details(conns: Conns) -> Conns {
         fn exec_details(&mut self, req_id: i64, contract: &api::Contract, execution: &api::Execution) {
             self.execs.push((req_id, contract.clone(), execution.clone()));
         }
-        fn order_status(&mut self, _: i64, _: &str, _: f64, _: f64, _: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64) {}
+        fn order_status(&mut self, _: i64, _: &str, _: ibkr_dx::api::Decimal, _: ibkr_dx::api::Decimal, _: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64) {}
         fn open_order(&mut self, _: i64, _: &api::Contract, _: &api::Order, _: &api::OrderState) {}
     }
 

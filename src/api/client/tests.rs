@@ -1848,11 +1848,11 @@ fn an_account_read_after_the_session_ended_is_refused() {
         fn error(&mut self, _req_id: i64, _error_time: i64, code: i64, _msg: &str, _json: &str) {
             self.0.push(code);
         }
-        fn position(&mut self, _a: &str, _c: &Contract, _p: f64, _avg: f64) { self.1 += 1; }
+        fn position(&mut self, _a: &str, _c: &Contract, _p: crate::types::model::Decimal, _avg: f64) { self.1 += 1; }
         fn position_end(&mut self) { self.1 += 1; }
         fn managed_accounts(&mut self, _accounts: &str) { self.1 += 1; }
         fn position_multi(
-            &mut self, _r: i64, _a: &str, _m: &str, _c: &Contract, _p: f64, _avg: f64,
+            &mut self, _r: i64, _a: &str, _m: &str, _c: &Contract, _p: crate::types::model::Decimal, _avg: f64,
         ) { self.1 += 1; }
         fn account_update_multi(
             &mut self, _r: i64, _a: &str, _m: &str, _k: &str, _v: &str, _c: &str,
@@ -5804,7 +5804,7 @@ fn a_joining_watcher_is_watching_before_its_answer_is_read() {
     impl crate::api::wrapper::Wrapper for WatchingYet<'_> {
         fn position_multi(
             &mut self, req_id: i64, _account: &str, _model: &str,
-            _contract: &Contract, _position: f64, _avg_cost: f64,
+            _contract: &Contract, _position: crate::types::model::Decimal, _avg_cost: f64,
         ) {
             self.registered_when_answered =
                 Some(self.watchers.lock().unwrap().positions.contains_key(&req_id));
@@ -6362,7 +6362,7 @@ fn multi_account_answers_echo_the_model_the_caller_stated() {
         }
         fn position_multi(
             &mut self, _req_id: i64, _account: &str, model: &str,
-            _contract: &Contract, _position: f64, _avg_cost: f64,
+            _contract: &Contract, _position: crate::types::model::Decimal, _avg_cost: f64,
         ) {
             self.models.push(model.to_string());
         }
@@ -7085,7 +7085,7 @@ fn an_order_is_stated_as_a_gateway_holds_it_before_the_venue_answers() {
             ));
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, filled: f64, remaining: f64, _avg: f64,
+            &mut self, order_id: i64, status: &str, filled: crate::types::model::Decimal, remaining: crate::types::model::Decimal, _avg: f64,
             perm_id: i64, _parent_id: i64, _last: f64, _client_id: i64, _why_held: &str, _cap: f64,
         ) {
             self.0.push((order_id, status.to_string(), format!("{filled}/{remaining}"), perm_id, String::new()));
@@ -8743,7 +8743,7 @@ fn a_kept_up_to_date_request_reports_its_history_then_its_updates() {
         fn historical_data_end(&mut self, req_id: i64, _s: &str, _e: &str) { self.ended.push(req_id); }
         fn historical_data_update(&mut self, req_id: i64, _bar: &crate::types::model::BarData) { self.updates.push(req_id); }
         fn real_time_bar(&mut self, req_id: i64, _t: i64, _o: f64, _h: f64, _l: f64,
-                         _c: f64, _v: f64, _w: f64, _n: i32) { self.real_time.push(req_id); }
+                         _c: f64, _v: crate::types::model::Decimal, _w: crate::types::model::Decimal, _n: i32) { self.real_time.push(req_id); }
     }
 
     let (client, rx, shared) = test_client();
@@ -8794,10 +8794,10 @@ fn subscribing_to_account_updates_reports_the_portfolio() {
         fn update_account_value(&mut self, key: &str, _v: &str, _c: &str, _a: &str) {
             self.values.push(key.to_string());
         }
-        fn update_portfolio(&mut self, contract: &Contract, position: f64, _mp: f64, _mv: f64,
+        fn update_portfolio(&mut self, contract: &Contract, position: crate::types::model::Decimal, _mp: f64, _mv: f64,
                             _ac: f64, _up: f64, _rp: f64, _acct: &str) {
             self.positions.push((contract.con_id, contract.symbol.clone(),
-                                 contract.sec_type.clone(), position));
+                                 contract.sec_type.clone(), position.into()));
         }
     }
 
@@ -9478,7 +9478,7 @@ fn every_order_the_venue_has_finished_comes_back_though_numbers_repeat() {
             self.working.push((order_id, state.status.clone()));
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, _: f64, _: f64, _: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64,
+            &mut self, order_id: i64, status: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal, _: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64,
         ) {
             self.statuses.push((order_id, status.to_string()));
         }
@@ -10044,7 +10044,7 @@ fn each_report_on_an_order_is_delivered() {
     struct Statuses(Vec<String>);
     impl Wrapper for Statuses {
         fn order_status(
-            &mut self, _order_id: i64, status: &str, _filled: f64, _remaining: f64,
+            &mut self, _order_id: i64, status: &str, _filled: crate::types::model::Decimal, _remaining: crate::types::model::Decimal,
             _avg: f64, _perm_id: i64, _parent_id: i64, _last: f64, _client_id: i64,
             _why_held: &str, _mkt_cap_price: f64,
         ) {
@@ -10899,7 +10899,7 @@ fn a_book_reset_is_delivered_before_the_levels_that_follow_it() {
         fn error(&mut self, _: i64, _error_time: i64, code: i64, _: &str, _: &str) {
             if code == 317 { self.0.push("reset"); }
         }
-        fn update_mkt_depth(&mut self, _: i64, _: i32, _: i32, _: i32, _: f64, _: f64) {
+        fn update_mkt_depth(&mut self, _: i64, _: i32, _: i32, _: i32, _: f64, _: crate::types::model::Decimal) {
             self.0.push("level");
         }
     }
@@ -11006,7 +11006,7 @@ fn a_session_is_the_client_it_connected_as() {
             self.0.push(("open_order", i64::from(order.client_id)));
         }
         fn order_status(
-            &mut self, _: i64, _: &str, _: f64, _: f64, _: f64, _: i64, _: i64, _: f64,
+            &mut self, _: i64, _: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal, _: f64, _: i64, _: i64, _: f64,
             client_id: i64, _: &str, _: f64,
         ) {
             self.0.push(("order_status", client_id));
@@ -11060,7 +11060,7 @@ fn a_fill_whose_report_names_no_client_is_filed_under_the_placing_client() {
     struct Filed(Vec<(&'static str, i64)>, Vec<i64>);
     impl Wrapper for Filed {
         fn order_status(
-            &mut self, _: i64, _: &str, _: f64, _: f64, _: f64, _: i64, parent_id: i64, _: f64,
+            &mut self, _: i64, _: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal, _: f64, _: i64, parent_id: i64, _: f64,
             client_id: i64, _: &str, _: f64,
         ) {
             self.0.push(("order_status", client_id));
@@ -12505,7 +12505,7 @@ fn a_reader_beside_an_answering_call_shares_one_state_with_the_kept_record() {
     struct Forwarder(Arc<std::sync::Mutex<Vec<String>>>);
     impl Wrapper for Forwarder {
         fn order_status(
-            &mut self, order_id: i64, status: &str, _: f64, _: f64,
+            &mut self, order_id: i64, status: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal,
             _: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64,
         ) {
             self.0.lock().unwrap().push(format!("{order_id}:{status}"));

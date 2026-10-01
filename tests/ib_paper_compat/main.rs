@@ -2693,7 +2693,7 @@ fn conditions_round_trip_phase_live() {
             self.orders.push((order_id, order.conditions.len()));
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, _f: f64, _r: f64, _a: f64,
+            &mut self, order_id: i64, status: &str, _f: ibkr_dx::api::Decimal, _r: ibkr_dx::api::Decimal, _a: f64,
             _p: i64, _pi: i64, _l: f64, _c: i64, _w: &str, _m: f64,
         ) {
             if matches!(status, "Cancelled" | "Filled" | "Inactive") {

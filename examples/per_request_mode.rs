@@ -38,7 +38,7 @@ impl Wrapper for PrintWrapper {
         println!("[{label:>14}] req_id={req_id} price={price:.4}");
     }
 
-    fn tick_size(&mut self, req_id: i64, _tick_type: i32, size: f64) {
+    fn tick_size(&mut self, req_id: i64, _tick_type: i32, size: ibkr_dx::api::Decimal) {
         let mut c = self.counts.lock().unwrap();
         let label = match req_id {
             1 => { c.realtime_ticks += 1; "realtime" }

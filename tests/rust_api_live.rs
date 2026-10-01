@@ -324,15 +324,15 @@ impl Wrapper for RecWrapper {
     fn tick_price(&mut self, req_id: i64, tick_type: i32, price: f64, _: &TickAttrib) {
         self.push(Cb::TickPrice { req_id, tick_type, price });
     }
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: f64) {
-        self.push(Cb::TickSize { req_id, tick_type, size });
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ibkr_dx::api::Decimal) {
+        self.push(Cb::TickSize { req_id, tick_type, size: size.into() });
     }
     fn order_status(
         &mut self,
         order_id: i64,
         status: &str,
-        filled: f64,
-        remaining: f64,
+        filled: ibkr_dx::api::Decimal,
+        remaining: ibkr_dx::api::Decimal,
         _: f64,
         _: i64,
         _: i64,
@@ -344,8 +344,8 @@ impl Wrapper for RecWrapper {
         self.push(Cb::OrderStatus {
             order_id,
             status: status.into(),
-            filled,
-            remaining,
+            filled: filled.into(),
+            remaining: remaining.into(),
             why_held: why_held.into(),
         });
     }
@@ -439,13 +439,13 @@ impl Wrapper for RecWrapper {
         &mut self,
         account: &str,
         contract: &ibkr_dx::api::types::Contract,
-        pos: f64,
+        pos: ibkr_dx::api::Decimal,
         avg_cost: f64,
     ) {
         self.push(Cb::Position {
             account: account.into(),
             contract: snap_contract(contract),
-            pos,
+            pos: pos.into(),
             avg_cost,
         });
     }
@@ -483,7 +483,7 @@ impl Wrapper for RecWrapper {
     fn head_timestamp(&mut self, req_id: i64, ts: &str) {
         self.push(Cb::HeadTimestamp { req_id, ts: ts.into() });
     }
-    fn histogram_data(&mut self, req_id: i64, items: &[(f64, i64)]) {
+    fn histogram_data(&mut self, req_id: i64, items: &[(f64, ibkr_dx::api::Decimal)]) {
         self.push(Cb::HistogramData { req_id, count: items.len() });
     }
     fn historical_ticks(
@@ -560,8 +560,8 @@ impl Wrapper for RecWrapper {
     fn update_news_bulletin(&mut self, msg_id: i64, msg_type: i32, message: &str, _: &str) {
         self.push(Cb::NewsBulletin { msg_id, msg_type, message: message.into() });
     }
-    fn pnl_single(&mut self, req_id: i64, pos: f64, _: f64, _: f64, _: f64, _: f64) {
-        self.push(Cb::PnlSingle { req_id, pos });
+    fn pnl_single(&mut self, req_id: i64, pos: ibkr_dx::api::Decimal, _: f64, _: f64, _: f64, _: f64) {
+        self.push(Cb::PnlSingle { req_id, pos: pos.into() });
     }
     fn market_rule(&mut self, id: i64, increments: &[PriceIncrement]) {
         self.push(Cb::MarketRule { id, count: increments.len() });
@@ -888,7 +888,7 @@ fn reference_and_account_calls_live() {
             account: &str,
             _model: &str,
             _c: &Contract,
-            _pos: f64,
+            _pos: ibkr_dx::api::Decimal,
             _avg: f64,
         ) {
             self.0.lock().unwrap().positions_multi.push((req_id, account.to_string()));

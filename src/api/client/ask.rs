@@ -777,10 +777,10 @@ impl EClient {
         let _answering = super::Answering::begin();
         struct Histogram { req_id: i64, state: Arc<Mutex<Pending<(f64, i64)>>> }
         impl Wrapper for Histogram {
-            fn histogram_data(&mut self, req_id: i64, items: &[(f64, i64)]) {
+            fn histogram_data(&mut self, req_id: i64, items: &[(f64, crate::types::model::Decimal)]) {
                 if req_id == self.req_id {
                     let mut s = self.state.lock().unwrap();
-                    s.rows.extend(items.iter().copied());
+                    s.rows.extend(items.iter().map(|&(price, size)| (price, f64::from(size) as i64)));
                     s.done = true;
                 }
             }
@@ -1018,7 +1018,7 @@ impl EClient {
         struct Watch { order_id: i64, report: Arc<Mutex<Option<OrderReport>>>, done: Arc<Mutex<bool>> }
         impl Wrapper for Watch {
             fn order_status(
-                &mut self, order_id: i64, status: &str, filled: f64, remaining: f64,
+                &mut self, order_id: i64, status: &str, filled: crate::types::model::Decimal, remaining: crate::types::model::Decimal,
                 avg_price: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64,
             ) {
                 if order_id != self.order_id {
@@ -1027,7 +1027,7 @@ impl EClient {
                 let mut r = self.report.lock().unwrap();
                 let reason = r.as_ref().and_then(|p| p.reason.clone());
                 let report = OrderReport {
-                    order_id, status: status.to_string(), filled, remaining,
+                    order_id, status: status.to_string(), filled: filled.into(), remaining: remaining.into(),
                     // A status arriving after a fill can state no average; the
                     // one already reported is the better answer. Nothing is
                     // what zero means, and only zero: an instrument can trade
