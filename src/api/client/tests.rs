@@ -6495,20 +6495,23 @@ fn req_historical_news_sends_fetch() {
     shared.reference.set_news_providers(vec![
         crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
     ]);
-    // The query carries no time bounds, so a window is refused rather than
-    // dropped: the answer is the most recent headlines, not the window's.
-    assert!(client.try_req_historical_news(4, 265598, "BRFG", "2026-01-01", "2026-03-01", 10).is_err());
-    client.try_req_historical_news(4, 265598, "BRFG", "", "", 10).unwrap();
+    // Unreadable time bounds are admitted. The provider and count checks
+    // run locally; the venue answers for the selected time bound.
+    client.try_req_historical_news(4, 265598, "BRFG", "2026-01-01", "2026-03-01", 10).unwrap();
     let cmd = rx.try_recv().unwrap();
     match cmd {
-        ControlCommand::FetchHistoricalNews { req_id, con_id, provider_codes, max_results, .. } => {
+        ControlCommand::FetchHistoricalNews { req_id, con_id, provider_codes, start_time, end_time, max_results, .. } => {
             assert_eq!(req_id, 4);
             assert_eq!(con_id, 265598);
             assert_eq!(provider_codes, "BRFG");
+            assert_eq!(start_time, "2026-01-01");
+            assert_eq!(end_time, "2026-03-01");
             assert_eq!(max_results, 10);
         }
         _ => panic!("expected FetchHistoricalNews"),
     }
+    client.try_req_historical_news(4, 265598, "BRFG", "", "", 10).unwrap();
+    assert!(matches!(rx.try_recv().unwrap(), ControlCommand::FetchHistoricalNews { .. }));
 }
 
 /// A gateway splits the provider codes on `+` and requires the session to be

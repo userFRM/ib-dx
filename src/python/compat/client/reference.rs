@@ -413,9 +413,10 @@ impl EClient {
 
     /// Request historical news.
     ///
-    /// Bounds are UTC timestamps, `YYYYMMDD-HH:MM:SS` or `YYYYMMDD HH:MM:SS`,
-    /// optionally with fractional seconds. Empty bounds are omitted; unreadable
-    /// ones are refused so the window is not lost.
+    /// A nonempty start requests newer headlines from that bound; otherwise
+    /// the end requests older headlines. The selected bound is sent as stated,
+    /// without parsing it locally. When both are empty, the request asks for
+    /// the latest headlines.
     ///
     /// `historical_news_options` is checked as a gateway checks it: `manual`, `0` or `1`, is
     /// taken and changes nothing a gateway sends; any other key is refused
@@ -442,13 +443,8 @@ impl EClient {
         if let Some(why) = self.options_refused(py, &crate::client_core::HISTORICAL_NEWS_OPTIONS, historical_news_options)? {
             return self.report_refusal(py, req_id, why);
         }
-        if let Err(why) = crate::control::news::validate_news_window(
-            start_date_time, end_date_time,
-        ) {
-            return self.report_refusal(py, req_id, why.into());
-        }
         // The providers are checked before the count, as a gateway checks
-        // them first.
+        // them first. Time bounds are not parsed locally.
         let subscribed = self.shared_state()?.reference.news_providers();
         if let Err(why) = crate::control::news::validate_news_providers(provider_codes, &subscribed) {
             return self.report_refusal(py, req_id, why.into());

@@ -501,9 +501,10 @@ impl EClient {
 
     /// Request historical news headlines. Matches `reqHistoricalNews` in C++.
     ///
-    /// `start_time` and `end_time` bound the query in UTC: `YYYYMMDD-HH:MM:SS`
-    /// or `YYYYMMDD HH:MM:SS`, optionally with fractional seconds. Empty bounds
-    /// are omitted; unreadable ones are refused so the window is not lost.
+    /// A nonempty start requests newer headlines from that bound; otherwise
+    /// the end requests older headlines. The selected bound is sent as stated,
+    /// without parsing it locally. When both are empty, the request asks for
+    /// the latest headlines.
     ///
     /// No more than three hundred are asked for however many are wanted. A
     /// gateway caps `total_results` there before the request goes out, so a
@@ -528,10 +529,9 @@ impl EClient {
         // The number and the contract are read before anything is validated,
         // as a gateway reads the request before it checks what it states.
         // The providers are checked before the count, as a gateway checks
-        // them first.
+        // them first. Time bounds are not parsed locally.
         let numbered = wire_req_id(req_id)?;
         let contract = wire_con_id(con_id, "a request for headlines")?;
-        crate::control::news::validate_news_window(start_time, end_time)?;
         crate::control::news::validate_news_providers(
             provider_codes, &self.shared.reference.news_providers(),
         )?;

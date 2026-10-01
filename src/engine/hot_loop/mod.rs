@@ -8821,10 +8821,11 @@ mod tests {
         hl.set_control_rx(rx);
         let (conn, _peer) = crate::protocol::connection::Connection::for_test();
         hl.hmds_conn = Some(conn);
-        for _ in 0..2 {
+        // An unreadable bound also reaches the venue and receives its reply.
+        for start in [String::new(), "2026-01-01".to_string()] {
             tx.send(ControlCommand::FetchHistoricalNews {
                 req_id: 7, con_id: 265598, provider_codes: "BRFG".into(),
-                start_time: String::new(), end_time: String::new(), max_results: 10,
+                start_time: start, end_time: String::new(), max_results: 10,
             })
             .unwrap();
             tx.send(ControlCommand::FetchNewsArticle {

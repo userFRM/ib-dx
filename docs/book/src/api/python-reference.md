@@ -1754,7 +1754,7 @@ def req_news_article(req_id, provider_code, article_id, news_article_options=Non
 
 #### `req_historical_news`
 
-Request historical news.  Bounds are UTC timestamps, `YYYYMMDD-HH:MM:SS` or `YYYYMMDD HH:MM:SS`, optionally with fractional seconds. Empty bounds are omitted; unreadable ones are refused so the window is not lost.  `historical_news_options` is checked as a gateway checks it: `manual`, `0` or `1`, is taken and changes nothing a gateway sends; any other key is refused under 10337, another value under 10338, and an entry not written `key=value` under 320. Where the venue has lifted the key checks, a `manual` that does not read as the number nought or one is refused under 321.
+Request historical news.  A nonempty start requests newer headlines from that bound; otherwise the end requests older headlines. The selected bound is sent as stated, without parsing it locally. When both are empty, the request asks for the latest headlines.  `historical_news_options` is checked as a gateway checks it: `manual`, `0` or `1`, is taken and changes nothing a gateway sends; any other key is refused under 10337, another value under 10338, and an entry not written `key=value` under 320. Where the venue has lifted the key checks, a `manual` that does not read as the number nought or one is refused under 321.
 
 ```python
 def req_historical_news(req_id, con_id, provider_codes, start_date_time, end_date_time, total_results, historical_news_options=None)

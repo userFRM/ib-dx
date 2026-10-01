@@ -2031,7 +2031,7 @@ pub fn cancel_scanner_subscription(&self, req_id: i64)
 
 #### `req_historical_news`
 
-Request historical news headlines. `start_time` and `end_time` bound the query in UTC: `YYYYMMDD-HH:MM:SS` or `YYYYMMDD HH:MM:SS`, optionally with fractional seconds. Empty bounds are omitted; unreadable ones are refused so the window is not lost. No more than three hundred are asked for however many are wanted. A gateway caps `total_results` there before the request goes out, so a bigger number is one the venue is never asked, and it passes a smaller positive one on as stated; a count below one it refuses with 321 before the venue is asked anything.
+Request historical news headlines. A nonempty start requests newer headlines from that bound; otherwise the end requests older headlines. The selected bound is sent as stated, without parsing it locally. When both are empty, the request asks for the latest headlines. No more than three hundred are asked for however many are wanted. A gateway caps `total_results` there before the request goes out, so a bigger number is one the venue is never asked, and it passes a smaller positive one on as stated; a count below one it refuses with 321 before the venue is asked anything.
 
 ```rust
 pub fn req_historical_news( &self, req_id: i64, con_id: i64, provider_codes: &str, start_time: &str, end_time: &str, total_results: i32, )

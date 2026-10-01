@@ -3513,10 +3513,6 @@ fn build_tbt_query(
     }
 
     pub(crate) fn send_historical_news_request(&mut self, req_id: u32, con_id: u32, provider_codes: &str, start_time: &str, end_time: &str, max_results: i32, shared: &SharedState, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState) {
-        if let Err(why) = crate::control::news::validate_news_window(start_time, end_time) {
-            super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::VALIDATION, why, false);
-            return;
-        }
         let query_id = format!("news_{}", self.next_hmds_query_id);
         let req = crate::control::news::HistoricalNewsRequest {
             query_id: query_id.clone(),

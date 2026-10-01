@@ -4614,6 +4614,42 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
+    /// Time bounds are not parsed locally. The provider check still runs
+    /// first when both a provider and a time bound are invalid.
+    #[test]
+    fn a_headline_query_carries_its_time_bounds_as_stated_here() {
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, rx, shared, _w) = wired_client(py);
+            shared.reference.set_news_providers(vec![
+                crate::types::NewsProvider { code: "BRFG".into(), name: "Briefing".into() },
+            ]);
+            client.call_method1(
+                py, "req_historical_news", (1i64, 265598i64, "BRFG", "2026-01-01", "2026-03-01", 10i32),
+            ).unwrap();
+            let ControlCommand::FetchHistoricalNews { start_time, end_time, .. } =
+                rx.try_recv().expect("the request goes with its bounds as stated") else {
+                panic!("the request asks for headlines");
+            };
+            assert_eq!(start_time, "2026-01-01");
+            assert_eq!(end_time, "2026-03-01");
+            assert!(shared.drain_refused().is_empty(), "nothing is refused");
+
+            // A query both unsubscribed and unreadably bounded hears the
+            // provider sentence: it is the one a gateway states first.
+            client.call_method1(
+                py, "req_historical_news", (2i64, 265598i64, "BRFG+DJNL", "2026-01-01", "", 10i32),
+            ).unwrap();
+            assert!(rx.try_recv().is_err(), "the venue was asked");
+            let refused = shared.drain_refused();
+            assert_eq!(refused.len(), 1, "the caller is told");
+            assert_eq!(
+                (refused[0].1, refused[0].2.as_str()),
+                (321, "Error validating request:-'' : cause - Not subscribed for 'DJNL' provider"),
+            );
+        });
+    }
+
     /// An article request naming an unsubscribed provider, or a blank article
     /// id, is refused here in a gateway's own words, and the venue is asked
     /// nothing.

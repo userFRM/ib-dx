@@ -10,8 +10,6 @@ use std::io::Read;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
-use crate::protocol::datetime::{ib_datetime_to_unix, unix_to_ib_utc_dash};
-
 /// FIX tag 6040: the sub protocol.
 pub const TAG_SUB_PROTOCOL: u32 = 6040;
 /// FIX tag 95: the raw data length.
@@ -67,7 +65,7 @@ fn url_encode(s: &str) -> String {
     for b in s.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
-            | b'-' | b'_' | b'.' | b'*' | b';' | b'\\' | b'=' | b':' | b'@' => {
+            | b'-' | b'_' | b'.' | b'*' => {
                 out.push(b as char);
             }
             b' ' => out.push('+'),
@@ -85,24 +83,6 @@ fn url_encode(s: &str) -> String {
 /// Build the `<id>` value for a news request.
 fn build_news_id(req_num: &str, cmd: &str) -> String {
     format!("{};;NewsQuery;;0;;true;;0;;U", format_args!("{}-{}", req_num, cmd))
-}
-
-/// What a historical-news window has to state to be askable.
-///
-/// The venue accepts time bounds on the query. A bound this client cannot
-/// read is refused: dropping it returns the most recent headlines, which
-/// read as the ones inside the window asked for.
-pub fn validate_news_window(start_time: &str, end_time: &str) -> Result<(), String> {
-    for (name, stated) in [("start_time", start_time), ("end_time", end_time)] {
-        if !stated.is_empty() && ib_datetime_to_unix(stated).is_none() {
-            return Err(format!(
-                "news {name} '{stated}' cannot be read: use YYYYMMDD-HH:MM:SS or \
-                 YYYYMMDD HH:MM:SS in UTC, optionally with fractional seconds, \
-                 or leave the bound empty",
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// What a historical-news count has to state to be askable.
@@ -167,8 +147,8 @@ pub fn validate_news_article(
 
 /// Build the XML query for a historical news request.
 ///
-/// The window must pass [`validate_news_window`] first, so a bound that cannot
-/// be read is refused before the query goes out.
+/// A nonempty start selects newer headlines; otherwise the end selects
+/// older headlines. The selected bound is sent without parsing it.
 pub fn build_historical_news_xml(req: &HistoricalNewsRequest) -> String {
     // The venue joins provider codes with a star where the caller uses a plus.
     let providers_star = req.provider_codes.replace('+', "*");
@@ -178,7 +158,18 @@ pub fn build_historical_news_xml(req: &HistoricalNewsRequest) -> String {
     // ALL_SUB, which is what stands where the caller named none. The codes
     // used to ride in `url_key` instead, which is not a slot for them.
     let wanted = if providers_star.is_empty() { "ALL_SUB" } else { &providers_star };
-    let tags = format!("@@{}:{wanted}@", req.con_id);
+    let (cmd, bound) = if req.start_time.is_empty() {
+        ("history", &req.end_time)
+    } else {
+        ("more", &req.start_time)
+    };
+    let mut tags = String::new();
+    for c in format!("{bound}@@{}:{wanted}@", req.con_id).chars() {
+        if matches!(c, '=' | ';' | '"' | '\\') {
+            tags.push('\\');
+        }
+        tags.push(if c == ',' { '*' } else { c });
+    }
 
     // The identity fields are an authorisation pair the news service issues,
     // not something a client invents. Empty strings are valid where none is
@@ -194,7 +185,7 @@ pub fn build_historical_news_xml(req: &HistoricalNewsRequest) -> String {
          total_count=\"{count}\";\
          ip=\"\";\
          fingerprint=\"\";\
-         cmd=\"history\";\
+         cmd=\"{cmd}\";\
          tags=\"{tags}\";\
          url_key=\"\";\
          ",
@@ -202,15 +193,8 @@ pub fn build_historical_news_xml(req: &HistoricalNewsRequest) -> String {
         tags = tags,
     );
 
-    let id = build_news_id(&req.query_id, "history");
+    let id = build_news_id(&req.query_id, cmd);
     let query_encoded = url_encode(&query_raw);
-    let mut window = String::new();
-    for (name, stated) in [("startTime", &req.start_time), ("endTime", &req.end_time)] {
-        if !stated.is_empty() {
-            let secs = ib_datetime_to_unix(stated).expect("the news window was validated");
-            window.push_str(&format!("<{name}>{}</{name}>", unix_to_ib_utc_dash(secs)));
-        }
-    }
 
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
@@ -219,7 +203,6 @@ pub fn build_historical_news_xml(req: &HistoricalNewsRequest) -> String {
          <id>{id}</id>\
          <exchange>NEWS</exchange>\
          <secType>*</secType>\
-         {window}\
          <source>API</source>\
          <needTotalValue>false</needTotalValue>\
          <wholeDays>false</wholeDays>\
@@ -698,20 +681,6 @@ pub fn parse_article_payload(raw: &[u8]) -> Result<(i32, String), String> {
 mod tests {
     use super::*;
 
-    /// An unreadable bound cannot be dropped without changing the window.
-    #[test]
-    fn a_news_window_this_client_cannot_read_is_refused() {
-        assert!(validate_news_window("", "").is_ok());
-        for bad in ["not a time", "2026-01-01", "20260101", "20260230-12:00:00", "20260101-12:00", "20260101 12:00:00 US/Eastern"] {
-            for (start, end, name) in [(bad, "", "start_time"), ("", bad, "end_time")] {
-                let why = validate_news_window(start, end).expect_err("an unreadable bound");
-                assert!(why.contains(name), "{why}");
-                assert!(why.contains("YYYYMMDD-HH:MM:SS"), "{why}");
-                assert!(why.contains("YYYYMMDD HH:MM:SS"), "{why}");
-            }
-        }
-    }
-
     #[test]
     fn historical_news_xml_structure() {
         let mut req = HistoricalNewsRequest {
@@ -728,35 +697,33 @@ mod tests {
         assert!(xml.contains("<id>1-history;;NewsQuery;;0;;true;;0;;U</id>"));
         assert!(xml.contains("<exchange>NEWS</exchange>"));
         assert!(xml.contains("<query>"));
-        assert!(xml.contains("cmd="));
+        assert!(xml.contains("cmd%3D"));
         assert!(xml.contains("265598"));
         assert!(xml.contains("BRFG*BRFUPDN"));
         assert!(!xml.contains("<startTime>"));
         assert!(!xml.contains("<endTime>"));
 
-        for (start, end) in [
-            ("20260101-00:00:00", "20260320-21:00:00"),
-            ("20260101 00:00:00", "20260320 21:00:00"),
-            ("20260101 00:00:00.250", "20260320-21:00:00,999"),
+        // The selected bound is part of the encoded news query. A nonempty
+        // start takes precedence over the end, including unreadable bounds.
+        for (start, end, cmd, encoded_tags) in [
+            ("", "", "history", "%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("20260101-00:00:00", "20260320-21:00:00", "more", "20260101-00%3A00%3A00%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("20260101 00:00:00.250", "ignored", "more", "20260101+00%3A00%3A00.250%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("2026-01-01", "not a time", "more", "2026-01-01%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("", "20260320 21:00:00", "history", "20260320+21%3A00%3A00%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("", "not a time", "history", "not+a+time%40%40265598%3ABRFG*BRFUPDN%40"),
+            (" ", "ignored", "more", "+%40%40265598%3ABRFG*BRFUPDN%40"),
+            ("<bad>&=;\"\\,", "", "more", "%3Cbad%3E%26%5C%3D%5C%3B%5C%22%5C%5C*%40%40265598%3ABRFG*BRFUPDN%40"),
         ] {
-            validate_news_window(start, end).expect("a readable window");
             req.start_time = start.into();
             req.end_time = end.into();
             let xml = build_historical_news_xml(&req);
-            assert!(xml.contains("<startTime>20260101-00:00:00</startTime>"), "{xml}");
-            assert!(xml.contains("<endTime>20260320-21:00:00</endTime>"), "{xml}");
+            assert!(xml.contains(&format!("tags%3D%22{encoded_tags}%22%3B")), "{xml}");
+            assert!(xml.contains(&format!("cmd%3D%22{cmd}%22%3B")), "{xml}");
+            assert!(xml.contains(&format!("<id>1-{cmd};;NewsQuery;;0;;true;;0;;U</id>")), "{xml}");
+            assert!(!xml.contains("<startTime>"), "{xml}");
+            assert!(!xml.contains("<endTime>"), "{xml}");
         }
-        req.end_time.clear();
-        assert!(validate_news_window(&req.start_time, &req.end_time).is_ok());
-        let xml = build_historical_news_xml(&req);
-        assert!(xml.contains("<startTime>20260101-00:00:00</startTime>"));
-        assert!(!xml.contains("<endTime>"));
-        req.start_time.clear();
-        req.end_time = "20260320 21:00:00".into();
-        assert!(validate_news_window(&req.start_time, &req.end_time).is_ok());
-        let xml = build_historical_news_xml(&req);
-        assert!(!xml.contains("<startTime>"));
-        assert!(xml.contains("<endTime>20260320-21:00:00</endTime>"));
     }
 
     #[test]
