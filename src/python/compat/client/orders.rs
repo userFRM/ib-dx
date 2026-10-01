@@ -1406,28 +1406,30 @@ w = W()",
 
 
 
-    /// A combination leg the caller states and this client cannot read is a
-    /// refusal, as the other unreadable fields are, and is answered on the
-    /// error callback: the exception this used to raise was somewhere a
-    /// caller written against the reference client has no handling.
+    /// A combination leg naming no contract is refused where every leg is
+    /// refused, at the gate both surfaces share, and is answered on the error
+    /// callback: the exception this used to raise was somewhere a caller
+    /// written against the reference client has no handling.
     #[test]
-    fn an_unreadable_combination_leg_is_reported_and_the_call_returns() {
+    fn a_leg_naming_no_contract_is_reported_and_the_call_returns() {
         Python::initialize();
         Python::attach(|py| {
             let (client, _shared, wrapper) = placed_client(py);
             let (tx, _rx) = std::sync::mpsc::channel::<ControlCommand>();
             *client.control_tx.lock().unwrap() = Some(tx);
             let contract = bracket_contract();
-            // A leg with no contract id: it names no contract, and the list
-            // is refused.
+            // A leg stating nothing: its id takes the default, names no
+            // contract, and the shared gate refuses it in the sentence the
+            // native surface refuses the same leg in.
             let leg = py.eval(c"type('ComboLeg', (), {})()", None, None).unwrap();
             contract.combo_legs.bound(py).append(leg).unwrap();
             client.place_order(py, 3, &contract, &bracket_order(true, 0)).unwrap();
             let errors = error_calls(py, &client, &wrapper);
             let (id, code, message) = errors.last().expect("the caller is told on the error callback");
             assert_eq!(*id, 3);
-            assert_eq!(*code, Refusal::VALIDATION as i64);
-            assert!(message.contains("combo leg 0 has no conId"), "{message}");
+            assert_eq!(*code, 313, "the leg's own number, as the native surface states it");
+            assert!(message.contains("leg 0"), "{message}");
+            assert!(message.contains("names no contract"), "{message}");
         });
     }
 

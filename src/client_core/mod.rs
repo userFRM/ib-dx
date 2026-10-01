@@ -6989,7 +6989,20 @@ impl ClientCore {
     /// a leg trading the other way, in no size, or borrowing from somewhere
     /// nobody named —
     /// against the rest of a combination that is priced as one thing.
+    ///
+    /// An id nobody stated names no contract either, and is refused here
+    /// rather than in either surface's own words, so that the same leg is
+    /// refused the same way whichever client carries it.
     pub fn validate_leg(at: usize, leg: &crate::types::model::ComboLeg) -> Result<(), Refusal> {
+        // The id is read as a gateway reads one: zero states none, and the
+        // unset marker the reference client carries states none.
+        if Self::identifier_unstated(leg.con_id) {
+            return Err(Refusal::stated(COMBINATION_LEG_INVALID, format!(
+                "leg {at} states the contract id {}, which names no contract. \
+                 Sent, the leg goes out under an id nobody stated.",
+                leg.con_id,
+            )));
+        }
         if !leg.action.eq_ignore_ascii_case("BUY") && !leg.action.eq_ignore_ascii_case("SELL") {
             return Err(Refusal::stated(COMBINATION_LEG_INVALID, format!(
                 "leg {at} states side {:?}, which is BUY or SELL. Anything else \

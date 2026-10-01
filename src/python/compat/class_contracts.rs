@@ -231,8 +231,8 @@ impl Contract {
     /// Each is any object with the ibapi ComboLeg attribute names, so a plain
     /// `ibapi.contract.ComboLeg` works and so does anything shaped like one. A
     /// leg that is missing an attribute contributes its default rather than
-    /// failing the order, except the contract id, without which the leg names
-    /// nothing and the whole list is refused.
+    /// failing the order; what the legs state is refused after this, at the
+    /// leg gate both surfaces share, in one sentence on both.
     ///
     /// An absent attribute takes the reference client's default. An attribute
     /// that is present and cannot be read is a value the caller stated and
@@ -267,9 +267,9 @@ impl Contract {
                 };
             }
             let con_id: i64 = read!("conId", 0);
-            if con_id == 0 {
-                return Err(format!("combo leg {i} has no conId, so it names no contract"));
-            }
+            // An id nobody stated is refused where every leg is refused, at
+            // the shared gate both surfaces call, in the same sentence on
+            // both: `ClientCore::validate_leg`.
             out.push(crate::types::model::ComboLeg {
                 con_id,
                 // Nought, which is what the reference client leaves a leg it

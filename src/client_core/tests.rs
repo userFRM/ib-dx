@@ -3602,7 +3602,7 @@ fn a_refusal_the_catalogue_names_carries_its_own_number() {
         ClientCore::validate_combo_legs("BAG", 0).expect_err("no legs").code, 314,
     );
     let leg = crate::types::model::ComboLeg {
-        action: "SIDEWAYS".into(), ratio: 1, ..Default::default()
+        con_id: 756733, action: "SIDEWAYS".into(), ratio: 1, ..Default::default()
     };
     assert_eq!(ClientCore::validate_leg(0, &leg).expect_err("no such side").code, 313);
 
@@ -3637,6 +3637,34 @@ fn a_refusal_the_catalogue_names_carries_its_own_number() {
         ClientCore::validate_order(&unpriced, &crate::client_core::OrderSession::single("")).expect_err("not a price").code,
         Refusal::VALIDATION,
     );
+}
+
+/// A leg names the contract it trades by id, and an id nobody stated names
+/// none: zero, as the unset marker the reference client carries, states no
+/// contract. Read against raw zero in one surface's own conversion and not
+/// read at all in the gate both surfaces share, the two clients answered the
+/// same combination differently — the marker went out under an id nobody
+/// stated where zero was refused in a sentence of one surface's own making,
+/// and zero went out where the other refused it. Both are refused here, at
+/// the gate every leg passes through, in one sentence on both surfaces; an
+/// id somebody stated passes as before.
+#[test]
+fn a_leg_whose_id_nobody_stated_is_refused_at_the_gate_both_surfaces_share() {
+    let leg = |con_id: i64| crate::types::model::ComboLeg {
+        con_id, ratio: 1, action: "BUY".into(), exchange: "SMART".into(),
+        ..Default::default()
+    };
+    for (con_id, stated) in [(0, false), (i64::from(i32::MAX), false), (756733, true)] {
+        let answer = ClientCore::validate_leg(1, &leg(con_id));
+        if stated {
+            answer.unwrap_or_else(|why| panic!("an id somebody stated passes as before: {why}"));
+            continue;
+        }
+        let why = answer.expect_err("an id nobody stated names no contract");
+        assert_eq!(why.code, 313, "under the leg's own number: {why}");
+        assert!(why.message.contains("leg 1"), "the refusal names the leg: {why}");
+        assert!(why.message.contains("names no contract"), "{why}");
+    }
 }
 
 /// The account reads wait for the download to finish, not for the first thing
