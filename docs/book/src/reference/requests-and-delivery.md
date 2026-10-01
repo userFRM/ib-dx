@@ -157,7 +157,8 @@ that they are not carried to the venue. Scanner subscriptions first load
 permission metadata. Missing permissions produce error 490 and prevent the
 subscription, or warning 492 while the scan continues. Notices name the scan
 and requested filters; range names omit the trailing “below” regardless of
-letter case and resolve recognized English labels before an ellipsis.
+letter case. A range name containing an ellipsis is given as the venue states
+it, where a gateway may shorten it to the words before the ellipsis.
 Metadata fetched for a subscription produces no unsolicited
 `scanner_parameters` callback.
 

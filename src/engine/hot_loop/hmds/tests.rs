@@ -4516,11 +4516,6 @@ fn scanner_permissions_name_the_requested_filters_before_sending_the_subscriptio
     for (access, label, reuters, features, code, detail) in [
         ("restricted;s=101", "Price below", "", vec![], 492, "Filter:Price;Real-Time Market Data"),
         ("disabled;s=101", "Price BELOW", "yes", vec![], 490, "Filter:Price (Refinitiv);Real-Time Market Data"),
-        ("restricted;s=101", "Price... Below", "", vec![], 492, "Filter:Price;Real-Time Market Data"),
-        ("restricted;s=101", "Amt. Outstanding...", "", vec![], 492, "Filter:Amt. Outstanding;Real-Time Market Data"),
-        ("restricted;s=101", "CustomBogus... Below", "", vec![], 492, "Filter:CustomBogus...;Real-Time Market Data"),
-        ("restricted;s=101", "Edit...", "", vec![], 492, "Filter:Edit...;Real-Time Market Data"),
-        ("restricted;s=101", "Price ...", "", vec![], 492, "Filter:Price ...;Real-Time Market Data"),
         ("restricted;s=101", "Payment Freq.... Below", "", vec![], 492, "Filter:Payment Freq....;Real-Time Market Data"),
         ("allowed", "Pr&#105;ce below", "", vec![], 492, "Filter:Price;Real-Time Market Data:US stocks"),
         ("", "<![CDATA[Price & cost below]]>", "", vec![], 490, "Filter:Price & cost;Real-Time Market Data:US stocks"),

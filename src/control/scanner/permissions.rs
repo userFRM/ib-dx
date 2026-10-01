@@ -1,8 +1,6 @@
 //! Scanner permissions and the names used in subscription notices.
 
 use std::collections::{BTreeSet, HashSet};
-use std::io::Read;
-use std::sync::OnceLock;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Permissions {
@@ -496,7 +494,6 @@ fn filters(list: &Element<'_>) -> Vec<Filter> {
             codes.retain(|code| !code.is_empty());
             let mut label = if kind == "RangeFilter" {
                 let label = field("max").map(|field| field.text("displayName")).unwrap_or_default();
-                let label = english_range_label(&label);
                 match label.to_ascii_lowercase().find(" below") {
                     Some(at) => label[..at].to_string(),
                     None => label.to_string(),
@@ -601,19 +598,4 @@ fn parse_elements(mut xml: &str) -> Vec<Element<'_>> {
         }
     }
     if stack.is_empty() { roots } else { Vec::new() }
-}
-
-fn english_range_label(label: &str) -> &str {
-    let Some((prefix, _)) = label.split_once("...") else {
-        return label;
-    };
-    static LABELS: OnceLock<HashSet<String>> = OnceLock::new();
-    let labels = LABELS.get_or_init(|| {
-        let mut text = String::new();
-        flate2::read::GzDecoder::new(&include_bytes!("english_labels.gz")[..])
-            .read_to_string(&mut text)
-            .expect("the bundled English labels are valid UTF-8");
-        text.split_terminator('\0').map(str::to_string).collect()
-    });
-    if labels.contains(label) || !labels.contains(prefix) { label } else { prefix }
 }
