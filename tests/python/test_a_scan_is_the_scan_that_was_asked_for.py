@@ -34,6 +34,8 @@ def test_an_ordinary_subscription_is_sent():
     w, c = _client()
     c.req_scanner_subscription(1, ib_async.ScannerSubscription())
     assert w.errors == [], w.errors
+    sent = c._test_take_commands()
+    assert any(cmd.startswith("SubscribeScanner") and "req_id: 1," in cmd for cmd in sent), sent
 
 
 def test_a_field_stated_and_unreadable_is_refused():
@@ -44,6 +46,7 @@ def test_a_field_stated_and_unreadable_is_refused():
     c.poll()
     assert [(rid, code) for rid, code, _ in w.errors] == [(2, 321)], w.errors
     assert "scanCode" in w.errors[0][2]
+    assert c._test_take_commands() == [], "and nothing was sent"
 
 
 @pytest.mark.parametrize("field,req_id", [
@@ -67,6 +70,7 @@ def test_a_field_stated_none_is_refused_at_the_send(field, req_id):
     assert w.errors == [
         (req_id, 524, "Request Scanner Subscription Sending Error - Cannot send None to TWS"),
     ], w.errors
+    assert c._test_take_commands() == [], "and nothing was sent"
 
 
 def test_a_subscription_passed_as_none_is_refused_at_the_send():
@@ -81,6 +85,7 @@ def test_a_subscription_passed_as_none_is_refused_at_the_send():
         (11, 524, "Request Scanner Subscription Sending Error - "
                   "'NoneType' object has no attribute 'numberOfRows'"),
     ], w.errors
+    assert c._test_take_commands() == [], "and nothing was sent"
 
 
 def test_a_field_left_off_takes_the_default():
@@ -105,6 +110,7 @@ def test_a_denied_scan_code_is_refused_under_its_own_code():
     c.req_scanner_subscription(4, sub)
     c.poll()
     assert w.errors == [(4, 10359, "Scan code HOT_BY_VOLUME is not allowed")], w.errors
+    assert c._test_take_commands() == [], "and nothing was sent"
 
 
 def test_a_denied_filter_is_refused_under_its_own_code():
@@ -118,3 +124,4 @@ def test_a_denied_filter_is_refused_under_its_own_code():
     c.req_scanner_subscription(5, sub)
     c.poll()
     assert w.errors == [(5, 10360, "Scan filter priceAbove is not allowed")], w.errors
+    assert c._test_take_commands() == [], "and nothing was sent"
