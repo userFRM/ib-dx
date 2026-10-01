@@ -3713,6 +3713,8 @@ impl ClientCore {
             return Err(Refusal::validation("Invalid market data type"));
         }
         self.market_data_type.store(mdt, Ordering::Relaxed);
+        // `fetch_update` is `try_update` on newer toolchains; the declared minimum (1.89) has only this name.
+        #[allow(deprecated)]
         let _ = self.market_data_feeds.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |feeds| {
             Some(match mdt {
                 MDT_FROZEN => feeds | FEED_FROZEN,
