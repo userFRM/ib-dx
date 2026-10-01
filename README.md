@@ -40,6 +40,7 @@ ibkr-dx implements the IBKR client protocol directly. It authenticates, maintain
 the market-data, trading, historical and security-definition connections, and
 exposes the same API a program would otherwise reach through IB Gateway — with
 no gateway process, JVM, or local socket in between.
+The default connection identifies as gateway 10.51.1b.
 
 The API has the TWS API's shape: `EClient` for requests, and `EWrapper` (in
 Rust, `Wrapper`) for what comes back. Every call and callback on the canonical
@@ -1166,7 +1167,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,308 | No |
+| Rust, unit and integration | 3,312 | No |
 | Python | 1,481 | No |
 | Rust, live | 9 | Yes |
 | Python, live | 122 | Yes |

@@ -952,7 +952,11 @@ fn kind_text(order: &Described<'_>) -> String {
 fn bond_text(def: &ContractDefinition, isin_with_cusip: bool) -> String {
     let mut out = String::new();
     let class = stated(def, 6503).unwrap_or("");
-    for part in [class, &bond_kind(def, class), &def.coupon_text] {
+    let issuer = [("GOVT", "Govt"), ("MUNI", "Muni"), ("CORP", "Corp"), ("AGENCY", "Agency")]
+        .into_iter()
+        .find_map(|(code, name)| class.eq_ignore_ascii_case(code).then_some(name))
+        .unwrap_or("");
+    for part in [issuer, &bond_kind(def, class), &def.coupon_text] {
         if !part.trim().is_empty() {
             out.push_str(part);
             out.push(' ');

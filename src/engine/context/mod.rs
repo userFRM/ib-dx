@@ -115,6 +115,9 @@ pub struct Context {
     /// without it a replaced order silently lost its algo, its all-or-none
     /// instruction and every other attribute it was placed with.
     pub(crate) submitted: HashMap<OrderId, Box<crate::types::OrderSpec>>,
+    /// The external instruction the venue associated with an order, retained
+    /// as text when the order is replaced.
+    pub(crate) external_instructions: HashMap<OrderId, String>,
     /// How many cancels have been sent for an order. A cancel names itself on
     /// tag 11, and a retry that reuses the previous name is a duplicate the
     /// server is entitled to drop — which is exactly the case a retry exists
@@ -188,6 +191,7 @@ impl Context {
             placed_at: HashMap::new(),
             order_destination: HashMap::new(),
             submitted: HashMap::new(),
+            external_instructions: HashMap::new(),
             cancel_attempts: HashMap::new(),
             before_the_cancel: HashMap::new(),
             ladder_sizes: HashMap::new(),
@@ -634,6 +638,7 @@ impl Context {
         self.placed_at.remove(&order_id);
         self.order_destination.remove(&order_id);
         self.submitted.remove(&order_id);
+        self.external_instructions.remove(&order_id);
         self.cancel_attempts.remove(&order_id);
         self.before_the_cancel.remove(&order_id);
         self.ladder_sizes.remove(&order_id);

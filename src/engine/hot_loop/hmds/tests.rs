@@ -3617,6 +3617,7 @@ fn a_refused_batch_takes_the_kept_up_to_date_stream_with_it() {
 fn a_drop_ends_a_kept_bar_request_and_asks_the_others_again() {
     use crate::types::model::ErrorOrigin;
     let mut hmds = HmdsState::new();
+    hmds.scanner_permissions = Some(Default::default());
     let shared = SharedState::new();
     let market = crate::engine::market_state::MarketState::new();
     let mut hb = HeartbeatState::new();
@@ -3887,6 +3888,7 @@ fn a_number_already_answering_a_historical_query_is_not_given_another() {
 #[test]
 fn a_number_already_running_a_scan_is_not_given_another() {
     let mut hmds = HmdsState::new();
+    hmds.scanner_permissions = Some(Default::default());
     let shared = SharedState::new();
     let mut hb = HeartbeatState::new();
     let (conn, _peer) = Connection::for_test();
@@ -3951,6 +3953,7 @@ fn an_unreadable_page_ends_a_kept_up_to_date_request_still_assembling() {
 #[test]
 fn a_scan_that_did_not_go_out_is_refused_and_not_recorded() {
     let mut hmds = HmdsState::new();
+    hmds.scanner_permissions = Some(Default::default());
     let shared = SharedState::new();
     let mut hb = HeartbeatState::new();
     hmds.send_scanner_subscribe(9, "STK", "STK.US.MAJOR", "TOP_PERC_GAIN", 50, Vec::new(), 40, &mut None, &mut hb, &shared);
@@ -4469,5 +4472,133 @@ fn a_refused_live_stream_is_told_under_its_own_families_number() {
             assert!(hmds.tbt_subscriptions.is_empty(), "{named}: the stream is gone");
         }
         assert!(over(&shared).is_empty(), "{named}: a live stream's refusal ends no historical request");
+    }
+}
+
+#[test]
+fn scanner_permissions_name_the_requested_filters_before_sending_the_subscription() {
+    let metadata = |access: &str, label: &str, reuters: &str| format!(r#"
+        <ScanParameterResponse>
+          <InstrumentList><Instrument><type>STK</type><filters>price</filters></Instrument></InstrumentList>
+          <LocationTree><Location><displayName>US stocks</displayName><locationCode>STK.US</locationCode><access>allowed;s=101</access></Location></LocationTree>
+          <ScanTypeList><ScanType><scanCode>TOP_PERC_GAIN</scanCode><displayName>Top percent gainers</displayName><access>unrestricted</access></ScanType></ScanTypeList>
+          <FilterList><RangeFilter><id>price</id><access>{access}</access><reuters>{reuters}</reuters>
+            <AbstractField varName="min"><code>priceAbove</code><displayName>Price Above</displayName></AbstractField>
+            <AbstractField varName="max"><code>priceBelow</code><displayName>{label}</displayName></AbstractField>
+          </RangeFilter></FilterList>
+        </ScanParameterResponse>"#);
+    let exercise = |xml: String, features: Vec<&str>, code: i32, detail: &str| {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        shared.reference.set_enabled_features(features.into_iter().map(str::to_string).collect());
+        let mut hb = HeartbeatState::new();
+        let (conn, mut peer) = Connection::for_test();
+        peer.set_read_timeout(Some(std::time::Duration::from_millis(50))).unwrap();
+        let mut conn = Some(conn);
+        hmds.send_scanner_subscribe(9, "STK", "STK.US", "TOP_PERC_GAIN", 10,
+            vec![("priceBelow".into(), "50".into()), ("priceAbove".into(), "1".into())], 40, &mut conn, &mut hb, &shared);
+        let first = String::from_utf8(read_frame(&mut peer)).unwrap();
+        assert!(first.contains("6040=10001"), "metadata precedes the scan: {first}");
+        assert!(!first.contains("6040=10003"));
+        let answer = fix::fix_build(&[(35, "U"), (6040, "10002"), (6118, &xml)], 1);
+        hmds.process_hmds_message(&answer, &mut conn, &shared, &None, &mut hb);
+        assert!(shared.reference.drain_scanner_params().is_empty(), "internal metadata has no unsolicited callback");
+        let told = shared.reference.drain_historical_errors();
+        if code == 0 { assert!(told.is_empty(), "{xml}: {told:?}"); }
+        else {
+            let base = if code == 490 { "run scanner" } else { "obtain precise results for scanner" };
+            assert_eq!(told, vec![(9, code, format!("You must subscribe for additional permissions to {base}:{detail}"))], "{xml}");
+        }
+        let wire = String::from_utf8(read_frame(&mut peer)).unwrap();
+        assert_eq!(wire.contains("6040=10003"), code != 490, "{xml}: {wire}");
+        assert_eq!(hmds.pending_scanner.len(), usize::from(code != 490));
+    };
+    for (access, label, reuters, features, code, detail) in [
+        ("restricted;s=101", "Price below", "", vec![], 492, "Filter:Price;Real-Time Market Data"),
+        ("disabled;s=101", "Price BELOW", "yes", vec![], 490, "Filter:Price (Refinitiv);Real-Time Market Data"),
+        ("restricted;s=101", "Price... Below", "", vec![], 492, "Filter:Price;Real-Time Market Data"),
+        ("restricted;s=101", "Amt. Outstanding...", "", vec![], 492, "Filter:Amt. Outstanding;Real-Time Market Data"),
+        ("restricted;s=101", "CustomBogus... Below", "", vec![], 492, "Filter:CustomBogus...;Real-Time Market Data"),
+        ("restricted;s=101", "Edit...", "", vec![], 492, "Filter:Edit...;Real-Time Market Data"),
+        ("restricted;s=101", "Price ...", "", vec![], 492, "Filter:Price ...;Real-Time Market Data"),
+        ("restricted;s=101", "Payment Freq.... Below", "", vec![], 492, "Filter:Payment Freq....;Real-Time Market Data"),
+        ("allowed", "Pr&#105;ce below", "", vec![], 492, "Filter:Price;Real-Time Market Data:US stocks"),
+        ("", "<![CDATA[Price & cost below]]>", "", vec![], 490, "Filter:Price & cost;Real-Time Market Data:US stocks"),
+        ("restricted;f=MOODY:123;456", "Price below", "", vec!["MOODY:123"], 492, "Filter:Price;Moody's US Bond Ratings (Corporates and Municipals)"),
+        ("restricted;f=MOODY", "Price below", "", vec!["MOODY"], 0, ""),
+        ("restricted;f=MOODY;s=101", "Price below", "", vec![], 0, ""),
+        ("restricted;f=REUTERS", "Price below", "", vec!["REUTERS:123"], 0, ""),
+        ("disabled", "Price below", "", vec![], 0, ""),
+    ] {
+        exercise(metadata(access, label, reuters), features, code, detail);
+    }
+    let special = r#"<ScannerLayoutList><ScannerLayout><instrument>STK</instrument>
+        <FilterList varName="specialFilters"><SimpleFilter><id>price</id><access>restricted;s=101</access>
+        <AbstractField varName="field"><code>priceBelow</code><codeNot>priceAbove</codeNot><displayName>Price...</displayName></AbstractField>
+        </SimpleFilter></FilterList></ScannerLayout></ScannerLayoutList>"#;
+    let xml = metadata("disabled;s=101", "Price below", "").replace("</ScanParameterResponse>", &format!("{special}</ScanParameterResponse>"));
+    exercise(xml, vec![], 492, "Filter:Price...;Real-Time Market Data");
+    let virtual_filter = r#"<VirtualFilter><id>virtual</id><displayName>Price...</displayName><access>restricted;s=101</access>
+        <FilterComponents varName="filters"><FilterComponent><code>price</code></FilterComponent></FilterComponents></VirtualFilter>"#;
+    for (access, code, detail) in [("unrestricted", 492, "Filter:Price...;Real-Time Market Data"), ("restricted;f=MOODY", 0, "")] {
+        let xml = metadata(access, "Price below", "").replace("<filters>price</filters>", "<filters>virtual</filters>")
+            .replace("</FilterList>", &format!("{virtual_filter}</FilterList>"));
+        exercise(xml, vec![], code, detail);
+    }
+}
+
+#[test]
+fn a_reused_bar_ticker_delivers_only_the_contract_currently_assigned_to_it() {
+    for (conids, exchanges, tickers, last_tick, expected, cancelled) in [
+        ([1, 2, 3], ["SMART", "SMART", "SMART"], [7, 7, 9], 0.25, vec![(2, 50.0), (3, 25.0)], None),
+        ([1, 1, 3], ["SMART", "NYSE", "SMART"], [7, 7, 9], 0.25, vec![(1, 25.0), (2, 25.0), (3, 25.0)], None),
+        ([0, 0, 3], ["SMART", "NYSE", "SMART"], [7, 7, 9], 0.25, vec![(2, 50.0), (3, 25.0)], None),
+        ([1, 2, 1], ["SMART", "SMART", "SMART"], [7, 8, 8], 0.25, vec![(1, 25.0), (3, 25.0)], None),
+        ([1, 2, 1], ["SMART", "SMART", "SMART"], [7, 8, 8], 0.5, vec![(3, 50.0)], Some(7)),
+    ] {
+        let mut hmds = HmdsState::new();
+        let shared = SharedState::new();
+        let mut hb = HeartbeatState::new();
+        let (conn, mut peer) = Connection::for_test();
+        peer.set_read_timeout(Some(std::time::Duration::from_millis(30))).unwrap();
+        let mut conn = Some(conn);
+        for i in 0..3 {
+            hmds.send_realtime_bar_subscribe(i as u32 + 1, conids[i], "", "STK", exchanges[i], "TRADES", true, &mut conn, &mut hb, &shared);
+            read_frame(&mut peer);
+        }
+        for (i, ticker) in tickers.iter().enumerate() {
+            let tick = if i == 2 { last_tick } else if i == 1 { 0.5 } else { 0.25 };
+            let ack = format!("35=W\x016118=<ResultSetTickerId><id>{}</id><tickerId>{}</tickerId><minTick>{tick}</minTick><sizeMinTick>1</sizeMinTick></ResultSetTickerId>\x01", hmds.rtbar_subs[i].0, ticker);
+            hmds.process_hmds_message(ack.as_bytes(), &mut conn, &shared, &None, &mut hb);
+        }
+        let wire = String::from_utf8(read_frame(&mut peer)).unwrap();
+        match cancelled {
+            Some(ticker) => assert!(wire.contains(&format!("ticker:{ticker}")), "{wire}"),
+            None => assert!(wire.is_empty(), "takeover requires no query or cancel: {wire}"),
+        }
+        for ticker in [7u32, 8, 9] {
+            let payload = crate::control::historical::tests::single_tick_payload(100, 5);
+            let mut frame = b"35=G\x01\x00\x00".to_vec();
+            frame.extend_from_slice(&ticker.to_be_bytes());
+            frame.extend_from_slice(&1_790_355_025u32.to_be_bytes());
+            frame.push(payload.len() as u8); frame.extend_from_slice(&payload);
+            hmds.process_hmds_message(&frame, &mut conn, &shared, &None, &mut hb);
+        }
+        let mut heard = shared.market.drain_real_time_bars().into_iter().map(|(id, bar)| (id, bar.close)).collect::<Vec<_>>();
+        heard.sort_by_key(|(id, _)| *id);
+        assert_eq!(heard, expected, "contracts={conids:?} tickers={tickers:?} increment={last_tick}");
+        if conids == [1, 1, 3] {
+            let query = hmds.rtbar_subs[0].0.clone();
+            let refused = format!("35=W\x016118=<QueryError><id>{query}</id><error>Query failed</error></QueryError>\x01");
+            hmds.process_hmds_message(refused.as_bytes(), &mut conn, &shared, &None, &mut hb);
+            assert!(hmds.withdraw_bar_stream(2, &mut conn, &mut hb));
+            let wire = String::from_utf8(read_frame(&mut peer)).unwrap();
+            assert!(wire.contains("ticker:7"), "the refused request cannot keep another reader's stream open: {wire}");
+        }
+        if conids == [1, 2, 3] {
+            assert!(hmds.withdraw_bar_stream(1, &mut conn, &mut hb));
+            let wire = String::from_utf8(read_frame(&mut peer)).unwrap();
+            assert!(wire.contains("ticker:7"), "the displaced request retains its assigned cancellation number: {wire}");
+        }
     }
 }

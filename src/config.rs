@@ -14,7 +14,7 @@
 /// costing an outage, on the day the server stops accepting this one.
 pub const IB_BUILD: &str = "10511";
 /// What this client announces as its version.
-pub const IB_VERSION: &str = "a";
+pub const IB_VERSION: &str = "b";
 /// What it announces as its client string: the runtime, the first letter of
 /// the platform, the locale and the kind of installation, as a gateway of the
 /// build above states them.

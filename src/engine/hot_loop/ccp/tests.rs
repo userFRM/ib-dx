@@ -3122,8 +3122,14 @@ fn a_replayed_pegs_replace_carries_the_shape_a_placements_does() {
     let frame: std::collections::HashMap<u32, String> = [
         (11u32, "77.2"), (41, "77.1"), (150, "5"), (39, "5"), (6008, "756733"), (38, "2"),
         (55, "SPY"), (54, "1"), (40, "P"), (18, "M"), (44, "101"), (99, "0.00"), (1, "DU1"),
+        (8615, "instruction/0007"),
     ].into_iter().map(|(t, v)| (t, v.to_string())).collect();
     ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "DU1");
+    let mut partial = frame.clone();
+    partial.remove(&8615);
+    ccp.handle_exec_report(&partial, b"", &mut context, &shared, &None, "DU1");
+    partial.insert(8615, String::new());
+    ccp.handle_exec_report(&partial, b"", &mut context, &shared, &None, "DU1");
     let recovered = context.order(77).expect("recovered");
     let instrument = recovered.instrument;
     context.set_symbol(instrument, "SPY".to_string());
@@ -3155,6 +3161,7 @@ fn a_replayed_pegs_replace_carries_the_shape_a_placements_does() {
     assert_eq!((tag("40="), tag("18=")), (vec!["P"], vec!["M"]), "the type and its instruction: {msg}");
     assert_eq!((tag("44="), tag("211=")), (vec!["101"], vec!["0"]), "the cap and the offset: {msg}");
     assert_eq!(tag("38="), ["3"], "{msg}");
+    assert_eq!(tag("8615="), ["instruction/0007"], "the venue's instruction survives a partial report and replace: {msg}");
     assert!(shared.orders.drain_order_inactive().is_empty());
 }
 
@@ -4982,18 +4989,36 @@ fn a_message_beside_an_orders_status_reaches_the_program_as_a_gateway_words_it()
             "BUY 10 FF DEC'26 above 4.5% YES Event (FFE) (FFE 26DEC 4.5 Y) "),
         row("an event at a strike of nought", event(0.0, &[(6688, "Event")]), Side::Buy, 10.0,
             "BUY 10 FF DEC'26  YES Event (FFE) (FFE 26DEC 4.5 Y) "),
-        row("a note", note.clone(), Side::Buy, 5.0, "BUY $5K US-T GOVT Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
-        row("part of a bond, sold whole", note, Side::Buy, 2.5, "BUY $2K US-T GOVT Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
-        row("a perpetual bond in euros", perpetual, Side::Sell, 2.0, "SELL \\u20ac2K DB CORP TIPS 7.5 Perpetual XS1234567890"),
-        row("a bond with no face value", unvalued.clone(), Side::Buy, 3.0, "BUY 3 IBM CORP 4.5 Feb'29 IBCID12345"),
-        Row { size: 0.001, ..row("part of a bond with no face value", unvalued, Side::Buy, 2.5, "BUY 2 IBM CORP 4.5 Feb'29 IBCID12345") },
+        row("a note", note.clone(), Side::Buy, 5.0, "BUY $5K US-T Govt Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("a lowercase issuer class", ContractDefinition {
+            unnamed_fields: vec![(6503, "govt".into()), (6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Govt Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("an agency bond", ContractDefinition {
+            unnamed_fields: vec![(6503, "AGENCY".into()), (6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Agency Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("an unknown issuer class", ContractDefinition {
+            unnamed_fields: vec![(6503, "Custom".into()), (6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("a padded issuer class", ContractDefinition {
+            unnamed_fields: vec![(6503, " GOVT ".into()), (6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("a lowercase municipal issuer class", ContractDefinition {
+            unnamed_fields: vec![(6503, "muni".into()), (6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Muni Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("a bond without an issuer class", ContractDefinition {
+            unnamed_fields: vec![(6504, "1000".into())], ..note.clone()
+        }, Side::Buy, 5.0, "BUY $5K US-T Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("part of a bond, sold whole", note, Side::Buy, 2.5, "BUY $2K US-T Govt Notes 4.250 Nov05'35 91282CKX0 AA+/Aaa"),
+        row("a perpetual bond in euros", perpetual, Side::Sell, 2.0, "SELL \\u20ac2K DB Corp TIPS 7.5 Perpetual XS1234567890"),
+        row("a bond with no face value", unvalued.clone(), Side::Buy, 3.0, "BUY 3 IBM Corp 4.5 Feb'29 IBCID12345"),
+        Row { size: 0.001, ..row("part of a bond with no face value", unvalued, Side::Buy, 2.5, "BUY 2 IBM Corp 4.5 Feb'29 IBCID12345") },
         row("fixed income", ContractDefinition {
             bond_type: "Fixed Rate".into(), last_trade_date: "20300101".into(),
             ..def(SecurityType::FixedIncome, "XYZ", "")
         }, Side::Sell, 1.0, "SELL 1 XYZ Rate Jan01'30"),
         Row {
             features: &["CUSIPD"],
-            ..row("a municipal bond", municipal, Side::Buy, 1.0, "BUY $5K NYC MUNI BOND Revenue 5 NOEXP US0000123450")
+            ..row("a municipal bond", municipal, Side::Buy, 1.0, "BUY $5K NYC Muni BOND Revenue 5 NOEXP US0000123450")
         },
         Row {
             stated: &[(6360, "TIME"), (6361, "See FAQ 12345678 for the hours")],

@@ -2,6 +2,8 @@
 
 use crate::protocol::fix;
 
+pub(crate) mod permissions;
+
 /// Take the scan's settings without refusing the scan. Their representation
 /// on this connection has not been established, so they are not carried.
 pub(crate) fn note_setting_pairs(pairs: &str) {

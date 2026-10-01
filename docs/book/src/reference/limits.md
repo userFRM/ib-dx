@@ -766,7 +766,11 @@ answers them:
   prices are needed when specifying per-leg prices.*).
 - A limit of the combination's own beside a priced first leg is refused under
   10054, *Can't specify combo price when using per-leg prices.*
-- A combination priced on every leg is refused under 10058, *Combo per-leg
+- A combination with more than two legs and no overall limit is refused under
+  10369 for LMT, STP LMT, PEG MKT, PEG MID, PEG BEST, LOC, TRAIL LIMIT and LIT:
+  *Limit price is required for combo orders with more than 2 legs.* Zero is a
+  valid combination limit. This check follows 10054 and precedes 10058.
+- Otherwise, a combination priced on every leg is refused under 10058, *Combo per-leg
   prices are only supported for non-guaranteed smart combo with two legs and
   feature "IECOMBOPERLEGPRICE" enabled.*
 - Prices on later legs alone are read and not sent, as a gateway sends none;

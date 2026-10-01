@@ -2606,3 +2606,38 @@ fn the_placements_a_drop_leaves_waiting_are_said_and_held_as_a_gateway_holds_the
         }
     }
 }
+
+#[test]
+fn scans_waiting_for_permissions_can_be_cancelled_and_survive_a_disconnect() {
+    let (mut hl, shared, tx, mut peer) = with_historical();
+    for req_id in [7, 8] {
+        tx.send(ControlCommand::SubscribeScanner {
+            req_id, instrument: "STK".into(), location_code: "STK.US".into(),
+            scan_code: "TOP_PERC_GAIN".into(), max_items: 10, filters: Vec::new(),
+        }).unwrap();
+    }
+    tx.send(ControlCommand::FetchScannerParams).unwrap();
+    hl.poll_control_commands();
+    let wire = sent(&mut peer);
+    assert_eq!(wire.matches("6040=10001").count(), 1);
+    assert!(!wire.contains("6040=10003"));
+    tx.send(ControlCommand::CancelScanner { req_id: 7 }).unwrap();
+    hl.poll_control_commands();
+    assert!(sent(&mut peer).is_empty());
+    hl.hmds.disconnect(&mut hl.hmds_conn, &shared, &None);
+    assert_eq!(shared.reference.drain_historical_errors(), vec![(8, 165,
+        "Historical Market Data Service query message:HMDS server disconnect occurred.  Attempting reconnection...".into())]);
+    let (conn, mut peer) = Connection::for_test();
+    peer.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+    hl.hmds.reconnect(conn, &mut hl.hmds_conn, &hl.context.market, &mut hl.hb, &shared);
+    assert_eq!(shared.reference.drain_historical_errors(), vec![(8, 165,
+        "Historical Market Data Service query message:HMDS server connection was successful.".into())]);
+    let wire = sent(&mut peer);
+    assert_eq!(wire.matches("6040=10001").count(), 1, "{wire}");
+    arrives(&mut hl, b"35=U\x016040=10002\x016118=<ScanParameterResponse/>\x01");
+    let wire = sent(&mut peer);
+    assert_eq!(wire.matches("6040=10003").count(), 1, "only the surviving scan: {wire}");
+    assert!(wire.contains("APISCAN1:8"), "{wire}");
+    assert_eq!(shared.reference.drain_scanner_params(), vec!["<ScanParameterResponse/>".to_string()], "the explicit question still has exactly one callback");
+    assert!(hl.hmds.scanner_waiting.is_empty());
+}

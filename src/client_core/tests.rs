@@ -2556,6 +2556,37 @@ fn prices_stated_for_the_legs_are_answered_as_a_gateway_answers_them() {
     }
 }
 
+#[test]
+fn a_limit_combination_with_three_legs_requires_its_own_price() {
+    let mut contract = crate::types::model::Contract {
+        sec_type: "BAG".into(),
+        combo_legs: (1..=3).map(|con_id| crate::types::model::ComboLeg {
+            con_id, ratio: 1, action: "BUY".into(), exchange: "SMART".into(), ..Default::default()
+        }).collect(), ..Default::default()
+    };
+    for kind in ["LMT", "STP LMT", "PEG MKT", "PEG MID", "PEG BEST", "LOC", "TRAIL LIMIT", "LIT"] {
+        let mut order = ApiOrder {
+            action: "BUY".into(), total_quantity: 1.0, order_type: kind.into(),
+            aux_price: 1.0, trail_stop_price: 2.0, ..Default::default()
+        };
+        let why = ClientCore::build_order_request(&order, 7, 0, Some(&contract)).unwrap_err();
+        assert_eq!((why.code, why.message.as_str()), (10369, "Limit price is required for combo orders with more than 2 legs."), "{kind}");
+        order.lmt_price = 0.0;
+        let result = ClientCore::build_order_request(&order, 7, 0, Some(&contract));
+        assert!(result.as_ref().err().is_none_or(|why| why.code != 10369), "zero is a combination price: {kind}");
+    }
+    let mut order = ApiOrder { action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(), order_combo_legs: vec![1.0; 3], ..Default::default() };
+    assert_eq!(ClientCore::build_order_request(&order, 7, 0, Some(&contract)).unwrap_err().code, 10369);
+    order.lmt_price = 4.0;
+    assert_eq!(ClientCore::build_order_request(&order, 7, 0, Some(&contract)).unwrap_err().code, 10054);
+    order.lmt_price = f64::MAX;
+    contract.combo_legs.pop(); order.order_combo_legs.pop();
+    assert_eq!(ClientCore::build_order_request(&order, 7, 0, Some(&contract)).unwrap_err().code, 10058);
+    order.order_combo_legs.clear(); order.order_type = "MKT".into();
+    contract.combo_legs.push(crate::types::model::ComboLeg { con_id: 3, ratio: 1, action: "BUY".into(), exchange: "SMART".into(), ..Default::default() });
+    assert!(ClientCore::build_order_request(&order, 7, 0, Some(&contract)).is_ok());
+}
+
 /// A discretionary amount below nought is refused as a gateway refuses it.
 /// Taken, it was dropped on the way out and the order went without the
 /// discretion the caller named, reported as placed.

@@ -83,6 +83,9 @@ pub(crate) struct HmdsState {
     /// request, as a gateway keeps it with the request, and when it went out.
     pub(crate) pending_head_ts: Vec<(String, u32, i32, Instant)>,
     pub(crate) pending_scanner_params: bool,
+    scanner_params_internal: bool,
+    pub(crate) scanner_permissions: Option<crate::control::scanner::permissions::Permissions>,
+    pub(crate) scanner_waiting: Vec<(u32, crate::control::scanner::ScannerSubscription, usize)>,
     /// Questions for the scanner's parameters asked while one is on the wire.
     ///
     /// The answer names no question, so one on the wire at a time: each is
@@ -126,6 +129,7 @@ pub(crate) struct HmdsState {
     /// (query name, caller's request id, the venue's ticker for the stream,
     /// the increment its prices move in, the increment its sizes move in).
     pub(crate) rtbar_subs: Vec<(String, u32, Option<u32>, f64, f64)>,
+    rtbar_routes: Vec<BarRoute>,
     /// req_ids that should keep streaming after initial batch (keepUpToDate=True).
     pub(crate) keep_up_to_date_reqs: std::collections::HashSet<u32>,
     /// The bars still forming, one per request keeping its bars up to date.
@@ -408,6 +412,15 @@ impl RtBarRequest {
     }
 }
 
+struct BarRoute {
+    contracts: Vec<RtBarRequest>,
+    readers: Vec<u32>,
+    ticker: Option<u32>,
+    active: bool,
+    min_tick: f64,
+    size_tick: f64,
+}
+
 /// Whether a held series is folded with the contract's actions before it is
 /// filed, and with which of them.
 ///
@@ -539,6 +552,9 @@ impl HmdsState {
             pending_historical: Vec::new(),
             pending_head_ts: Vec::new(),
             pending_scanner_params: false,
+            scanner_params_internal: false,
+            scanner_permissions: None,
+            scanner_waiting: Vec::new(),
             scanner_params_queued: 0,
             pending_scanner: Vec::new(),
             next_scanner_id: 1,
@@ -550,6 +566,7 @@ impl HmdsState {
             pending_schedule: Vec::new(),
             pending_ticks: Vec::new(),
             rtbar_subs: Vec::new(),
+            rtbar_routes: Vec::new(),
             rtbar_withdrawn_unnumbered: std::collections::HashMap::new(),
             keep_up_to_date_reqs: std::collections::HashSet::new(),
             forming_bars: Vec::new(),
@@ -592,7 +609,8 @@ impl HmdsState {
         // connection and its answer with it: it waits to be asked again. Every
         // question asks the same thing and the answer names none of them, so
         // the queue is a count and nothing is out of order in it.
-        self.scanner_params_queued += usize::from(std::mem::replace(&mut self.pending_scanner_params, false));
+        self.scanner_params_queued += usize::from(std::mem::take(&mut self.pending_scanner_params)
+            & !std::mem::take(&mut self.scanner_params_internal));
         self.tell_the_bar_requests_of_the_drop(shared);
         self.tell_those_waiting(shared, "HMDS server disconnect occurred.  Attempting reconnection...");
         self.fail_pending("the historical connection went away before the venue answered", shared);
@@ -644,6 +662,7 @@ impl HmdsState {
         self.pending_historical.retain(|(_, rid)| *rid != req_id);
         self.pending_schedule.retain(|(_, rid, _)| *rid != req_id);
         self.rtbar_subs.retain(|(_, rid, ..)| *rid != req_id);
+        self.forget_bar_reader(req_id);
         self.rtbar_resub.retain(|r| r.req_id != req_id);
         self.forming_bars.retain(|f| f.req_id != req_id);
     }
@@ -674,8 +693,10 @@ impl HmdsState {
         for ask in &self.asked_again {
             tell_query_message(shared, ask.req_id, what);
         }
-        for (_, req_id, _) in &self.pending_scanner {
-            tell_query_message(shared, *req_id, what);
+        for req_id in self.pending_scanner.iter().map(|(_, id, _)| *id)
+            .chain(self.scanner_waiting.iter().map(|(id, ..)| *id))
+        {
+            tell_query_message(shared, req_id, what);
         }
     }
 
@@ -710,7 +731,12 @@ impl HmdsState {
         {
             super::push_hmds_unavailable(shared, req_id, false);
         }
-        let questions = usize::from(std::mem::replace(&mut self.pending_scanner_params, false))
+        let waiting_scans = std::mem::take(&mut self.scanner_waiting);
+        for (req_id, ..) in &waiting_scans {
+            super::push_hmds_unavailable(shared, *req_id, false);
+        }
+        let questions = usize::from(std::mem::take(&mut self.pending_scanner_params)
+            & !std::mem::take(&mut self.scanner_params_internal))
             + std::mem::take(&mut self.scanner_params_queued);
         for _ in 0..questions {
             shared.reference.push_error_from(
@@ -723,7 +749,7 @@ impl HmdsState {
                 super::HMDS_UNAVAILABLE.to_string(),
             );
         }
-        !scans.is_empty()
+        !scans.is_empty() || !waiting_scans.is_empty()
     }
 
     /// End each head timestamp the venue has not answered in the time a
@@ -782,6 +808,7 @@ impl HmdsState {
         for (req_id, from_historical) in &stranded {
             if *from_historical && self.keep_up_to_date_reqs.remove(req_id) {
                 self.rtbar_subs.retain(|(_, rid, ..)| rid != req_id);
+                self.forget_bar_reader(*req_id);
                 self.rtbar_resub.retain(|r| &r.req_id != req_id);
                 self.forming_bars.retain(|f| &f.req_id != req_id);
             }
@@ -854,6 +881,7 @@ impl HmdsState {
         // The routing goes with it and the requests are sent again.
         let bars: Vec<_> = self.rtbar_resub.clone();
         self.rtbar_subs.clear();
+        self.rtbar_routes.clear();
         self.rtbar_resub.clear();
         // And a withdrawal waiting for a number the dead session would have
         // stated: nothing on the new one carries that name.
@@ -1388,36 +1416,16 @@ impl HmdsState {
                             .filter(|t| *t > 0.0)
                             .unwrap_or(1.0);
                         let ticker_id: u32 = ticker_id_str.parse().unwrap_or(0);
-                        let mut matched = false;
-                        for sub in &mut self.rtbar_subs {
-                            if answers(xml_tag, &sub.0) {
-                                sub.2 = Some(ticker_id);
-                                sub.3 = min_tick;
-                                // And the increment its sizes move in. A
-                                // stream asked for directly is written down
-                                // before the ack arrives, with a placeholder
-                                // for both — updating only the price one left
-                                // every ordinary real-time bar counting sizes
-                                // as whole units.
-                                sub.4 = size_tick;
-                                log::info!("HMDS rtbar ticker_id={} min_tick={} for req_id={}", ticker_id, min_tick, sub.1);
-                                matched = true;
-                                break;
-                            }
+                        let direct = self.rtbar_subs.iter().position(|sub| answers(xml_tag, &sub.0));
+                        let matched = direct.or_else(|| {
+                            let (qid, req_id) = self.pending_historical.iter().find(|(qid, req_id)| answers(xml_tag, qid) && self.keep_up_to_date_reqs.contains(req_id))?;
+                            self.rtbar_subs.push((qid.clone(), *req_id, None, min_tick, size_tick));
+                            Some(self.rtbar_subs.len() - 1)
+                        });
+                        if let Some(at) = matched {
+                            self.assign_bar_route(at, ticker_id, min_tick, size_tick, hmds_conn, hb);
                         }
-                        if !matched {
-                            // Check keepUpToDate historical queries
-                            for (qid, req_id) in &self.pending_historical {
-                                if answers(xml_tag, qid) && self.keep_up_to_date_reqs.contains(req_id) {
-                                    // Store as rtbar subscription so 35=G bars get
-                                    // dispatched
-                                    self.rtbar_subs.push((qid.clone(), *req_id, Some(ticker_id), min_tick, size_tick));
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if !matched {
+                        if matched.is_none() {
                             log::info!("HMDS TBT ticker_id assigned: {ticker_id_str}");
                         }
                     }
@@ -1492,6 +1500,7 @@ impl HmdsState {
                                 // record goes too, or the next reconnect asks
                                 // for a stream the server already refused.
                                 let (_, req_id, ..) = self.rtbar_subs.remove(pos);
+                                self.forget_bar_reader(req_id);
                                 self.rtbar_resub.retain(|r| r.req_id != req_id);
                                 // Where the stream was the half of a request
                                 // kept up to date, the program is told nothing
@@ -1724,7 +1733,14 @@ impl HmdsState {
                         "10002" => {
                             if let Some(xml) = parsed.get(&6118) {
                                 self.pending_scanner_params = false;
-                                shared.reference.push_scanner_params(xml.clone());
+                                self.scanner_permissions = Some(crate::control::scanner::permissions::Permissions::parse(xml));
+                                if !std::mem::replace(&mut self.scanner_params_internal, false) {
+                                    shared.reference.push_scanner_params(xml.clone());
+                                }
+                                for (req_id, sub, maximum) in std::mem::take(&mut self.scanner_waiting) {
+                                    self.send_scanner_subscribe(req_id, &sub.instrument, &sub.location_code, &sub.scan_code,
+                                        sub.max_items, sub.filters, maximum, hmds_conn, hb, shared);
+                                }
                             }
                         }
                         "10005" => {
@@ -2177,6 +2193,72 @@ impl HmdsState {
         }
     }
 
+    fn forget_bar_reader(&mut self, req_id: u32) {
+        for route in &mut self.rtbar_routes { route.readers.retain(|id| *id != req_id); }
+        self.rtbar_routes.retain(|route| !route.readers.is_empty());
+    }
+
+    fn bar_route_active(&self, req_id: u32) -> bool {
+        self.rtbar_routes.iter().find(|route| route.readers.contains(&req_id))
+            .is_none_or(|route| route.active)
+    }
+
+    fn assign_bar_route(&mut self, at: usize, ticker: u32, min_tick: f64, size_tick: f64,
+        conn: &mut Option<Connection>, hb: &mut HeartbeatState)
+    {
+        let req_id = self.rtbar_subs[at].1;
+        let asked = self.rtbar_resub.iter().find(|ask| ask.req_id == req_id).cloned()
+            .or_else(|| self.bar_asks.iter().find(|ask| ask.req_id == req_id).map(|ask| RtBarRequest {
+                req_id, con_id: ask.con_id, sec_type: ask.sec_type.clone(), exchange: ask.exchange.clone(),
+                what_to_show: ask.what_to_show.clone(), use_rth: ask.use_rth,
+            }));
+        let Some(asked) = asked else {
+            self.rtbar_subs[at].2 = Some(ticker); self.rtbar_subs[at].3 = min_tick; self.rtbar_subs[at].4 = size_tick;
+            return;
+        };
+        let same_contract = |other: &RtBarRequest| other.bars() == asked.bars()
+            && (asked.con_id != 0 || other.req_id == asked.req_id);
+        let current = self.rtbar_routes.iter().position(|route| route.active && route.ticker == Some(ticker));
+        let compatible = current.filter(|&pos| {
+            let route = &self.rtbar_routes[pos];
+            let primary = &route.contracts[0];
+            primary.what_to_show == asked.what_to_show && primary.use_rth == asked.use_rth
+                && (route.contracts.iter().any(same_contract) || (primary.con_id != 0 && primary.con_id == asked.con_id))
+        });
+        let alternate = if current.is_some_and(|pos| {
+            let primary = &self.rtbar_routes[pos].contracts[0];
+            primary.what_to_show != asked.what_to_show || primary.use_rth != asked.use_rth
+        }) { None } else {
+            self.rtbar_routes.iter().position(|route| route.active && route.contracts.iter().any(same_contract))
+        };
+        let target = compatible.or_else(|| alternate.filter(|&pos| {
+            let previous = self.rtbar_routes[pos].min_tick;
+            previous.to_bits() == min_tick.to_bits() || (previous.is_nan() && min_tick.is_nan())
+        }));
+        if let Some(pos) = current.filter(|pos| Some(*pos) != target) { self.rtbar_routes[pos].active = false; }
+        if compatible.is_none() && target.is_none() && let Some(pos) = alternate {
+            let route = &mut self.rtbar_routes[pos];
+            route.active = false;
+            let cancelled = route.ticker.take();
+            for sub in &mut self.rtbar_subs { if route.readers.contains(&sub.1) { sub.2 = None; } }
+            if let Some(number) = cancelled { self.send_historical_cancel(&number.to_string(), conn, hb); }
+        }
+        for route in &mut self.rtbar_routes { route.readers.retain(|id| *id != req_id); }
+        let target = target.unwrap_or_else(|| {
+            self.rtbar_routes.push(BarRoute { contracts: Vec::new(), readers: Vec::new(), ticker: Some(ticker), active: true, min_tick, size_tick });
+            self.rtbar_routes.len() - 1
+        });
+        let route = &mut self.rtbar_routes[target];
+        if !route.contracts.iter().any(|contract| contract.bars() == asked.bars() && (asked.con_id != 0 || contract.req_id == req_id)) {
+            route.contracts.push(asked);
+        }
+        route.readers.push(req_id); route.ticker = Some(ticker); route.active = true;
+        for sub in &mut self.rtbar_subs {
+            if route.readers.contains(&sub.1) { sub.2 = Some(ticker); sub.3 = route.min_tick; sub.4 = route.size_tick; }
+        }
+        self.rtbar_routes.retain(|route| !route.readers.is_empty());
+    }
+
     fn handle_rtbar_data(&mut self, msg: &[u8], shared: &SharedState) {
         let body = match find_body_after_tag(msg, b"35=G\x01") {
             Some(b) => b,
@@ -2201,7 +2283,7 @@ impl HmdsState {
             // stand twice under one number, and hears each bar once.
             let mut served = Vec::new();
             for (_, req_id, tid, min_tick, size_tick) in &self.rtbar_subs {
-                if *tid != Some(ticker_id) || served.contains(req_id) {
+                if *tid != Some(ticker_id) || served.contains(req_id) || !self.bar_route_active(*req_id) {
                     continue;
                 }
                 served.push(*req_id);
@@ -3201,6 +3283,15 @@ fn build_tbt_query(
         };
         let (query_id, _, ticker_id, ..) = self.rtbar_subs.remove(pos);
         self.rtbar_subs.retain(|(_, rid, ..)| *rid != req_id);
+        if let Some(at) = self.rtbar_routes.iter().position(|route| route.readers.contains(&req_id)) {
+            let route = &mut self.rtbar_routes[at];
+            route.readers.retain(|id| *id != req_id);
+            if route.readers.is_empty() {
+                let route = self.rtbar_routes.remove(at);
+                if let Some(number) = route.ticker { self.send_historical_cancel(&number.to_string(), hmds_conn, hb); }
+            }
+            return true;
+        }
         match ticker_id {
             Some(number) if self.rtbar_subs.iter().any(|(_, _, tid, ..)| *tid == Some(number)) => {
                 log::info!("bar stream {number} is still read by another request; left running for it");
@@ -3342,9 +3433,17 @@ fn build_tbt_query(
             self.scanner_params_queued -= 1;
             self.send_scanner_params_request(hmds_conn, hb, shared);
         }
+        if *left > 0 && !self.pending_scanner_params && self.scanner_permissions.is_none() && !self.scanner_waiting.is_empty() {
+            *left -= 1;
+            self.start_scanner_params_request(hmds_conn, hb, shared, true);
+        }
     }
 
     pub(crate) fn send_scanner_params_request(&mut self, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState) {
+        self.start_scanner_params_request(hmds_conn, hb, shared, false);
+    }
+
+    fn start_scanner_params_request(&mut self, hmds_conn: &mut Option<Connection>, hb: &mut HeartbeatState, shared: &SharedState, internal: bool) {
         // The request carries no number of its own, so a failure is reported
         // under none, as a refusal of the question: left unreported, the call
         // returned as though the question had been asked and the answer
@@ -3359,12 +3458,16 @@ fn build_tbt_query(
             why,
         );
         let Some(conn) = hmds_conn.as_mut() else {
-            refuse(super::HMDS_UNAVAILABLE.to_string());
+            if internal {
+                for (req_id, ..) in std::mem::take(&mut self.scanner_waiting) {
+                    super::push_hmds_unavailable(shared, req_id, false);
+                }
+            } else { refuse(super::HMDS_UNAVAILABLE.to_string()); }
             return;
         };
         // One on the wire at a time: the answer names no question.
         if self.pending_scanner_params {
-            self.scanner_params_queued += 1;
+            if !internal { self.scanner_params_queued += 1; }
             return;
         }
         let ts = chrono_free_timestamp();
@@ -3373,10 +3476,16 @@ fn build_tbt_query(
             (fix::TAG_SENDING_TIME, &ts),
             (crate::control::scanner::TAG_SUB_PROTOCOL, "10001"),
         ]) {
-            refuse(format!("scanner parameters request could not be sent: {e}"));
+            let why = format!("scanner parameters request could not be sent: {e}");
+            if internal {
+                for (req_id, ..) in std::mem::take(&mut self.scanner_waiting) {
+                    super::push_hmds_refusal(shared, req_id, crate::error_codes::Refusal::NOT_CONNECTED, why.clone(), false);
+                }
+            } else { refuse(why); }
             return;
         }
         self.pending_scanner_params = true;
+        self.scanner_params_internal = internal;
         hb.last_hmds_sent = Instant::now();
         log::info!("Sent scanner params request");
     }
@@ -3385,10 +3494,9 @@ fn build_tbt_query(
         // A gateway counts the scans a login holds against a tenth of the
         // maximum its logon states, and refuses the next one where the
         // request is taken — before the number is even read for duplication.
-        // The count is of the scans the venue holds, not of anything waiting
-        // locally.
+        // A scan waiting for its permissions also occupies a subscription slot.
         let limit = max_message_rate / 10;
-        if self.pending_scanner.len() >= limit {
+        if self.pending_scanner.len() + self.scanner_waiting.len() >= limit {
             super::push_hmds_refusal(
                 shared,
                 req_id,
@@ -3406,7 +3514,9 @@ fn build_tbt_query(
         // does. And the withdrawal takes one entry, so the other stayed
         // running and went on delivering rows under a number the caller had
         // withdrawn.
-        if self.pending_scanner.iter().any(|(_, id, _)| *id == req_id) {
+        if self.pending_scanner.iter().any(|(_, id, _)| *id == req_id)
+            || self.scanner_waiting.iter().any(|(id, ..)| *id == req_id)
+        {
             super::push_hmds_refusal(
                 shared,
                 req_id,
@@ -3423,6 +3533,19 @@ fn build_tbt_query(
             max_items,
             filters,
         };
+        let Some(permissions) = self.scanner_permissions.as_ref() else {
+            self.scanner_waiting.push((req_id, sub, max_message_rate));
+            if !self.pending_scanner_params {
+                self.start_scanner_params_request(hmds_conn, hb, shared, true);
+            }
+            return;
+        };
+        if let Some((code, text)) = permissions.notice(&sub, &shared.reference.enabled_features()) {
+            shared.reference.push_error_from(req_id, crate::types::model::ErrorOrigin::Request {
+                id: i64::from(req_id), ends: code == 490,
+            }, code, text);
+            if code == 490 { return; }
+        }
         let scan_id = format!("APISCAN{}:{}", self.next_scanner_id, req_id);
         self.next_scanner_id += 1;
         let xml = match crate::control::scanner::build_scanner_subscribe_xml(&sub, &scan_id) {
@@ -3980,7 +4103,7 @@ fn build_tbt_query(
         // venue answers every query for them under the one number, and the
         // stream stays until its last reader leaves.
         let running = self.rtbar_resub.iter()
-            .filter(|r| r.bars() == asked.bars())
+            .filter(|r| r.bars() == asked.bars() && self.bar_route_active(r.req_id))
             .find_map(|r| self.rtbar_subs.iter().find(|(_, rid, tid, ..)| *rid == r.req_id && tid.is_some()))
             .cloned();
         self.rtbar_resub.push(asked);
@@ -3991,7 +4114,8 @@ fn build_tbt_query(
         // it never sends: a refusal naming the query that opened the stream is
         // that query's. Filed under that name, the reader was told it had
         // failed, and dropped, while the bars went on.
-        if let Some((_, _, ticker_id, min_tick, size_tick)) = running {
+        if let Some((_, owner, ticker_id, min_tick, size_tick)) = running {
+            if let Some(route) = self.rtbar_routes.iter_mut().find(|route| route.readers.contains(&owner)) { route.readers.push(req_id); }
             log::info!("rtbar req_id={req_id} reads the stream already running as {ticker_id:?}");
             self.rtbar_subs.push((query_id, req_id, ticker_id, min_tick, size_tick));
             return;

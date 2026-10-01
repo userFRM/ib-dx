@@ -1916,7 +1916,9 @@ impl HotLoop {
                     }
                 }
                 ControlCommand::CancelScanner { req_id } => {
-                    if let Some(pos) = self.hmds.pending_scanner.iter().position(|(_, rid, _)| *rid == req_id) {
+                    if let Some(pos) = self.hmds.scanner_waiting.iter().position(|(id, ..)| *id == req_id) {
+                        self.hmds.scanner_waiting.remove(pos);
+                    } else if let Some(pos) = self.hmds.pending_scanner.iter().position(|(_, rid, _)| *rid == req_id) {
                         let (scan_id, ..) = self.hmds.pending_scanner.remove(pos);
                         self.hmds.send_scanner_cancel(&scan_id, &mut self.hmds_conn, &mut self.hb);
                     } else {
@@ -9090,10 +9092,10 @@ mod tests {
     /// maximum its logon states — forty, and so four scans, where the logon
     /// states none — and refuses the next scan where the taking is, under the
     /// number a refusal of the taking carries, in its standing words. The
-    /// count is of the scans the venue holds, not of anything waiting locally.
+    /// count includes subscriptions waiting for scanner metadata.
     #[test]
     fn a_scan_past_a_tenth_of_the_logon_rate_is_refused_where_the_taking_is() {
-        for (rate, limit, logon_up) in [(40usize, 4usize, false), (100, 10, true), (20, 2, true)] {
+        for (rate, limit, logon_up, waiting) in [(40usize, 4usize, false, false), (100, 10, true, false), (20, 2, true, false), (40, 4, false, true)] {
             let shared = Arc::new(SharedState::new());
             let mut hl = HotLoop::new(shared.clone(), None, None);
             let (conn, _peer) = Connection::for_test();
@@ -9106,7 +9108,15 @@ mod tests {
             let (tx, rx) = std::sync::mpsc::sync_channel(4);
             hl.set_control_rx(rx);
             for rid in 1..=limit {
-                hl.hmds.pending_scanner.push((format!("APISCAN1:{rid}"), rid as u32, String::new()));
+                if waiting {
+                    tx.send(ControlCommand::SubscribeScanner {
+                        req_id: rid as u32, instrument: "STK".into(), location_code: "STK.US.MAJOR".into(),
+                        scan_code: "TOP_PERC_GAIN".into(), max_items: 50, filters: Vec::new(),
+                    }).unwrap();
+                    hl.poll_control_commands();
+                } else {
+                    hl.hmds.pending_scanner.push((format!("APISCAN1:{rid}"), rid as u32, String::new()));
+                }
             }
             tx.send(ControlCommand::SubscribeScanner {
                 req_id: limit as u32 + 1, instrument: "STK".into(),
@@ -9115,7 +9125,7 @@ mod tests {
             }).unwrap();
             hl.poll_control_commands();
             assert_eq!(
-                hl.hmds.pending_scanner.len(), limit,
+                hl.hmds.pending_scanner.len() + hl.hmds.scanner_waiting.len(), limit,
                 "({rate}) the scan past the cap does not run",
             );
             assert_eq!(

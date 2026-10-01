@@ -1007,6 +1007,9 @@ pub(crate) fn drain_and_send_orders(
                     }
                 }
                 fields.extend(attr_fields.iter().map(|(t, v)| (*t, v.as_str())));
+                if let Some(instruction) = context.external_instructions.get(&order_id).filter(|value| !value.is_empty()) {
+                    fields.push((8615, instruction));
+                }
                 note_sent(shared, &fields);
                 conn.send_fix(&fields)
             }

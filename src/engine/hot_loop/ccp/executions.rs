@@ -2193,6 +2193,10 @@ impl CcpState {
             return;
         }
 
+        if let Some(instruction) = parsed.get(&8615).filter(|value| !value.is_empty()) {
+            context.external_instructions.insert(clord_id, instruction.clone());
+        }
+
         // A rejection naming this client's cancel refuses the cancel, not the
         // order: the venue names the request it will not take and no order of
         // its own. The order stands where it stood before the cancel went out,

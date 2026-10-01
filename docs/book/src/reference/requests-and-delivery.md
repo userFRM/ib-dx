@@ -153,7 +153,22 @@ are signed `i32` and are sent unchanged.
 
 Rust `req_scanner_subscription` takes a final `scanner_setting_pairs: &str`;
 pass `""` when none are stated. Both surfaces accept these pairs and warn once
-that they are not carried to the venue.
+that they are not carried to the venue. Scanner subscriptions first load
+permission metadata. Missing permissions produce error 490 and prevent the
+subscription, or warning 492 while the scan continues. Notices name the scan
+and requested filters; range names omit the trailing “below” regardless of
+letter case and resolve recognized English labels before an ellipsis.
+Metadata fetched for a subscription produces no unsolicited
+`scanner_parameters` callback.
+
+When a real-time bar ticker is reassigned to a different contract, its bars
+reach the new contract's subscriptions. Existing subscriptions retain their
+assigned cancellation number. Readers of the same contract share its stream
+and price and size increments.
+
+Bond order messages use Govt, Muni, Corp and Agency issuer labels. An unknown
+issuer category is omitted. A replacement preserves a venue-provided external
+instruction identifier, including nonnumeric identifiers.
 
 ## Accounts, exercises and snapshots
 

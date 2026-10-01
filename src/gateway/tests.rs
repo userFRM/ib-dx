@@ -432,8 +432,8 @@ fn build_ccp_logon_structure() {
     assert_eq!(fields[&98], "0");
     assert_eq!(fields[&108], "10");
     assert_eq!(fields[&141], "Y");
-    assert_eq!(fields[&6034], crate::config::ib_build());
-    assert_eq!(fields[&6968], crate::config::ib_version());
+    assert_eq!(fields[&6034], "10511");
+    assert_eq!(fields[&6968], "b");
     assert_eq!(fields[&6490], "dark");
     assert_eq!(fields[&6397], "1");
     assert_eq!(fields[&8361], "(rolling)");

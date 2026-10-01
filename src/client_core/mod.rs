@@ -7320,17 +7320,23 @@ impl ClientCore {
                      CodeMsgPair::[m_code={code}m_msg={text}]m_sysMsg={text}]",
                 )));
             }
-            if priced.first() == Some(&true) {
-                return Err(if order.lmt_price != 0.0 && order.lmt_price != f64::MAX {
-                    Refusal::stated(COMBO_AND_LEG_PRICES, "Can't specify combo price when using per-leg prices.")
-                } else {
-                    Refusal::stated(
-                        PER_LEG_PRICES_UNSUPPORTED,
-                        "Combo per-leg prices are only supported for non-guaranteed smart \
-                         combo with two legs and feature \"IECOMBOPERLEGPRICE\" enabled.",
-                    )
-                });
+            if priced.first() == Some(&true) && order.lmt_price != 0.0 && order.lmt_price != f64::MAX {
+                return Err(Refusal::stated(COMBO_AND_LEG_PRICES, "Can't specify combo price when using per-leg prices."));
             }
+        }
+        if legs > 2 && contract.is_some_and(|c| c.sec_type.trim().eq_ignore_ascii_case("BAG"))
+            && limit == f64::MAX
+            && matches!(order_type, Some("LMT" | "STP LMT" | "PEG MKT" | "PEG MID" | "PEG BEST" | "LOC"
+                | "TRAIL LIMIT" | "LIT"))
+        {
+            return Err(Refusal::stated(10369, "Limit price is required for combo orders with more than 2 legs."));
+        }
+        if order_type.is_some() && legs > 0 && leg_prices.first().is_some_and(|price| *price != f64::MAX) {
+            return Err(Refusal::stated(
+                PER_LEG_PRICES_UNSUPPORTED,
+                "Combo per-leg prices are only supported for non-guaranteed smart \
+                 combo with two legs and feature \"IECOMBOPERLEGPRICE\" enabled.",
+            ));
         }
         // The contract the caller named, so the engine can see that the slot
         // beside it is no longer the one they meant. The unset marker states
