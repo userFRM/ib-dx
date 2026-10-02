@@ -39,6 +39,17 @@ the size it asked for.
   calendar's schema and event types are delivered either way; the events
   themselves come back empty without it.
 
+## Settings a gateway lets its user change
+
+A gateway's user sets how its API behaves: its API settings, its order
+precautions, its smart-routing defaults and its warning messages. This client
+offers some of them: a read-only session (`readonly`), the older Nasdaq
+spelling (`island_for_nasdaq`), the time zone and date format, and the logging
+level. The others, among them the master client id, the order-precaution
+bypasses and the smart-routing defaults, are not configurable here yet, and
+`req_config` and `update_config` are refused with 10357. The full list is in
+[#273](https://github.com/userFRM/ibkr-dx/issues/273).
+
 # Not settled here
 
 Something the protocol may well carry, which no session has established. Each
