@@ -90,6 +90,12 @@ pub(crate) fn settings_from(
                     !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
                 );
             }
+            // The client a gateway also tells of every other client's orders.
+            "master_client_id" | "masterClientId" => {
+                settings.master_client_id = Some(
+                    value.trim().parse().map_err(|_| format!("master_client_id: {value}"))?,
+                );
+            }
             // The switch a gateway carries, under its name there and the spelling
             // the rest of this map uses. Off means the loss is reported and
             // nothing is done about it.

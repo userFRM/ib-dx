@@ -262,11 +262,12 @@ impl EClient {
             Record::OrderUpdate(update) => self.deliver_update(update, wrapper),
             // What the venue says a fill cost, naming the execution it belongs
             // to. Pushed after the fill, so the fill is stored by now. Told
-            // where the fill is told: to the order's client and no other, and
-            // to client zero for a charge naming no execution held here.
+            // where the fill is told: to the order's client, and to the master
+            // client where one is set. A charge naming no execution held here
+            // is client zero's.
             Record::Charge(charge) => {
                 let stated = self.core.record_charge(&charge);
-                if stated == i64::from(self.shared.orders.api_client_id()) {
+                if self.core.tells_client(&self.shared, stated) {
                     wrapper.commission_and_fees_report(&charge);
                 }
             }
@@ -710,9 +711,10 @@ impl EClient {
             fill.order_id, report.as_deref(), status.as_ref(),
         );
         let client = self.core.client_stated(fill.order_id, report.as_deref());
-        // A gateway tells a fill to the connection of the order's client and
-        // no other; the execution is filed for `req_executions` whatever
-        // order it is on, as a gateway serves that request account-wide.
+        // A gateway tells a fill to the connection of the order's client, and
+        // to the master client where one is set; the execution is filed for
+        // `req_executions` whatever order it is on, as a gateway serves that
+        // request account-wide.
         let own = self.core.speaks_for_the_order(&self.shared, fill.order_id, client);
         // After the record is read: a status stating the order filled drops
         // it, and read afterwards the fill that completed an order went out
@@ -835,9 +837,9 @@ impl EClient {
             .filter(|c| *c != 0)
             .unwrap_or(client_id);
         // A gateway tells an order's status to the connection of the order's
-        // client and no other. `open_order` below is stated only for an order
-        // this session holds, which is its own; the status follows the same
-        // rule, so an order another client placed is not restated here.
+        // client, and to the master client where one is set. `open_order`
+        // below is stated only for an order this session holds, which is one
+        // it placed.
         let own = self.core.speaks_for_the_order(&self.shared, update.order_id, client);
         // Not for a preview: the answer to a preview is the margin the venue
         // states on its own reply, and a pair sent from the status alone
@@ -2418,6 +2420,37 @@ mod ownership_tests {
         let mut told = Told::default();
         client.process_msgs(&mut told);
         assert_eq!(told.0, ["order_status 72".to_string()]);
+    }
+
+    /// A session whose client is the configured master client is told of every
+    /// client's orders, fills and charges, as a gateway tells its master.
+    #[test]
+    fn a_master_client_is_told_every_clients_order() {
+        let (client, _rx, shared) = crate::api::client::tests::test_client();
+        shared.orders.set_api_client_id(1);
+        shared.set_settings(std::sync::Arc::new(crate::settings::SessionSettings {
+            master_client_id: Some(1),
+            ..(*shared.settings()).clone()
+        }));
+        the_book_stated(&shared);
+        shared.orders.push_fill(fill(71));
+        shared.orders.push_fill(fill(72));
+        let charge = |exec_id: &str| CommissionAndFeesReport {
+            exec_id: exec_id.into(), commission_and_fees: 1.25,
+            currency: "USD".into(), ..Default::default()
+        };
+        shared.orders.push_charge(charge("other"));
+        shared.orders.push_charge(charge("own"));
+
+        let mut told = Told::default();
+        client.process_msgs(&mut told);
+        assert_eq!(
+            told.0,
+            [
+                "order_status 71", "exec other", "order_status 72", "exec own",
+                "commission other", "commission own",
+            ].map(String::from),
+        );
     }
 
     /// The fill of another client's order is announced to nobody but its own,

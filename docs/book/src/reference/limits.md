@@ -44,9 +44,9 @@ the size it asked for.
 A gateway's user sets how its API behaves: its API settings, its order
 precautions, its smart-routing defaults and its warning messages. This client
 offers some of them: a read-only session (`readonly`), the older Nasdaq
-spelling (`island_for_nasdaq`), the time zone and date format, and the logging
-level. The others, among them the master client id, the order-precaution
-bypasses and the smart-routing defaults, are not configurable here yet, and
+spelling (`island_for_nasdaq`), the time zone and date format, the logging
+level, and the master API client id (`master_client_id`). The others, among
+them the order-precaution bypasses and the smart-routing defaults, are not configurable here yet, and
 `req_config` and `update_config` are refused with 10357. The full list is in
 [#273](https://github.com/userFRM/ib-dx/issues/273).
 

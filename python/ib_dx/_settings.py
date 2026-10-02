@@ -68,6 +68,10 @@ _SETTINGS: dict[str, tuple[str, str]] = {
         "IB_DX_RECONNECT_ON_SOCKET_ERR",
         "whether a session recovers on its own when a connection goes away",
     ),
+    "master_client_id": (
+        "IB_DX_MASTER_CLIENT_ID",
+        "Master API client ID: the client also told of every other client's orders, fills and charges; unset by default",
+    ),
 }
 
 #: Gateway settings that are not settings here, and what to do instead. Named

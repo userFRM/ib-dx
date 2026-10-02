@@ -3847,9 +3847,8 @@ impl ClientCore {
     /// Note what an execution cost against the execution itself, so a replay
     /// of it carries the charge the venue stated rather than the nothing it
     /// was stored with. Answers with the client the named execution states:
-    /// a gateway tells a charge where it tells the fill, to the order's
-    /// client and no other. A charge naming no execution held here states
-    /// none.
+    /// a gateway tells a charge where it tells the fill. A charge naming no
+    /// execution held here states none.
     pub fn record_charge(&self, charge: &ApiCommissionAndFeesReport) -> i64 {
         // A charge naming no execution stamps none. Matched on the empty name,
         // it was written onto every execution stored without one.
@@ -4440,16 +4439,25 @@ impl ClientCore {
     }
 
     /// Whether this session is the connection a gateway tells of an order:
-    /// the session placed it, or the client stated as placing it is this
-    /// session's client — the rule `reqOpenOrders` is scoped by, applied to
-    /// what is told unasked. An order placed away from the API is stated as
-    /// client zero's, and zero is this session's client only where this
-    /// session is client zero.
+    /// the session placed it, or [`tells_client`](Self::tells_client) holds
+    /// for the client stated as placing it — the rule `reqOpenOrders` is
+    /// scoped by, applied to what is told unasked.
     pub(crate) fn speaks_for_the_order(
         &self, shared: &SharedState, order_id: u64, stated: i32,
     ) -> bool {
         self.open_orders.lock().unwrap().contains_key(&order_id)
-            || stated == shared.orders.api_client_id()
+            || self.tells_client(shared, i64::from(stated))
+    }
+
+    /// Whether what a gateway tells the client `stated` is told on this
+    /// session: it is this session's client, or this session's client is the
+    /// configured master client, which a gateway tells of every client's
+    /// orders, fills and charges. An order placed away from the API is stated
+    /// as client zero's, and zero is this session's client only where this
+    /// session is client zero.
+    pub(crate) fn tells_client(&self, shared: &SharedState, stated: i64) -> bool {
+        let client = i64::from(shared.orders.api_client_id());
+        stated == client || shared.settings().master_client_id == Some(client)
     }
 
     /// Which client placed an order, as the venue states it on tag 109.

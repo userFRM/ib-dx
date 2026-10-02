@@ -99,6 +99,11 @@ pub struct GatewaySettings {
     /// [`ReconnectConfig`](crate::reliability::ReconnectConfig); this is the
     /// switch, and it is the one both surfaces have.
     pub reconnect_on_socket_err: Option<bool>,
+    /// The API client that is also told of every other client's orders: their
+    /// statuses, fills and charges, as a gateway's master API client id does.
+    /// Unset by default, as on a gateway; also read from
+    /// `IB_DX_MASTER_CLIENT_ID`.
+    pub master_client_id: Option<i64>,
 }
 
 /// Which executions a session asks for when it opens.
@@ -183,6 +188,8 @@ pub struct SessionSettings {
     pub island_for_nasdaq: bool,
     /// Whether this session recovers on its own when a connection goes away.
     pub reconnect_on_socket_err: bool,
+    /// The API client told of every client's orders, if one is set.
+    pub master_client_id: Option<i64>,
 }
 
 fn order_id_file() -> Option<std::path::PathBuf> {
@@ -342,6 +349,11 @@ impl GatewaySettings {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
                 })
             }),
+            // A negative id is a gateway's "none", as its default -1 states.
+            master_client_id: self
+                .master_client_id
+                .or_else(|| std::env::var("IB_DX_MASTER_CLIENT_ID").ok()?.trim().parse().ok())
+                .filter(|id| *id >= 0),
         }
     }
 
@@ -571,6 +583,7 @@ mod tests {
             datetime_format: Some(DatetimeFormat::UtcFormat),
             island_for_nasdaq: Some(false),
             reconnect_on_socket_err: Some(false),
+            master_client_id: Some(3),
         };
         let resolved = all.resolve();
         assert_eq!(resolved.order_id_file.as_deref(), Some(std::path::Path::new("state/order-ids.json")));
@@ -588,6 +601,7 @@ mod tests {
         assert_eq!(resolved.datetime_format, DatetimeFormat::UtcFormat);
         assert!(!resolved.island_for_nasdaq);
         assert!(!resolved.reconnect_on_socket_err);
+        assert_eq!(resolved.master_client_id, Some(3));
         // The three log settings are process-scoped by nature — one logger per
         // process — so they are not on the resolved form. They reach the
         // logger instead, and are checked here for the same reason: stated
@@ -607,7 +621,7 @@ mod tests {
             log_level: _, log_dir: _, log_queue: _,
             order_id_file: _,
             execution_reports: _, datetime_format: _,
-            island_for_nasdaq: _, reconnect_on_socket_err: _,
+            island_for_nasdaq: _, reconnect_on_socket_err: _, master_client_id: _,
         } = all;
     }
 }

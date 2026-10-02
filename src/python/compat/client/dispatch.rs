@@ -418,11 +418,12 @@ impl EClient {
             Record::OrderUpdate(update) => self.deliver_update(py, shared, update)?,
             // What the venue says a fill cost, naming the execution it
             // belongs to: pushed after the fill, so the fill is stored. Told
-            // where the fill is told: to the order's client and no other, and
-            // to client zero for a charge naming no execution held here.
+            // where the fill is told: to the order's client, and to the master
+            // client where one is set. A charge naming no execution held here
+            // is client zero's.
             Record::Charge(charge) => {
                 let stated = self.core.record_charge(&charge);
-                if stated == i64::from(shared.orders.api_client_id()) {
+                if self.core.tells_client(shared, stated) {
                     let report = CommissionAndFeesReport {
                         exec_id: charge.exec_id.clone(),
                         commission_and_fees: charge.commission_and_fees,
@@ -983,9 +984,10 @@ impl EClient {
             fill.order_id, rich_info.as_deref(), with_it.as_ref(),
         );
         let client = self.core.client_stated(fill.order_id, rich_info.as_deref());
-        // A gateway tells a fill to the connection of the order's client and
-        // no other; the execution is filed for `req_executions` whatever
-        // order it is on, as a gateway serves that request account-wide.
+        // A gateway tells a fill to the connection of the order's client, and
+        // to the master client where one is set; the execution is filed for
+        // `req_executions` whatever order it is on, as a gateway serves that
+        // request account-wide.
         let own = self.core.speaks_for_the_order(shared, fill.order_id, client);
 
         // What the report stated beyond the print, taken before anything
@@ -1105,8 +1107,8 @@ impl EClient {
             .filter(|c| *c != 0)
             .unwrap_or(client_id);
         // A gateway tells an order's status to the connection of the order's
-        // client and no other. `open_order` is stated only for an order this
-        // session holds, which is its own; the status follows the same rule.
+        // client, and to the master client where one is set. `open_order` is
+        // stated only for an order this session holds, which is one it placed.
         let own = self.core.speaks_for_the_order(shared, update.order_id, client);
         if let Some(tracked) = tracked {
             let contract_py = Py::new(py, Contract::from_api(py, &tracked.contract)?)?.into_any();
@@ -1951,81 +1953,94 @@ mod ownership_tests {
     /// The gateway's rule on this surface too: an order the venue states
     /// another client placed says nothing to this session — no status, no
     /// fill, no charge — and this client's own orders say everything, as on
-    /// the other surface.
+    /// the other surface. A session whose client is the configured master
+    /// client hears every client's.
     #[test]
     fn another_clients_order_says_nothing_on_this_surface_either() {
         Python::initialize();
         Python::attach(|py| {
-            let client = EClient::__new__(&pyo3::types::PyTuple::empty(py), None);
-            let wrapper = py
-                .eval(c"__import__('builtins').type('W', (), {'__init__': lambda s: setattr(s, 'calls', []), '__getattr__': lambda s, n: (lambda *a: s.calls.append((n, a)))})()", None, None)
-                .unwrap()
-                .unbind();
-            client.__init__(wrapper.clone_ref(py)).unwrap();
-            let shared = Arc::new(SharedState::new());
-            shared.orders.set_api_client_id(1);
-            *client.shared.lock().unwrap() = Some(shared.clone());
-            client.connected.store(true, Ordering::Release);
+            let told = |master: Option<i64>| {
+                let client = EClient::__new__(&pyo3::types::PyTuple::empty(py), None);
+                let wrapper = py
+                    .eval(c"__import__('builtins').type('W', (), {'__init__': lambda s: setattr(s, 'calls', []), '__getattr__': lambda s, n: (lambda *a: s.calls.append((n, a)))})()", None, None)
+                    .unwrap()
+                    .unbind();
+                client.__init__(wrapper.clone_ref(py)).unwrap();
+                let shared = Arc::new(SharedState::new());
+                shared.orders.set_api_client_id(1);
+                shared.set_settings(Arc::new(crate::settings::SessionSettings {
+                    master_client_id: master,
+                    ..(*shared.settings()).clone()
+                }));
+                *client.shared.lock().unwrap() = Some(shared.clone());
+                client.connected.store(true, Ordering::Release);
 
-            let row = |order_id: i64, client_id: i32, exec_id: &str| crate::bridge::RichOrderInfo {
-                contract: crate::types::model::Contract {
-                    con_id: 756733, symbol: "SPY".into(), ..Default::default()
-                },
-                order: crate::types::model::Order { order_id, client_id, ..Default::default() },
-                order_state: Default::default(),
-                last_exec: crate::types::model::Execution {
-                    exec_id: exec_id.into(), ..Default::default()
-                },
-            };
-            shared.orders.push_order_info(71, row(71, 7, "other"));
-            shared.orders.push_order_info(72, row(72, 1, "own"));
-            let fill = |order_id: u64| Fill {
-                instrument: 0, order_id, side: Side::Buy,
-                price: 150 * PRICE_SCALE, qty: 10 * QTY_SCALE, remaining: 0, timestamp_ns: 0,
-                cum_qty: 10 * QTY_SCALE, avg_price: 150 * PRICE_SCALE,
-            };
-            shared.orders.push_fill(fill(71));
-            shared.orders.push_fill(fill(72));
-            let charge = |exec_id: &str| crate::types::model::CommissionAndFeesReport {
-                exec_id: exec_id.into(), commission_and_fees: 1.25,
-                currency: "USD".into(), ..Default::default()
-            };
-            shared.orders.push_charge(charge("other"));
-            shared.orders.push_charge(charge("own"));
-            shared.orders.push_charge(charge("unknown"));
-            let update = |order_id: u64| crate::types::OrderUpdate {
-                order_id, instrument: 0, status: crate::types::OrderStatus::Submitted,
-                filled_qty: 0.0, remaining_qty: 100.0, avg_price: 0,
-                perm_id: 0, parent_id: 0, timestamp_ns: 0,
-            };
-            shared.orders.push_order_update(update(71));
-            shared.orders.push_order_update(update(72));
+                let row = |order_id: i64, client_id: i32, exec_id: &str| crate::bridge::RichOrderInfo {
+                    contract: crate::types::model::Contract {
+                        con_id: 756733, symbol: "SPY".into(), ..Default::default()
+                    },
+                    order: crate::types::model::Order { order_id, client_id, ..Default::default() },
+                    order_state: Default::default(),
+                    last_exec: crate::types::model::Execution {
+                        exec_id: exec_id.into(), ..Default::default()
+                    },
+                };
+                shared.orders.push_order_info(71, row(71, 7, "other"));
+                shared.orders.push_order_info(72, row(72, 1, "own"));
+                let fill = |order_id: u64| Fill {
+                    instrument: 0, order_id, side: Side::Buy,
+                    price: 150 * PRICE_SCALE, qty: 10 * QTY_SCALE, remaining: 0, timestamp_ns: 0,
+                    cum_qty: 10 * QTY_SCALE, avg_price: 150 * PRICE_SCALE,
+                };
+                shared.orders.push_fill(fill(71));
+                shared.orders.push_fill(fill(72));
+                let charge = |exec_id: &str| crate::types::model::CommissionAndFeesReport {
+                    exec_id: exec_id.into(), commission_and_fees: 1.25,
+                    currency: "USD".into(), ..Default::default()
+                };
+                shared.orders.push_charge(charge("other"));
+                shared.orders.push_charge(charge("own"));
+                shared.orders.push_charge(charge("unknown"));
+                let update = |order_id: u64| crate::types::OrderUpdate {
+                    order_id, instrument: 0, status: crate::types::OrderStatus::Submitted,
+                    filled_qty: 0.0, remaining_qty: 100.0, avg_price: 0,
+                    perm_id: 0, parent_id: 0, timestamp_ns: 0,
+                };
+                shared.orders.push_order_update(update(71));
+                shared.orders.push_order_update(update(72));
 
-            client.dispatch_once(py, &shared).unwrap();
+                client.dispatch_once(py, &shared).unwrap();
 
-            let calls = wrapper.getattr(py, "calls").unwrap();
-            let list = calls.cast_bound::<pyo3::types::PyList>(py).unwrap();
-            let names: Vec<String> = list.iter()
-                .map(|c| c.get_item(0).unwrap().extract::<String>().unwrap())
-                .collect();
-            let count = |frag: &str| names.iter().filter(|n| n.contains(frag)).count();
-            let statuses: Vec<i64> = list.iter()
-                .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("rderStatus"))
-                .map(|c| c.get_item(1).unwrap().get_item(0).unwrap().extract::<i64>().unwrap())
-                .collect();
-            // The exec id each commission named: not the count alone, which
-            // an inverted gate would leave at one while telling the wrong one.
-            let commissions: Vec<String> = list.iter()
-                .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("ommission"))
-                .map(|c| c.get_item(1).unwrap().get_item(0).unwrap()
-                    .getattr("exec_id").unwrap().extract::<String>().unwrap())
-                .collect();
+                let calls = wrapper.getattr(py, "calls").unwrap();
+                let list = calls.cast_bound::<pyo3::types::PyList>(py).unwrap();
+                let names: Vec<String> = list.iter()
+                    .map(|c| c.get_item(0).unwrap().extract::<String>().unwrap())
+                    .collect();
+                let count = |frag: &str| names.iter().filter(|n| n.contains(frag)).count();
+                let statuses: Vec<i64> = list.iter()
+                    .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("rderStatus"))
+                    .map(|c| c.get_item(1).unwrap().get_item(0).unwrap().extract::<i64>().unwrap())
+                    .collect();
+                // The exec id each commission named: not the count alone, which
+                // an inverted gate would leave at one while telling the wrong one.
+                let commissions: Vec<String> = list.iter()
+                    .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("ommission"))
+                    .map(|c| c.get_item(1).unwrap().get_item(0).unwrap()
+                        .getattr("exec_id").unwrap().extract::<String>().unwrap())
+                    .collect();
+                (statuses, count("xecDetails"), commissions)
+            };
+            let (statuses, execs, commissions) = told(None);
             assert_eq!(
                 statuses, vec![72, 72],
-                "the own order's status alone, from the fill and from the report: {names:?}",
+                "the own order's status alone, from the fill and from the report",
             );
-            assert_eq!(count("xecDetails"), 1, "the own fill alone: {names:?}");
-            assert_eq!(commissions, ["own"], "the own fill's charge alone: {names:?}");
+            assert_eq!(execs, 1, "the own fill alone");
+            assert_eq!(commissions, ["own"], "the own fill's charge alone");
+            let (statuses, execs, commissions) = told(Some(1));
+            assert_eq!(statuses, vec![71, 72, 71, 72], "a master hears every client's status");
+            assert_eq!(execs, 2, "and every client's fill");
+            assert_eq!(commissions, ["other", "own", "unknown"], "and every client's charge");
         });
     }
 }
