@@ -194,7 +194,7 @@ impl EClient {
     /// program may read from any thread and as often as it likes. `None` until
     /// the venue has sent a first tick, and for a contract nobody subscribed
     /// to — the subscription is what makes the quote exist, not this call.
-    pub fn quote_of(&self, contract: &Contract) -> Option<crate::types::Quote> {
+    pub fn quote_of(&self, contract: &Contract) -> Option<crate::types::model::QuoteSnapshot> {
         self.quote_by_instrument(self.instrument_of(contract.con_id)?)
     }
 

@@ -6,6 +6,50 @@
 use crate::types::*;
 pub use crate::types::decimal::{Decimal, UNSET_DECIMAL};
 
+/// A quote as a program reads it: prices and sizes as numbers.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct QuoteSnapshot {
+    /// The best price anyone is offering to buy at.
+    pub bid: f64,
+    /// The best price anyone is offering to sell at.
+    pub ask: f64,
+    /// What it last traded at.
+    pub last: f64,
+    /// How much is offered at the bid.
+    pub bid_size: f64,
+    /// How much is offered at the ask.
+    pub ask_size: f64,
+    /// How much last traded.
+    pub last_size: f64,
+    /// How much has traded today.
+    pub volume: f64,
+    /// What it opened at.
+    pub open: f64,
+    /// The highest it has traded today.
+    pub high: f64,
+    /// The lowest it has traded today.
+    pub low: f64,
+    /// What it closed at.
+    pub close: f64,
+    /// When the quote was read, in nanoseconds since the epoch.
+    pub timestamp_ns: u64,
+    /// 0 trading, 1 halted by a regulator, 2 paused because the price moved too far.
+    pub halted: i64,
+}
+
+impl From<crate::types::Quote> for QuoteSnapshot {
+    fn from(q: crate::types::Quote) -> Self {
+        let price = |p: i64| p as f64 / PRICE_SCALE_F;
+        let size = |s: i64| s as f64 / crate::types::QTY_SCALE as f64;
+        QuoteSnapshot {
+            bid: price(q.bid), ask: price(q.ask), last: price(q.last),
+            bid_size: size(q.bid_size), ask_size: size(q.ask_size), last_size: size(q.last_size),
+            volume: size(q.volume), open: price(q.open), high: price(q.high), low: price(q.low),
+            close: price(q.close), timestamp_ns: q.timestamp_ns, halted: q.halted,
+        }
+    }
+}
+
 /// What a fixed-point price is divided by to reach money.
 pub const PRICE_SCALE_F: f64 = PRICE_SCALE as f64;
 

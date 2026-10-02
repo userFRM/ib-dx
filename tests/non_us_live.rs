@@ -255,7 +255,7 @@ fn a_subscription_naming_only_the_contract_id_is_answered() {
     while std::time::Instant::now() < control_deadline {
         client.process_msgs(&mut Quiet);
         if let Some(q) = client.quote(9002)
-            && (q.bid != 0 || q.ask != 0)
+            && (q.bid != 0.0 || q.ask != 0.0)
         {
             control = Some(q);
             break;
@@ -283,7 +283,7 @@ fn a_subscription_naming_only_the_contract_id_is_answered() {
     while std::time::Instant::now() < deadline {
         client.process_msgs(&mut Quiet);
         if let Some(q) = client.quote(req_id)
-            && (q.bid != 0 || q.ask != 0 || q.last != 0)
+            && (q.bid != 0.0 || q.ask != 0.0 || q.last != 0.0)
         {
             seen = Some(q);
             break;

@@ -2,11 +2,21 @@
 //!
 //! Kept as an example so it is compiled with everything else: a snippet in a
 //! README that no longer builds is a snippet that turns readers away.
-//!
-//!     IB_USERNAME=… IB_PASSWORD=… cargo run --example readme_rust
 
-use ibkr_dx::api::client::{EClient, EClientConfig};
-use ibkr_dx::api::types::{Contract, Order};
+use std::time::{Duration, Instant};
+use ibkr_dx::api::{Contract, Decimal, EClient, EClientConfig, TickAttrib, Wrapper};
+
+struct App;
+
+impl Wrapper for App {
+    fn tick_price(&mut self, _req_id: i64, tick_type: i32, price: f64, _attrib: &TickAttrib) {
+        println!("tick {tick_type}: {price}");
+    }
+
+    fn tick_size(&mut self, _req_id: i64, tick_type: i32, size: Decimal) {
+        println!("size {tick_type}: {size}");
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = EClient::connect(&EClientConfig {
@@ -14,35 +24,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         password: std::env::var("IB_PASSWORD").unwrap_or_default(),
         paper: true,
         ..Default::default()
-    })
-    ?;
+    })?;
 
-    let spy = client.qualify_contract(&Contract {
-        symbol: "SPY".into(),
+    let aapl = Contract {
+        symbol: "AAPL".into(),
         sec_type: "STK".into(),
         exchange: "SMART".into(),
         currency: "USD".into(),
         ..Default::default()
-    })?;
+    };
+    client.req_mkt_data(1, &aapl, "", false, false, &[]);
 
-    let bars = client.historical_data(&spy, "", "2 D", "1 hour", "TRADES", true)?;
-    let preview = client.what_if_order(&spy, &Order {
-        action: "BUY".into(),
-        order_type: "LMT".into(),
-        total_quantity: 1.0,
-        lmt_price: 1.0,
-        ..Default::default()
-    })?;
-    println!("{} bars, preview {}", bars.len(), preview.status);
-
-    client.req_mkt_data(1, &spy, "", false, false, &[]);
-    std::thread::sleep(std::time::Duration::from_secs(2));
-    if let Some(quote) = client.quote(1) {
-        // Prices are held as integers scaled by `PRICE_SCALE`.
-        let scale = ibkr_dx::types::PRICE_SCALE as f64;
-        println!("bid {:.2} ask {:.2}", quote.bid as f64 / scale, quote.ask as f64 / scale);
+    let mut app = App;
+    let until = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < until {
+        client.process_msgs(&mut app);
+        std::thread::sleep(Duration::from_millis(50));
     }
-
+    client.cancel_mkt_data(1);
     client.disconnect();
     Ok(())
 }

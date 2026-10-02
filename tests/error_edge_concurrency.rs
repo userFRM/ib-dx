@@ -578,7 +578,7 @@ fn concurrent_quote_by_instrument() {
             go.wait();
             for _ in 0..5_000 {
                 let q = c.quote_by_instrument(0).expect("in-range id");
-                assert!(q.bid == 0 || q.bid == 200 * PRICE_SCALE);
+                assert!(q.bid == 0.0 || q.bid == 200.0);
             }
         })
     }).collect();

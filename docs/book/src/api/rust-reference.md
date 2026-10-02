@@ -1410,14 +1410,14 @@ pub fn set_news_providers(&self, providers: &str)
 Zero-copy SeqLock quote read. Maps reqId → InstrumentId → SeqLock. Returns `None` if the reqId is not mapped to a subscription.
 
 ```rust
-pub fn quote(&self, req_id: i64) -> Option<Quote>
+pub fn quote(&self, req_id: i64) -> Option<crate::types::model::QuoteSnapshot>
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `req_id` | `i64` | Request identifier. Used to match responses to requests. |
 
-**Returns:** `Option<Quote>`
+**Returns:** `Option<crate::types::model::QuoteSnapshot>`
 
 ---
 
@@ -1426,14 +1426,14 @@ pub fn quote(&self, req_id: i64) -> Option<Quote>
 Direct SeqLock read by InstrumentId (for callers who track IDs themselves). Returns `None` for an id past every slot the instrument table holds.
 
 ```rust
-pub fn quote_by_instrument(&self, instrument: InstrumentId) -> Option<Quote>
+pub fn quote_by_instrument(&self, instrument: InstrumentId) -> Option<crate::types::model::QuoteSnapshot>
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `instrument` | `InstrumentId` | Instrument type for scanner (e.g. `"STK"`, `"FUT"`). |
 
-**Returns:** `Option<Quote>`
+**Returns:** `Option<crate::types::model::QuoteSnapshot>`
 
 ---
 

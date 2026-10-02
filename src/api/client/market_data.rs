@@ -565,16 +565,16 @@ impl EClient {
     /// Zero-copy SeqLock quote read. Maps reqId → InstrumentId → SeqLock.
     /// Returns `None` if the reqId is not mapped to a subscription.
     #[inline]
-    pub fn quote(&self, req_id: i64) -> Option<Quote> {
+    pub fn quote(&self, req_id: i64) -> Option<crate::types::model::QuoteSnapshot> {
         let map = self.core.req_to_instrument.lock().unwrap();
-        map.get(&req_id).map(|&iid| self.shared.market.quote(iid))
+        map.get(&req_id).map(|&iid| self.shared.market.quote(iid).into())
     }
 
     /// Direct SeqLock read by InstrumentId (for callers who track IDs themselves).
     /// Returns `None` for an id past every slot the instrument table holds.
     #[inline]
-    pub fn quote_by_instrument(&self, instrument: InstrumentId) -> Option<Quote> {
-        self.shared.market.try_quote(instrument)
+    pub fn quote_by_instrument(&self, instrument: InstrumentId) -> Option<crate::types::model::QuoteSnapshot> {
+        self.shared.market.try_quote(instrument).map(Into::into)
     }
 
     /// What the venue's own model last made of an option, whole.

@@ -6855,7 +6855,7 @@ fn quote_escape_hatch() {
     client.core.req_to_instrument.lock().unwrap().insert(5, 0);
 
     let quote = client.quote(5).unwrap();
-    assert_eq!(quote.bid, 200 * PRICE_SCALE);
+    assert_eq!(quote.bid, 200.0);
     assert!(client.quote(99).is_none());
 }
 
@@ -6883,7 +6883,7 @@ fn quote_by_instrument_direct() {
     let client = EClient::from_parts(shared, tx, handle, "DU123".into());
 
     let quote = client.quote_by_instrument(2).expect("registered id");
-    assert_eq!(quote.ask, 300 * PRICE_SCALE);
+    assert_eq!(quote.ask, 300.0);
 
     // An out-of-range id is a caller error, not a panic across
     // the language boundary.
