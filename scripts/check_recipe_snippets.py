@@ -5,8 +5,8 @@ have, or spells an argument the way an older version spelled it, costs the
 reader more than a missing page would: they assume their setup is wrong.
 
 This does not run the snippets — they need a broker session. It parses each
-one, then checks the names: every `ibkr_dx.Thing` the module actually exports, and
-every method called on a client built from `ibkr_dx.EClient(...)`.
+one, then checks the names: every `ib_dx.Thing` the module actually exports, and
+every method called on a client built from `ib_dx.EClient(...)`.
 That is where the rot shows up first, because those are what a release renames.
 
 Exits non-zero on its own findings.
@@ -19,7 +19,7 @@ import pathlib
 import re
 import sys
 
-import ibkr_dx
+import ib_dx
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # The generated reference pages carry signatures rather than programs, so they
@@ -63,7 +63,7 @@ def notebook_code(path: pathlib.Path) -> str:
 
 
 # What a client is built from, and what to check its methods against.
-BUILDERS = {"EClient": ibkr_dx.EClient}
+BUILDERS = {"EClient": ib_dx.EClient}
 
 problems: list[str] = []
 snippets: list[tuple[str, str]] = []
@@ -119,14 +119,14 @@ for where, text in snippets:
         if not isinstance(node, ast.Attribute):
             continue
         base = node.value
-        if isinstance(base, ast.Name) and base.id == "ibkr_dx":
-            if hasattr(ibkr_dx, node.attr):
+        if isinstance(base, ast.Name) and base.id == "ib_dx":
+            if hasattr(ib_dx, node.attr):
                 continue
             # A submodule is not an attribute until something imports it.
             try:
-                importlib.import_module(f"ibkr_dx.{node.attr}")
+                importlib.import_module(f"ib_dx.{node.attr}")
             except ImportError:
-                problems.append(f"{where}: `ibkr_dx.{node.attr}` is not in the library")
+                problems.append(f"{where}: `ib_dx.{node.attr}` is not in the library")
         elif isinstance(base, ast.Name) and base.id in clients:
             owner = clients[base.id]
             if not hasattr(owner, node.attr):

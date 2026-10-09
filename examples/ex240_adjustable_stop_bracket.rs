@@ -1,4 +1,4 @@
-//! ibkr_dx#240 — verify an adjustable stop keeps its parent link, OCA group and
+//! ib_dx#240 — verify an adjustable stop keeps its parent link, OCA group and
 //! tif when used as a bracket child. Paper account only.
 //!
 //! Places a parent BUY LMT far below the market (never fills), an adjustable
@@ -15,8 +15,8 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {
@@ -30,7 +30,7 @@ struct ProbeWrapper {
 
 impl Wrapper for ProbeWrapper {
     fn order_status(
-        &mut self, order_id: i64, status: &str, _filled: ibkr_dx::api::Decimal, _remaining: ibkr_dx::api::Decimal,
+        &mut self, order_id: i64, status: &str, _filled: ib_dx::api::Decimal, _remaining: ib_dx::api::Decimal,
         _avg_fill_price: f64, _perm_id: i64, parent_id: i64, _last_fill_price: f64,
         _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
     ) {
@@ -163,5 +163,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n== RESULT: {}", if pass { "PASS" } else { "FAIL" });
     client.disconnect();
-    if pass { Ok(()) } else { Err("ibkr_dx#240 live check failed".into()) }
+    if pass { Ok(()) } else { Err("ib_dx#240 live check failed".into()) }
 }

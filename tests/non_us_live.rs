@@ -13,9 +13,9 @@
 //! `--ignored --test-threads=1`: the account permits one concurrent session,
 //! and parallel tests evict each other, which presents as no reply.
 
-use ibkr_dx::api::EClient;
-use ibkr_dx::api::client::EClientConfig;
-use ibkr_dx::types::model::Contract;
+use ib_dx::api::EClient;
+use ib_dx::api::client::EClientConfig;
+use ib_dx::types::model::Contract;
 
 fn config() -> Option<EClientConfig> {
     let (u, p) = (std::env::var("IB_USERNAME").ok()?, std::env::var("IB_PASSWORD").ok()?);
@@ -190,13 +190,13 @@ fn a_contract_that_trades_around_the_clock_is_described_as_itself() {
             .max(1.0);
         println!("    dealt in lots of {lot}");
         if lot > 1.0 {
-            let odd = ibkr_dx::types::model::Order::limit("BUY", 1.0, 1.0);
+            let odd = ib_dx::types::model::Order::limit("BUY", 1.0, 1.0);
             match client.preview(c, &odd) {
                 Ok(_) => println!("    preview of one: priced"),
                 Err(e) => println!("    preview of one refused: {e}"),
             }
         }
-        let order = ibkr_dx::types::model::Order::limit("BUY", lot, 1.0);
+        let order = ib_dx::types::model::Order::limit("BUY", lot, 1.0);
         match client.preview(c, &order) {
             Ok(state) => println!(
                 "    preview: init margin {:?} commission {:?}",
@@ -226,7 +226,7 @@ fn a_contract_that_trades_around_the_clock_is_described_as_itself() {
 /// exchange the caller did not state describes a different instrument. Whether
 /// the venue answers an id carrying nothing beside it is determined here.
 struct Quiet;
-impl ibkr_dx::api::wrapper::Wrapper for Quiet {}
+impl ib_dx::api::wrapper::Wrapper for Quiet {}
 
 #[test]
 #[ignore = "opens a session of its own and needs a market open; run with --ignored"]

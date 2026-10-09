@@ -18,7 +18,7 @@ Run with: pytest tests/python/test_all_open_orders_across_sessions.py -v
 """
 import os, threading, time
 import pytest
-from ibkr_dx import EClient, EWrapper, Contract, Order
+from ib_dx import EClient, EWrapper, Contract, Order
 
 SPY_CON_ID = 756733
 
@@ -89,7 +89,7 @@ class Wrapper(EWrapper):
 
 
 def connect_session():
-    """Create and connect a new ibkr-dx session. Returns (wrapper, client, run_thread)."""
+    """Create and connect a new ib-dx session. Returns (wrapper, client, run_thread)."""
     wrapper = Wrapper()
     client = EClient(wrapper)
     client.connect(

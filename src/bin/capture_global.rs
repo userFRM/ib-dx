@@ -12,9 +12,9 @@
 
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{EClient, EClientConfig};
-use ibkr_dx::api::types::{Contract, Order};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{EClient, EClientConfig};
+use ib_dx::api::types::{Contract, Order};
+use ib_dx::api::wrapper::Wrapper;
 
 /// The quantity a preview asks about: the step the venue deals the contract
 /// in, or its least size where it states no step, and never below one.
@@ -22,7 +22,7 @@ use ibkr_dx::api::wrapper::Wrapper;
 /// A Japanese or a Hong Kong share is dealt in board lots, and an order for
 /// one share of either is refused by the exchange for its size — which says
 /// nothing about whether the order itself is one the venue takes.
-fn lot(details: &ibkr_dx::types::model::ContractDetails) -> f64 {
+fn lot(details: &ib_dx::types::model::ContractDetails) -> f64 {
     let stated = |v: f64| v.is_finite() && v > 0.0 && v != f64::MAX;
     [details.size_increment, details.min_size]
         .into_iter()
@@ -77,12 +77,12 @@ struct Heard {
 }
 
 impl Wrapper for Heard {
-    fn historical_data(&mut self, _req: i64, _bar: &ibkr_dx::api::types::BarData) {
+    fn historical_data(&mut self, _req: i64, _bar: &ib_dx::api::types::BarData) {
         self.bars += 1;
     }
     fn open_order(
         &mut self, _id: i64, _c: &Contract, _o: &Order,
-        _state: &ibkr_dx::api::types::OrderState,
+        _state: &ib_dx::api::types::OrderState,
     ) {
         self.previews += 1;
     }
@@ -94,7 +94,7 @@ impl Wrapper for Heard {
 }
 
 fn main() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let username = std::env::var("IB_USERNAME").unwrap_or_default();
     if username.trim().is_empty() {
         eprintln!("IB_USERNAME/IB_PASSWORD unset. This reads from real servers.");

@@ -6,10 +6,10 @@ order has been validated."""
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
-class Recorder(ibkr_dx.EWrapper):
+class Recorder(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -31,13 +31,13 @@ class Recorder(ibkr_dx.EWrapper):
 )
 def test_attached_field_checks_use_the_parent_request(fields, code, message):
     wrapper = Recorder()
-    client = ibkr_dx.EClient(wrapper)
+    client = ib_dx.EClient(wrapper)
     client._test_connect()
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 756733
     contract.secType = "STK"
     contract.exchange = "SMART"
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action = "BUY"
     order.totalQuantity = 1
     order.orderType = "LMT"
@@ -53,14 +53,14 @@ def test_attached_field_checks_use_the_parent_request(fields, code, message):
 
 def test_a_contract_date_is_checked_before_the_order_numbers():
     wrapper = Recorder()
-    client = ibkr_dx.EClient(wrapper)
+    client = ib_dx.EClient(wrapper)
     client._test_connect()
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 756733
     contract.secType = "STK"
     contract.exchange = "SMART"
     contract.lastTradeDateOrContractMonth = "2026-07"
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action = "BUY"
     order.totalQuantity = 1
     order.orderType = "LMT"

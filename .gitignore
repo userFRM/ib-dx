@@ -38,8 +38,8 @@ DEVLOG.md
 tests/python/__pycache__/
 
 # The built extension lands here from an editable install.
-python/ibkr_dx/*.so
-python/ibkr_dx/__pycache__/
+python/ib_dx/*.so
+python/ib_dx/__pycache__/
 
 __pycache__/
 *.pyc

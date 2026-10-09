@@ -14,7 +14,7 @@ Run: pytest tests/python/test_a_truncated_holdings_answer_says_so.py -v
 
 import time
 
-from ibkr_dx import EWrapper, EClient
+from ib_dx import EWrapper, EClient
 
 
 class Recorder(EWrapper):

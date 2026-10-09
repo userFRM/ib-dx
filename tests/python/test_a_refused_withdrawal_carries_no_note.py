@@ -6,7 +6,7 @@ that its time would not travel was said all the same, before the refusal.
 Run: pytest tests/python/test_a_refused_withdrawal_carries_no_note.py -v
 """
 
-from ibkr_dx import EWrapper, EClient
+from ib_dx import EWrapper, EClient
 
 
 class Recorder(EWrapper):

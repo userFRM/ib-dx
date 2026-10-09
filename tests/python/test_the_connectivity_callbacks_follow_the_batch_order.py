@@ -8,10 +8,10 @@ session that had gone again was "restored". In order, it is 1102 then 1100.
 Run: pytest tests/python/test_the_connectivity_callbacks_follow_the_batch_order.py -v
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Notices(ibkr_dx.EWrapper):
+class Notices(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.codes = []
@@ -23,7 +23,7 @@ class Notices(ibkr_dx.EWrapper):
 
 def _connected():
     w = Notices()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     return w, c
 

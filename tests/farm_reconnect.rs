@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ibkr_dx::bridge::SharedState;
-use ibkr_dx::gateway::{connect_farm, reconnect_ccp, Gateway, GatewayConfig, ReconnectAuth};
+use ib_dx::bridge::SharedState;
+use ib_dx::gateway::{connect_farm, reconnect_ccp, Gateway, GatewayConfig, ReconnectAuth};
 
 /// An account number, shortened to what tells two accounts apart.
 fn redacted(account: &str) -> String {
@@ -23,17 +23,17 @@ fn redacted(account: &str) -> String {
 /// The credentials these tests need. Missing credentials fail rather than pass
 /// quietly, because a reconnect test that never connected has proved nothing.
 /// A checkout with no credentials skips on purpose with
-/// `IBKR_DX_ALLOW_SKIP_NO_CREDS=1`, the same switch the compat suite uses.
+/// `IB_DX_ALLOW_SKIP_NO_CREDS=1`, the same switch the compat suite uses.
 fn config() -> Option<GatewayConfig> {
     let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
     let (username, password) = match (var("IB_USERNAME"), var("IB_PASSWORD")) {
         (Some(u), Some(p)) => (u, p),
-        _ if var("IBKR_DX_ALLOW_SKIP_NO_CREDS").as_deref() == Some("1") => return None,
+        _ if var("IB_DX_ALLOW_SKIP_NO_CREDS").as_deref() == Some("1") => return None,
         _ => panic!(
             "IB_USERNAME/IB_PASSWORD unset or empty — a reconnect test that \
              never connected proves nothing, so it fails rather than passing \
              silently. Export them first (`set -a; . ./.env; set +a`), or set \
-             IBKR_DX_ALLOW_SKIP_NO_CREDS=1 to skip deliberately."
+             IB_DX_ALLOW_SKIP_NO_CREDS=1 to skip deliberately."
         ),
     };
     Some(GatewayConfig {
@@ -42,8 +42,8 @@ fn config() -> Option<GatewayConfig> {
         password: zeroize::Zeroizing::new(password),
         host: std::env::var("IB_HOST").unwrap_or_else(|_| "cdc1.ibllc.com".to_string()),
         paper: true,
-        ib_key_timeout_secs: ibkr_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
-        ib_key_token_sub_type: ibkr_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
+        ib_key_timeout_secs: ib_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
+        ib_key_token_sub_type: ib_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
         code_provider: None,
         cancel: None,
         resume: None,
@@ -56,7 +56,7 @@ fn farm_reconnect_with_cached_credentials() {
 
     // Phase 1: Full auth
     let t0 = Instant::now();
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: _ccp_conn, historical: _hmds, .. } =
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: _ccp_conn, historical: _hmds, .. } =
         Gateway::connect(&cfg).expect("Initial connect failed");
     let full_auth_ms = t0.elapsed().as_millis();
 
@@ -76,7 +76,7 @@ fn farm_reconnect_with_cached_credentials() {
     let new_farm = connect_farm(&Default::default(), 
         &cfg.host, "usfarm",
         &cfg.username, &cfg.password, cfg.paper,
-        &server_session_id, &session_key, &hw_info, &encoded, ibkr_dx::gateway::Farm::MarketData, None,
+        &server_session_id, &session_key, &hw_info, &encoded, ib_dx::gateway::Farm::MarketData, None,
         gw.token_published.session_token(), None
     ).expect("Farm reconnect with cached credentials FAILED");
     let reconnect_ms = t1.elapsed().as_millis();
@@ -90,17 +90,17 @@ fn farm_reconnect_with_cached_credentials() {
 fn hotloop_auto_reconnect_on_farm_disconnect() {
     let Some(cfg) = config() else { return };
 
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: ccp_conn, historical: hmds, .. } =
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: ccp_conn, historical: hmds, .. } =
         Gateway::connect(&cfg).expect("Initial connect failed");
 
     let shared = Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(256);
 
-    let (mut hot_loop, _control_tx) = ibkr_dx::engine::hot_loop::HotLoop::for_session(
+    let (mut hot_loop, _control_tx) = ib_dx::engine::hot_loop::HotLoop::for_session(
         gw,
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         farm_conn, ccp_conn, hmds, None, None,
-        ibkr_dx::gateway::CallerAuth {
+        ib_dx::gateway::CallerAuth {
             settings: Default::default(),
             host: cfg.host.clone(),
             username: cfg.username.clone(),
@@ -154,7 +154,7 @@ fn ccp_reconnect_with_cached_credentials() {
     let Some(cfg) = config() else { return };
 
     let t0 = Instant::now();
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: _farm_conn, trading: ccp_conn, historical: _hmds, .. } =
+    let ib_dx::gateway::Session { gateway: gw, market_data: _farm_conn, trading: ccp_conn, historical: _hmds, .. } =
         Gateway::connect(&cfg).expect("Initial connect failed");
     let full_auth_ms = t0.elapsed().as_millis();
 

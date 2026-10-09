@@ -7,10 +7,10 @@ where the refusal for no connection was three lines away.
 import threading
 import time
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -33,7 +33,7 @@ def test_the_wait_ends_with_the_session():
         ("reqAccountUpdatesMulti", lambda c: c.reqAccountUpdatesMulti(9, "", "", True)),
     ):
         w = Errors()
-        c = ibkr_dx.EClient(w)
+        c = ib_dx.EClient(w)
         c._test_connect("T")
         _ends_the_session_soon(c)
         started = time.monotonic()

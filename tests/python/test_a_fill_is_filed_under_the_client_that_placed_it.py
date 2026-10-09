@@ -8,10 +8,10 @@ zero's.
 """
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
-class Filed(ibkr_dx.EWrapper):
+class Filed(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.clients = []
@@ -30,7 +30,7 @@ class Filed(ibkr_dx.EWrapper):
 @pytest.mark.parametrize("status", [None, "Filled"])
 def test_a_report_naming_no_client_files_the_fill_under_the_placing_client(status):
     w = Filed()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_set_client_id(5)
     c._test_track_order(86, 0, "SPY", "BUY", 1, 100.0)
@@ -46,7 +46,7 @@ def test_a_fill_replayed_names_the_client_that_placed_it():
     filtered by client matched nothing and the replay reported both as zero."""
     seen = []
 
-    class Fills(ibkr_dx.EWrapper):
+    class Fills(ib_dx.EWrapper):
         def execDetails(self, reqId, contract, execution):
             seen.append(execution)
 
@@ -60,7 +60,7 @@ def test_a_fill_replayed_names_the_client_that_placed_it():
             self.clientId = 3
 
     w = Fills()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     c._test_set_client_id(3)
     c._test_track_order(7, 1, "SPY", "BUY", 5.0, 10.0, 0)

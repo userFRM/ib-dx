@@ -22,9 +22,9 @@ sys.path.insert(0, str(ROOT / "python"))
 def answers() -> dict[str, str]:
     import time
 
-    import ibkr_dx
+    import ib_dx
 
-    class Preview(ibkr_dx.EWrapper):
+    class Preview(ib_dx.EWrapper):
         def __init__(self):
             super().__init__()
             self.order_id = None
@@ -35,7 +35,7 @@ def answers() -> dict[str, str]:
                 self.state = orderState
 
     w = Preview()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c.connect(
         client_id=1,
         username=os.environ["IB_USERNAME"],
@@ -43,7 +43,7 @@ def answers() -> dict[str, str]:
         paper=True,
     )
     try:
-        asked = ibkr_dx.Contract(symbol="SPY", secType="STK", exchange="SMART", currency="USD")
+        asked = ib_dx.Contract(symbol="SPY", secType="STK", exchange="SMART", currency="USD")
         details = c.contract_details(asked)
         spy = details[0].contract
         out = {
@@ -62,7 +62,7 @@ def answers() -> dict[str, str]:
 
         out["symbol_matches"] = str(len(c.matching_symbols("APP")))
 
-        order = ibkr_dx.Order(action="BUY", orderType="LMT", totalQuantity=1, lmtPrice=1.0)
+        order = ib_dx.Order(action="BUY", orderType="LMT", totalQuantity=1, lmtPrice=1.0)
         order.whatIf = True
         order.orderId = w.order_id = c.next_order_id()
         c.place_order(order.orderId, spy, order)

@@ -2,13 +2,13 @@
 
 | Type | What it is |
 | --- | --- |
-| `ibkr_dx::EClient` / `ibkr_dx::Wrapper` | The reference client's shape: a request under an id, and an answer later on a callback you implement |
-| `ibkr_dx::Config` | What a session is opened with. The same type `EClient` takes |
+| `ib_dx::EClient` / `ib_dx::Wrapper` | The reference client's shape: a request under an id, and an answer later on a callback you implement |
+| `ib_dx::Config` | What a session is opened with. The same type `EClient` takes |
 
 The same `EClient` also carries [the calls that answer](#calls-that-answer) and
 [the calls beyond the documented API](../reference/beyond-the-api.md).
 
-`Contract` and `Order` are at `ibkr_dx::api::client::{Contract, Order}`.
+`Contract` and `Order` are at `ib_dx::api::client::{Contract, Order}`.
 
 `EClientConfig.gateway.order_id_file` selects the durable order-id counter;
 `Some(String::new())` disables persistence. See

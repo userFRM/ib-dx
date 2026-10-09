@@ -5,17 +5,17 @@ store was written after it, so a program that asked there was answered
 without the fill it was being told about.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class AsksFromTheStatus(ibkr_dx.EWrapper):
+class AsksFromTheStatus(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.client = None
         self.replayed = []
 
     def orderStatus(self, orderId, status, *rest):
-        self.client.reqExecutions(77, ibkr_dx.ExecutionFilter())
+        self.client.reqExecutions(77, ib_dx.ExecutionFilter())
 
     def execDetails(self, reqId, contract, execution):
         if reqId == 77:
@@ -27,7 +27,7 @@ class AsksFromTheStatus(ibkr_dx.EWrapper):
 
 def test_a_fill_is_stored_before_its_status_is_announced():
     w = AsksFromTheStatus()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     w.client = c
     c._test_connect("T")
     c._test_track_order(86, 0, "SPY", "BUY", 1, 100.0)

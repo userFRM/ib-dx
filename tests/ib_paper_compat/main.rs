@@ -71,10 +71,10 @@ mod orders;
 
 use std::time::{Duration, Instant};
 
-use ibkr_dx::gateway::Gateway;
-use ibkr_dx::protocol::connection::Frame;
-use ibkr_dx::protocol::fix;
-use ibkr_dx::protocol::fixcomp;
+use ib_dx::gateway::Gateway;
+use ib_dx::protocol::connection::Frame;
+use ib_dx::protocol::fix;
+use ib_dx::protocol::fixcomp;
 
 use common::*;
 
@@ -119,7 +119,7 @@ fn compat_suite() {
     let suite_start = Instant::now();
 
     let start = Instant::now();
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: mut ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: mut ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
         .expect("Gateway::connect() failed");
     common::remember_recovery_auth(&gw, &config);
     let connect_time = start.elapsed();
@@ -143,7 +143,7 @@ fn compat_suite() {
         let conn = &mut conns.farm;
         let result = conn.send_fixcomp(&[
             (fix::TAG_MSG_TYPE, "V"),
-            (fix::TAG_SENDING_TIME, &ibkr_dx::protocol::datetime::chrono_free_timestamp()),
+            (fix::TAG_SENDING_TIME, &ib_dx::protocol::datetime::chrono_free_timestamp()),
             (263, "1"),
             (146, "2"),
             (262, "1"),
@@ -214,11 +214,11 @@ fn compat_suite() {
         // If CCP survived but farm or hmds did not, rebuild each on the route the
         // venue gave this session: its farm name, host and port. A farm reached
         // on another host closes rather than refusing.
-        match historical::open_farm(ibkr_dx::gateway::Farm::MarketData) {
+        match historical::open_farm(ib_dx::gateway::Farm::MarketData) {
             Ok(c) => { conns.farm = c; println!("  farm reconnected"); }
             Err(e) => { println!("  farm reconnect failed (may already be fresh): {e}"); }
         }
-        match historical::open_farm(ibkr_dx::gateway::Farm::Historical) {
+        match historical::open_farm(ib_dx::gateway::Farm::Historical) {
             Ok(c) => { conns.hmds = Some(c); println!("  hmds reconnected"); }
             Err(e) => { println!("  hmds reconnect failed (may already be fresh): {e}"); }
         }
@@ -530,7 +530,7 @@ fn query_error_phase_live() {
     };
 
     println!("=== QueryError live test ===\n");
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
         .expect("Gateway::connect() failed");
     // Every phase below that opens a farm of its own needs the session's own
     // credentials to reach one. Without this they all skip, saying the farm
@@ -567,7 +567,7 @@ fn peg_bench_phase_live() {
         None => { println!("Skipping: IB credentials not set"); return; }
     };
 
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
         .expect("Gateway::connect() failed");
     let conns = Conns {
         farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
@@ -588,7 +588,7 @@ fn peg_bench_phase_live() {
 fn non_usd_order_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let mut conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     conns = multi_asset::phase_non_usd_order(conns);
@@ -602,7 +602,7 @@ fn non_usd_order_phase_live() {
 fn non_stock_order_phases_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let mut conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     conns = multi_asset::phase_forex_order(conns);
@@ -617,7 +617,7 @@ fn non_stock_order_phases_live() {
 fn options_order_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = multi_asset::phase_options_order(conns);
@@ -630,7 +630,7 @@ fn options_order_phase_live() {
 fn farm_recovery_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let (data_resumed, order_acked, healthy) =
@@ -645,7 +645,7 @@ fn farm_recovery_phase_live() {
 fn multi_condition_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_multi_condition_order(conns);
@@ -658,7 +658,7 @@ fn multi_condition_phase_live() {
 fn carried_instructions_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_carried_instructions_order(conns);
@@ -671,7 +671,7 @@ fn carried_instructions_phase_live() {
 fn iceberg_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_iceberg_order(conns);
@@ -685,7 +685,7 @@ fn iceberg_phase_live() {
 fn replace_one_refused_order_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let mut conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let lmt = || OrderKind::Limit { price: 100_000_000 };
@@ -694,16 +694,16 @@ fn replace_one_refused_order_phase_live() {
         ("a snap to midpoint", OrderKind::SnapMid { offset: 0 }, OrderAttrs::default()),
         // The four the walk never asked, each refused a modify here on a
         // reading rather than on an answer.
-        ("a cash-quantity order", lmt(), OrderAttrs { cash_qty: 5_000 * ibkr_dx::types::PRICE_SCALE, ..Default::default() }),
+        ("a cash-quantity order", lmt(), OrderAttrs { cash_qty: 5_000 * ib_dx::types::PRICE_SCALE, ..Default::default() }),
         // Two hours out: a time already past is refused as the order rather
         // than as the replace — "Invalid effective time".
         ("a good-after time", lmt(), OrderAttrs { good_after: 1788201210, ..Default::default() }),
         ("a non-default trigger method", lmt(), OrderAttrs { trigger_method: 2, ..Default::default() }),
         // The three left, each refused on a reading that the replace states
         // only the type and the price.
-        ("an adaptive order", OrderKind::Adaptive { price: 100_000_000, priority: ibkr_dx::types::AdaptivePriority::Normal }, OrderAttrs::default()),
+        ("an adaptive order", OrderKind::Adaptive { price: 100_000_000, priority: ib_dx::types::AdaptivePriority::Normal }, OrderAttrs::default()),
         ("a conditional order", lmt(), OrderAttrs {
-            conditions: vec![ibkr_dx::types::OrderCondition::Price {
+            conditions: vec![ib_dx::types::OrderCondition::Price {
                 con_id: 756733, exchange: "SMART".into(), price: 1_000_000_000, is_more: true, trigger_method: 0,
                 is_conjunction_connection: true,
             }],
@@ -722,7 +722,7 @@ fn replace_one_refused_order_phase_live() {
 fn replace_each_refused_order_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_replace_a_bracket_child(conns);
@@ -741,7 +741,7 @@ fn replace_each_refused_order_phase_live() {
 fn an_order_on_an_index_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let settings = ibkr_dx::EClientConfig {
+    let settings = ib_dx::EClientConfig {
         username: config.username.clone(),
         password: config.password.to_string(),
         paper: config.paper,
@@ -753,7 +753,7 @@ fn an_order_on_an_index_live() {
     struct Heard {
         said: Vec<(i64, String)>,
     }
-    impl ibkr_dx::api::wrapper::Wrapper for Heard {
+    impl ib_dx::api::wrapper::Wrapper for Heard {
         fn error(&mut self, _req_id: i64, _error_time: i64, code: i64, message: &str, _advanced: &str) {
             if !(2100..=2200).contains(&code) {
                 self.said.push((code, message.to_string()));
@@ -771,7 +771,7 @@ fn an_order_on_an_index_live() {
             Ok(c) => c,
             Err(e) => { println!("  {symbol}: not qualified ({e})"); continue; }
         };
-        let order = ibkr_dx::types::model::Order {
+        let order = ib_dx::types::model::Order {
             action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(),
             lmt_price: 1.0, tif: "DAY".into(), ..Default::default()
         };
@@ -809,7 +809,7 @@ fn an_order_on_an_index_live() {
 fn a_broad_lookup_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let settings = ibkr_dx::EClientConfig {
+    let settings = ib_dx::EClientConfig {
         username: config.username.clone(),
         password: config.password.to_string(),
         paper: config.paper,
@@ -844,7 +844,7 @@ fn a_broad_lookup_phase_live() {
 fn withdraw_a_news_query_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = historical::phase_withdraw_a_news_query(conns);
@@ -858,7 +858,7 @@ fn withdraw_a_news_query_phase_live() {
 fn crypto_order_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = multi_asset::phase_crypto_order(conns);
@@ -876,7 +876,7 @@ fn crypto_order_phase_live() {
 fn replace_a_trail_amount_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_replace_a_trail_amount(conns);
@@ -891,7 +891,7 @@ fn replace_a_trail_amount_phase_live() {
 fn replace_a_trailing_stop_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_replace_a_trailing_stop(conns);
@@ -904,7 +904,7 @@ fn replace_a_trailing_stop_phase_live() {
 fn time_condition_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_time_condition_order(conns);
@@ -921,7 +921,7 @@ fn vwap_algo_phase_live() {
         Some(c) => c,
         None => { println!("Skipping: IB credentials not set"); return; }
     };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
         .expect("Gateway::connect() failed");
     let conns = Conns {
         farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
@@ -953,7 +953,7 @@ fn box_top_phase_live() {
         None => { println!("Skipping: IB credentials not set"); return; }
     };
 
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config)
         .expect("Gateway::connect() failed");
     let mut conns = Conns {
         farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
@@ -992,7 +992,7 @@ fn cross_session_recovery_phase_live() {
 
     // ─── Session A: place resting GTC LMT BUY 1 SPY @ $1 (far below market) ───
     println!("Session A: connecting + placing resting LMT GTC BUY 1 SPY @ $1");
-    let ibkr_dx::gateway::Session { gateway: gw_a, market_data: farm_a, trading: ccp_a, historical: hmds_a, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw_a, market_data: farm_a, trading: ccp_a, historical: hmds_a, .. } = Gateway::connect(&config)
         .expect("Session A: Gateway::connect failed");
     let account_id = gw_a.account_id.clone();
     drop(gw_a); // gateway state not needed after sockets are out
@@ -1004,7 +1004,7 @@ fn cross_session_recovery_phase_live() {
         let shared = std::sync::Arc::new(SharedState::new());
         let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
         let (mut hot_loop, control_tx) = HotLoop::with_connections(
-            shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+            shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
             farm_a, ccp_a, hmds_a, None,
         );
         let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -1014,7 +1014,7 @@ fn cross_session_recovery_phase_live() {
         // tag 167 with "Unsupported type".
         hot_loop.context_mut().set_routing(inst_id, "STK", "SMART");
 
-        control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("Session A: send order failed");
+        control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("Session A: send order failed");
 
         let join = run_hot_loop(hot_loop);
 
@@ -1051,7 +1051,7 @@ fn cross_session_recovery_phase_live() {
 
     // ─── Session B: fresh connect → expect 35=8 recovery push → cancel orderId ───
     println!("Session B: fresh Gateway::connect → expect recovery push for orderId={order_id}");
-    let ibkr_dx::gateway::Session { gateway: gw_b, market_data: farm_b, trading: ccp_b, historical: hmds_b, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw_b, market_data: farm_b, trading: ccp_b, historical: hmds_b, .. } = Gateway::connect(&config)
         .expect("Session B: Gateway::connect failed");
     assert_eq!(account_id, gw_b.account_id, "Account ID changed between sessions");
     drop(gw_b);
@@ -1059,7 +1059,7 @@ fn cross_session_recovery_phase_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm_b, ccp_b, hmds_b, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -1128,7 +1128,7 @@ fn routing_table_probe() {
         Some(c) => c,
         None => { println!("Skipping: IB credentials not set"); return; }
     };
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: mut ccp, historical: hmds, .. } = Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: mut ccp, historical: hmds, .. } = Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
 
@@ -1189,7 +1189,7 @@ fn routing_table_probe() {
     // One reply after one send cannot be told from the line's own cadence; a
     // reply after each of three sends can.
     for round in 1..=3 {
-        let now = ibkr_dx::protocol::datetime::chrono_free_timestamp();
+        let now = ib_dx::protocol::datetime::chrono_free_timestamp();
         ccp.send_fix(&[
             (fix::TAG_MSG_TYPE, "U"),
             (fix::TAG_SENDING_TIME, &now),
@@ -1209,7 +1209,7 @@ fn routing_table_probe() {
     // unavailable. If it is silent, only messages the session already pushes
     // ever come back.
     for round in 1..=3 {
-        let now = ibkr_dx::protocol::datetime::chrono_free_timestamp();
+        let now = ib_dx::protocol::datetime::chrono_free_timestamp();
         ccp.send_fix(&[
             (fix::TAG_MSG_TYPE, "U"),
             (fix::TAG_SENDING_TIME, &now),
@@ -1229,7 +1229,7 @@ fn routing_table_probe() {
         ("aapl stk", vec![(55, "AAPL"), (310, "STK"), (6346, "265598"), (6320, "1"), (6994, "1")]),
     ];
     for (label, body) in variants {
-        let now = ibkr_dx::protocol::datetime::chrono_free_timestamp();
+        let now = ib_dx::protocol::datetime::chrono_free_timestamp();
         let mut fields: Vec<(u32, &str)> = vec![
             (fix::TAG_MSG_TYPE, "U"),
             (fix::TAG_SENDING_TIME, &now),
@@ -1266,8 +1266,8 @@ fn what_an_advisor_request_is_answered_with_live() {
     };
 
     println!("=== What an advisor request is answered with ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
 
@@ -1275,7 +1275,7 @@ fn what_an_advisor_request_is_answered_with_live() {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id, farm, ccp, hmds, None,
     );
     let join = run_hot_loop(hot_loop);
@@ -1338,8 +1338,8 @@ fn a_cancel_racing_an_unacked_replace_live() {
     };
 
     println!("=== A cancel racing an unacknowledged replace ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
 
@@ -1348,7 +1348,7 @@ fn a_cancel_racing_an_unacked_replace_live() {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id, farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -1358,10 +1358,10 @@ fn a_cancel_racing_an_unacked_replace_live() {
     // Resting far below the market so it neither fills nor moves.
     println!("  orderId = {order_id}");
     control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE,
-        kind: ibkr_dx::types::OrderKind::Limit { price: 1_00_000_000 },
+        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE,
+        kind: ib_dx::types::OrderKind::Limit { price: 1_00_000_000 },
         tif: b'0',
-        attrs: ibkr_dx::types::OrderAttrs { outside_rth: true, ..Default::default() },
+        attrs: ib_dx::types::OrderAttrs { outside_rth: true, ..Default::default() },
     })).expect("send failed");
 
     let join = run_hot_loop(hot_loop);
@@ -1389,7 +1389,7 @@ fn a_cancel_racing_an_unacked_replace_live() {
     // The cancel names the version the replace was sent under.
     println!("  replacing, then cancelling with no wait between");
     control_tx.send(ControlCommand::Order(OrderRequest::Modify {
-        order_id, price: 2_00_000_000, qty: ibkr_dx::types::QTY_SCALE,
+        order_id, price: 2_00_000_000, qty: ib_dx::types::QTY_SCALE,
         outside_rth: true, ord_type: 0, tif: 0, stop_price: 0,
         spec: None,
     })).expect("replace failed");
@@ -1436,7 +1436,7 @@ fn a_cancel_racing_an_unacked_replace_live() {
 /// not been measured. This reads it: one session places each and replaces it
 /// naming new numbers, and a second session reads what the venue holds, since
 /// a session that placed an order answers about it from its own record. Run
-/// with `IBKR_DX_CAPTURE_WIRE=1` and the second session's replay is printed tag by
+/// with `IB_DX_CAPTURE_WIRE=1` and the second session's replay is printed tag by
 /// tag, so each number is read where the venue put it rather than where this
 /// client's decoder looks.
 ///
@@ -1446,7 +1446,7 @@ fn a_cancel_racing_an_unacked_replace_live() {
 #[test]
 #[ignore = "opens a session of its own, which the account allows one of, so it cannot run beside the suite; run it with --ignored"]
 fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
-    use ibkr_dx::types::{OrderKind, PRICE_SCALE, QTY_SCALE};
+    use ib_dx::types::{OrderKind, PRICE_SCALE, QTY_SCALE};
     start_logging();
     let config = match get_config() {
         Some(c) => c,
@@ -1489,15 +1489,15 @@ fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
     };
 
     println!("=== What the venue holds after a replace of each priced shape ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id.clone(), farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -1510,7 +1510,7 @@ fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
         println!("  {name}: order {order_id} placed as {kind:?}");
         control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
             order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: QTY_SCALE,
-            kind: kind.clone(), tif: b'0', attrs: ibkr_dx::types::OrderAttrs::default(),
+            kind: kind.clone(), tif: b'0', attrs: ib_dx::types::OrderAttrs::default(),
         })).expect("send failed");
     }
     let mut working: Vec<u64> = Vec::new();
@@ -1597,14 +1597,14 @@ fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
     std::thread::sleep(Duration::from_secs(5));
 
     println!("\n  --- a second session reads the venue's own statement ---");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("the second Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("the second Gateway::connect failed");
     drop(gw);
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id.clone(), farm, ccp, hmds, None,
     );
     let join = run_hot_loop(hot_loop);
@@ -1658,16 +1658,16 @@ fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
         // statement of the order, built from what the venue named, goes
         // ahead of the replace.
         control_tx.send(ControlCommand::RegisterInstrument {
-            contract: ibkr_dx::types::ContractRef {
+            contract: ib_dx::types::ContractRef {
                 con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(),
                 exchange: "SMART".into(), currency: "USD".into(), ..Default::default()
             },
             identity: String::new(),
         }).expect("register failed");
         let named = shared.orders.get_order_info(order_id).expect("named by the venue").order;
-        let spec = match ibkr_dx::client_core::ClientCore::build_order_request(&named, order_id, 0, None) {
+        let spec = match ib_dx::client_core::ClientCore::build_order_request(&named, order_id, 0, None) {
             Ok(ControlCommand::Order(OrderRequest::SubmitEx { kind, attrs, .. })) => {
-                Some(Box::new(ibkr_dx::types::OrderSpec { kind, attrs }))
+                Some(Box::new(ib_dx::types::OrderSpec { kind, attrs }))
             }
             _ => {
                 println!("  the venue's naming does not build an order this client can state");
@@ -1753,7 +1753,7 @@ fn what_the_venue_holds_after_a_replace_of_each_priced_shape_live() {
 ///
 /// A reading for the times an order is left behind: every order the replay
 /// names, with the status the venue states for it, and with
-/// `IBKR_DX_CAPTURE_WIRE=1` the replay's frames tag by tag. Nothing is sent.
+/// `IB_DX_CAPTURE_WIRE=1` the replay's frames tag by tag. Nothing is sent.
 #[test]
 #[ignore = "opens a session of its own, which the account allows one of, so it cannot run beside the suite; run it with --ignored"]
 fn what_the_account_is_working_live() {
@@ -1763,15 +1763,15 @@ fn what_the_account_is_working_live() {
         None => { println!("Skipping: IB credentials not set"); return; }
     };
     println!("=== What the account is working ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id, farm, ccp, hmds, None,
     );
     let join = run_hot_loop(hot_loop);
@@ -1820,7 +1820,7 @@ fn a_numeric_group_name_is_held_as_named_live() {
         None => { println!("Skipping: IB credentials not set"); return; }
     };
     println!("=== A group named by a number ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
         Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -1830,7 +1830,7 @@ fn a_numeric_group_name_is_held_as_named_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id,
         farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -1839,7 +1839,7 @@ fn a_numeric_group_name_is_held_as_named_live() {
     // Two resting buys far below the market, in one group named "1234".
     for order_id in [first, second] {
         control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-            con_id: 0, order_id, instrument: inst_id, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE,
+            con_id: 0, order_id, instrument: inst_id, side: Side::Buy, qty: ib_dx::types::QTY_SCALE,
             kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1',
             attrs: OrderAttrs { oca_group_str: "1234".to_string(), oca_type: 1, outside_rth: true, ..Default::default() },
         })).expect("send failed");
@@ -1909,28 +1909,28 @@ fn european_fill_books_what_the_venue_reported_live() {
     };
 
     println!("=== A fill on an open market ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: mut ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: mut ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
 
     // Vodafone in London, in sterling. Asked for rather than written down:
     // the venue names its own listings, and an id copied into a test goes
     // stale the day the listing changes.
-    let now = ibkr_dx::protocol::datetime::chrono_free_timestamp();
+    let now = ib_dx::protocol::datetime::chrono_free_timestamp();
     ccp.send_fix(&[
         (fix::TAG_MSG_TYPE, "c"),
         (fix::TAG_SENDING_TIME, &now),
-        (ibkr_dx::control::contracts::TAG_SECURITY_REQ_ID, "RFILL"),
-        (ibkr_dx::control::contracts::TAG_SECURITY_REQ_TYPE, "2"),
-        (ibkr_dx::control::contracts::TAG_SYMBOL, "VOD"),
-        (ibkr_dx::control::contracts::TAG_SECURITY_TYPE, "CS"),
-        (ibkr_dx::control::contracts::TAG_EXCHANGE, "SMART"),
-        (ibkr_dx::control::contracts::TAG_CURRENCY, "GBP"),
-        (ibkr_dx::control::contracts::TAG_IB_SOURCE, "Socket"),
+        (ib_dx::control::contracts::TAG_SECURITY_REQ_ID, "RFILL"),
+        (ib_dx::control::contracts::TAG_SECURITY_REQ_TYPE, "2"),
+        (ib_dx::control::contracts::TAG_SYMBOL, "VOD"),
+        (ib_dx::control::contracts::TAG_SECURITY_TYPE, "CS"),
+        (ib_dx::control::contracts::TAG_EXCHANGE, "SMART"),
+        (ib_dx::control::contracts::TAG_CURRENCY, "GBP"),
+        (ib_dx::control::contracts::TAG_IB_SOURCE, "Socket"),
     ]).expect("failed to ask for the listing");
 
-    let mut listing: Option<ibkr_dx::control::contracts::ContractDefinition> = None;
+    let mut listing: Option<ib_dx::control::contracts::ContractDefinition> = None;
     let deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < deadline && listing.is_none() {
         match ccp.try_recv() {
@@ -1942,7 +1942,7 @@ fn european_fill_books_what_the_venue_reported_live() {
             for msg in messages_in(&mut ccp, &frame) {
                 let tags = fix::fix_parse(&msg);
                 if tags.get(&fix::TAG_MSG_TYPE).map(|s| s.as_str()) == Some("d")
-                    && let Some(def) = ibkr_dx::control::contracts::parse_secdef_response(&msg, true)
+                    && let Some(def) = ib_dx::control::contracts::parse_secdef_response(&msg, true)
                     && def.currency == "GBP"
                 {
                     listing = Some(def);
@@ -1961,7 +1961,7 @@ fn european_fill_books_what_the_venue_reported_live() {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id, farm, ccp, hmds, None,
     );
 
@@ -1974,14 +1974,14 @@ fn european_fill_books_what_the_venue_reported_live() {
 
     // One share, priced through the offer so it trades rather than rests.
     control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE,
-        kind: ibkr_dx::types::OrderKind::Market,
+        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE,
+        kind: ib_dx::types::OrderKind::Market,
         tif: b'0',
-        attrs: ibkr_dx::types::OrderAttrs::default(),
+        attrs: ib_dx::types::OrderAttrs::default(),
     })).expect("send failed");
 
     let join = run_hot_loop(hot_loop);
-    let mut filled: Option<ibkr_dx::types::Fill> = None;
+    let mut filled: Option<ib_dx::types::Fill> = None;
     let mut refused = false;
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline && filled.is_none() && !refused {
@@ -2012,15 +2012,15 @@ fn european_fill_books_what_the_venue_reported_live() {
 
     println!(
         "  filled {} at {:.4}, cumulative {}",
-        ibkr_dx::types::qty_to_f64(fill.qty),
-        fill.price as f64 / ibkr_dx::types::PRICE_SCALE as f64,
-        ibkr_dx::types::qty_to_f64(fill.cum_qty),
+        ib_dx::types::qty_to_f64(fill.qty),
+        fill.price as f64 / ib_dx::types::PRICE_SCALE as f64,
+        ib_dx::types::qty_to_f64(fill.cum_qty),
     );
 
     assert_eq!(
-        fill.qty, ibkr_dx::types::QTY_SCALE,
+        fill.qty, ib_dx::types::QTY_SCALE,
         "one share was asked for and {} was booked",
-        ibkr_dx::types::qty_to_f64(fill.qty),
+        ib_dx::types::qty_to_f64(fill.qty),
     );
     let after = hl.context_mut().position(inst_id);
     assert!(
@@ -2050,8 +2050,8 @@ fn fractional_order_phase_live() {
     };
 
     println!("=== Fractional order ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
-        ibkr_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } =
+        ib_dx::gateway::Gateway::connect(&config).expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
 
@@ -2060,7 +2060,7 @@ fn fractional_order_phase_live() {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
         shared.clone(),
-        Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
+        Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())),
         account_id, farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -2071,13 +2071,13 @@ fn fractional_order_phase_live() {
     // regular hours: the venue serves a fraction of a share only then, and an
     // order marked for outside them is refused on that ground before the
     // quantity is judged at all.
-    let half = ibkr_dx::types::QTY_SCALE / 2;
+    let half = ib_dx::types::QTY_SCALE / 2;
     println!("  orderId = {order_id}, qty = half a share");
     control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
         order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: half,
-        kind: ibkr_dx::types::OrderKind::Limit { price: 1_00_000_000 },
+        kind: ib_dx::types::OrderKind::Limit { price: 1_00_000_000 },
         tif: b'0',
-        attrs: ibkr_dx::types::OrderAttrs::default(),
+        attrs: ib_dx::types::OrderAttrs::default(),
     })).expect("send failed");
 
     let join = run_hot_loop(hot_loop);
@@ -2148,7 +2148,7 @@ fn submit_ex_bracket_child_phase_live() {
     };
 
     println!("=== SubmitEx bracket child ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2161,7 +2161,7 @@ fn submit_ex_bracket_child_phase_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -2173,19 +2173,19 @@ fn submit_ex_bracket_child_phase_live() {
 
     // Parent: resting far-below-market entry (proven pattern from the
     // cross-session test).
-    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: parent_id, instrument: inst_id, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("send parent failed");
+    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: parent_id, instrument: inst_id, side: Side::Buy, qty: ib_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("send parent failed");
 
     // Child shape: STP + GTC + parent_id + oca_group. A sell
     // stop at $0.50 can never trigger even if something goes wrong.
     control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-        order_id: child_id, instrument: inst_id, con_id: 0, side: Side::Sell, qty: ibkr_dx::types::QTY_SCALE,
-        kind: ibkr_dx::types::OrderKind::Stop { stop_price: 50_000_000 },
+        order_id: child_id, instrument: inst_id, con_id: 0, side: Side::Sell, qty: ib_dx::types::QTY_SCALE,
+        kind: ib_dx::types::OrderKind::Stop { stop_price: 50_000_000 },
         tif: b'1', // GTC
-        attrs: ibkr_dx::types::OrderAttrs {
+        attrs: ib_dx::types::OrderAttrs {
             parent_id,
             oca_group: parent_id,
             outside_rth: true,
-            ..ibkr_dx::types::OrderAttrs::default()
+            ..ib_dx::types::OrderAttrs::default()
         },
     })).expect("send child failed");
 
@@ -2271,7 +2271,7 @@ fn a_good_til_crossing_order_is_sent_as_one() {
     };
 
     println!("=== good-til-crossing ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2280,7 +2280,7 @@ fn a_good_til_crossing_order_is_sent_as_one() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -2290,7 +2290,7 @@ fn a_good_til_crossing_order_is_sent_as_one() {
 
     // Far below the market so it rests rather than trades.
     control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE,
+        order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE,
         kind: OrderKind::Limit { price: 1_00_000_000 },
         tif: b'5',
         attrs: OrderAttrs { outside_rth: true, ..Default::default() },
@@ -2359,7 +2359,7 @@ fn an_off_grid_price_is_refused_and_the_caller_told() {
     };
 
     println!("=== snap-to-tick ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2370,7 +2370,7 @@ fn an_off_grid_price_is_refused_and_the_caller_told() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -2393,7 +2393,7 @@ fn an_off_grid_price_is_refused_and_the_caller_told() {
     std::thread::sleep(Duration::from_secs(5));
 
     // Off-grid on a $0.01 grid: must go out as $1.00.
-    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_123_400 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("send order failed");
+    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { order_id, instrument: inst_id, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_123_400 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).expect("send order failed");
 
     let deadline = Instant::now() + Duration::from_secs(30);
     let (mut acked, mut rejected) = (false, false);
@@ -2439,7 +2439,7 @@ fn timeout_sweeps_phase_live() {
     };
 
     println!("=== happy paths under the deadline sweeps ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2447,7 +2447,7 @@ fn timeout_sweeps_phase_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
@@ -2486,21 +2486,21 @@ fn timeout_sweeps_phase_live() {
     };
 
     // 1. By con_id — single record.
-    control_tx.send(ControlCommand::FetchContractDetails { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: String::new(), sec_type: "STK".into(), exchange: String::new(), currency: String::new(), ..Default::default() }, req_id: 6001, include_expired: false, filters: Default::default() }).expect("send details by con_id failed");
+    control_tx.send(ControlCommand::FetchContractDetails { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: String::new(), sec_type: "STK".into(), exchange: String::new(), currency: String::new(), ..Default::default() }, req_id: 6001, include_expired: false, filters: Default::default() }).expect("send details by con_id failed");
     let (rows, end, row_after_end) = wait_details(6001, "by-conId SPY");
     assert!(rows >= 1, "by-conId lookup returned no rows");
     assert!(end, "by-conId end never fired — sweep may have eaten the reply");
     assert!(!row_after_end, "a row arrived AFTER end — ordering regression");
 
     // 2. By symbol — exercises the fan-out counter and the deferred-end path.
-    control_tx.send(ControlCommand::FetchContractDetails { contract: ibkr_dx::types::ContractRef { con_id: 0, symbol: "AAPL".into(), sec_type: "STK".into(), exchange: String::new(), currency: "USD".into(), ..Default::default() }, req_id: 6002, include_expired: false, filters: Default::default() }).expect("send details by symbol failed");
+    control_tx.send(ControlCommand::FetchContractDetails { contract: ib_dx::types::ContractRef { con_id: 0, symbol: "AAPL".into(), sec_type: "STK".into(), exchange: String::new(), currency: "USD".into(), ..Default::default() }, req_id: 6002, include_expired: false, filters: Default::default() }).expect("send details by symbol failed");
     let (rows, end, row_after_end) = wait_details(6002, "by-symbol AAPL fan-out");
     assert!(rows >= 1, "by-symbol lookup returned no rows");
     assert!(end, "by-symbol end never fired within 30s");
     assert!(!row_after_end, "a row arrived AFTER end — ordering regression");
 
     // 3. Historical bars — must complete without tripping the idle sweep.
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 6003, end_date_time: String::new(), duration: "5 D".into(), bar_size: "1 day".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).expect("send historical failed");
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 6003, end_date_time: String::new(), duration: "5 D".into(), bar_size: "1 day".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).expect("send historical failed");
     let deadline = Instant::now() + Duration::from_secs(45);
     let (mut bars, mut complete, mut hist_err) = (0usize, false, None::<String>);
     while Instant::now() < deadline && !complete && hist_err.is_none() {
@@ -2541,7 +2541,7 @@ fn reclaim_and_symbol_search_phase_live() {
     };
 
     println!("=== slot reclaim + symbol search ===\n");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2549,7 +2549,7 @@ fn reclaim_and_symbol_search_phase_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let join = run_hot_loop(hot_loop);
@@ -2628,7 +2628,7 @@ fn rtt_ping_phase_live() {
 
     println!("=== : RTT ping ===
 ");
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm, trading: ccp, historical: hmds, .. } = Gateway::connect(&config)
         .expect("Gateway::connect failed");
     let account_id = gw.account_id.clone();
     drop(gw);
@@ -2636,7 +2636,7 @@ fn rtt_ping_phase_live() {
     let shared = std::sync::Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         farm, ccp, hmds, None,
     );
     let join = run_hot_loop(hot_loop);
@@ -2678,7 +2678,7 @@ fn rtt_ping_phase_live() {
 #[test]
 #[ignore = "opens a session of its own, which the account allows one of, so it cannot run beside the suite; run it with --ignored"]
 fn conditions_round_trip_phase_live() {
-    use ibkr_dx::api::{EClientConfig, Wrapper};
+    use ib_dx::api::{EClientConfig, Wrapper};
 
     #[derive(Default)]
     struct Stated {
@@ -2688,12 +2688,12 @@ fn conditions_round_trip_phase_live() {
     impl Wrapper for Stated {
         fn open_order(
             &mut self, order_id: i64, _c: &ApiContract, order: &ApiOrder,
-            _s: &ibkr_dx::api::types::OrderState,
+            _s: &ib_dx::api::types::OrderState,
         ) {
             self.orders.push((order_id, order.conditions.len()));
         }
         fn order_status(
-            &mut self, order_id: i64, status: &str, _f: ibkr_dx::api::Decimal, _r: ibkr_dx::api::Decimal, _a: f64,
+            &mut self, order_id: i64, status: &str, _f: ib_dx::api::Decimal, _r: ib_dx::api::Decimal, _a: f64,
             _p: i64, _pi: i64, _l: f64, _c: i64, _w: &str, _m: f64,
         ) {
             if matches!(status, "Cancelled" | "Filled" | "Inactive") {
@@ -2817,7 +2817,7 @@ fn adjusted_series_and_the_clock_live() {
         Some(c) => c,
         None => { println!("Skipping: IB credentials not set"); return; }
     };
-    let settings = ibkr_dx::EClientConfig {
+    let settings = ib_dx::EClientConfig {
         username: config.username.clone(),
         password: config.password.to_string(),
         paper: config.paper,
@@ -2849,12 +2849,12 @@ fn adjusted_series_and_the_clock_live() {
     }
     assert!(!actions.is_empty(), "this contract split inside the window asked for");
     assert!(
-        actions.iter().any(|a| a.kind == Some(ibkr_dx::AdjustmentKind::Split)),
+        actions.iter().any(|a| a.kind == Some(ib_dx::AdjustmentKind::Split)),
         "the split is the action the rest of this rests on",
     );
 
     // ── The same window, raw and adjusted ──
-    let biggest_step = |bars: &[ibkr_dx::types::model::BarData]| -> (f64, String) {
+    let biggest_step = |bars: &[ib_dx::types::model::BarData]| -> (f64, String) {
         let mut worst = (1.0_f64, String::new());
         for w in bars.windows(2) {
             let (a, b) = (w[0].close, w[1].close);
@@ -2908,7 +2908,7 @@ fn adjusted_series_and_the_clock_live() {
     // ── The clock, at both precisions ──
     #[derive(Default)]
     struct Clock { secs: Vec<i64>, millis: Vec<i64> }
-    impl ibkr_dx::Wrapper for Clock {
+    impl ib_dx::Wrapper for Clock {
         fn current_time(&mut self, t: i64) { self.secs.push(t) }
         fn current_time_in_millis(&mut self, t: i64) { self.millis.push(t) }
     }
@@ -2936,7 +2936,7 @@ fn gated_wires_phase_live() {
         Some(c) => c,
         None => { println!("Skipping: IB credentials not set"); return; }
     };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } =
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } =
         Gateway::connect(&config).expect("Gateway::connect() failed");
     // The phase opens a farm of its own, which needs the session's own
     // credentials to reach.
@@ -2979,7 +2979,7 @@ fn what_kinds_of_action_the_venue_states_live() {
         Some(c) => c,
         None => { println!("Skipping: IB credentials not set"); return; }
     };
-    let settings = ibkr_dx::EClientConfig {
+    let settings = ib_dx::EClientConfig {
         username: config.username.clone(),
         password: config.password.to_string(),
         paper: config.paper,
@@ -3086,7 +3086,7 @@ fn what_kinds_of_action_the_venue_states_live() {
                 println!("  {symbol} {from}..{to}: {} action(s) — {}",
                     actions.len(), summary.join(" "));
                 for a in actions.iter().filter(|a| {
-                    !matches!(a.kind, Some(ibkr_dx::AdjustmentKind::CashDividend))
+                    !matches!(a.kind, Some(ib_dx::AdjustmentKind::CashDividend))
                 }) {
                     println!("      {:<3} {} value={} announced={}",
                         a.kind.map(|k| k.code()).unwrap_or("??"), a.date, a.value, a.announce_date);
@@ -3094,11 +3094,11 @@ fn what_kinds_of_action_the_venue_states_live() {
                     // value is the reciprocal, so it multiplies a price where a
                     // split divides one. Checked here against a real stated
                     // value rather than a made-up one.
-                    if a.kind == Some(ibkr_dx::AdjustmentKind::SpinOff)
+                    if a.kind == Some(ib_dx::AdjustmentKind::SpinOff)
                         && let Ok(v) = a.value.parse::<f64>()
                         && v > 0.0
                     {
-                        let before = ibkr_dx::scale_before("19000101", std::slice::from_ref(a))
+                        let before = ib_dx::scale_before("19000101", std::slice::from_ref(a))
                             .expect("the venue stated this factor");
                         assert!(
                             (before - v).abs() < 1e-9,
@@ -3111,11 +3111,11 @@ fn what_kinds_of_action_the_venue_states_live() {
                     // earlier price by 1/1.05. The spin-off above is the
                     // reciprocal of exactly this, which is what tells the two
                     // branches apart on real numbers rather than made-up ones.
-                    if a.kind == Some(ibkr_dx::AdjustmentKind::StockDividend)
+                    if a.kind == Some(ib_dx::AdjustmentKind::StockDividend)
                         && let Ok(v) = a.value.parse::<f64>()
                         && v > 0.0
                     {
-                        let before = ibkr_dx::scale_before("19000101", std::slice::from_ref(a))
+                        let before = ib_dx::scale_before("19000101", std::slice::from_ref(a))
                             .expect("the venue stated this factor");
                         assert!(
                             (before - 1.0 / v).abs() < 1e-9,
@@ -3129,8 +3129,8 @@ fn what_kinds_of_action_the_venue_states_live() {
                     // bar, whatever it states. A session states values on both
                     // sides of one, so this is the branch being read rather
                     // than the number.
-                    if a.kind == Some(ibkr_dx::AdjustmentKind::RightsOffer) {
-                        let before = ibkr_dx::scale_before("19000101", std::slice::from_ref(a))
+                    if a.kind == Some(ib_dx::AdjustmentKind::RightsOffer) {
+                        let before = ib_dx::scale_before("19000101", std::slice::from_ref(a))
                             .expect("a rights offer is read, not refused");
                         assert!(
                             (before - 1.0).abs() < 1e-9,
@@ -3151,7 +3151,7 @@ fn what_kinds_of_action_the_venue_states_live() {
         currency: "USD".into(), ..Default::default()
     });
     if let Ok(ge) = ge {
-        let step = |bars: &[ibkr_dx::types::model::BarData]| -> (f64, String) {
+        let step = |bars: &[ib_dx::types::model::BarData]| -> (f64, String) {
             let mut worst = (1.0_f64, String::new());
             for w in bars.windows(2) {
                 let (a, b) = (w[0].close, w[1].close);
@@ -3209,7 +3209,7 @@ fn what_kinds_of_action_the_venue_states_live() {
 fn directed_venue_replace_phase_live() {
     start_logging();
     let config = match get_config() { Some(c) => c, None => return };
-    let ibkr_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
+    let ib_dx::gateway::Session { gateway: mut gw, market_data: farm_conn, trading: ccp_conn, historical: hmds_conn, .. } = Gateway::connect(&config).expect("connect");
     let conns = Conns { farm: farm_conn, ccp: ccp_conn, hmds: hmds_conn,
         account_id: gw.account_id.clone() };
     let conns = orders::phase_replace_keeps_the_directed_venue(conns);
@@ -3229,15 +3229,15 @@ fn directed_venue_replace_phase_live() {
 /// time and not a single wrong answer. The numbers below are the ones that
 /// should return to where they began once the quotes are withdrawn.
 ///
-/// Run: IBKR_DX_SOAK_MINUTES=720 cargo test --test ib_paper_compat a_session_held_for_hours_phase_live -- --ignored --nocapture
+/// Run: IB_DX_SOAK_MINUTES=720 cargo test --test ib_paper_compat a_session_held_for_hours_phase_live -- --ignored --nocapture
 #[test]
-#[ignore = "holds a session for hours; run it deliberately with IBKR_DX_SOAK_MINUTES set"]
+#[ignore = "holds a session for hours; run it deliberately with IB_DX_SOAK_MINUTES set"]
 fn a_session_held_for_hours_phase_live() {
     start_logging();
-    let minutes: u64 = std::env::var("IBKR_DX_SOAK_MINUTES")
+    let minutes: u64 = std::env::var("IB_DX_SOAK_MINUTES")
         .ok().and_then(|v| v.parse().ok()).unwrap_or(60);
     let config = match get_config() { Some(c) => c, None => return };
-    let settings = ibkr_dx::EClientConfig {
+    let settings = ib_dx::EClientConfig {
         username: config.username.clone(),
         password: config.password.to_string(),
         paper: config.paper,

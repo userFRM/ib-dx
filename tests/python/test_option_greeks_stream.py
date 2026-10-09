@@ -19,7 +19,7 @@ import os, threading, time
 import pytest
 
 from conftest import FEED_DOWN, declined, inside_the_session, liquid_hours, next_option_expiry, wait_for
-from ibkr_dx import EWrapper, EClient, Contract
+from ib_dx import EWrapper, EClient, Contract
 
 pytestmark = pytest.mark.skipif(
     not (os.environ.get("IB_USERNAME") and os.environ.get("IB_PASSWORD")),

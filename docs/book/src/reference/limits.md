@@ -48,7 +48,7 @@ spelling (`island_for_nasdaq`), the time zone and date format, and the logging
 level. The others, among them the master client id, the order-precaution
 bypasses and the smart-routing defaults, are not configurable here yet, and
 `req_config` and `update_config` are refused with 10357. The full list is in
-[#273](https://github.com/userFRM/ibkr-dx/issues/273).
+[#273](https://github.com/userFRM/ib-dx/issues/273).
 
 # Not settled here
 
@@ -440,7 +440,7 @@ first line made. The 81 `*ProtoBuf` wrapper stubs exist to be found: a
 program's override calls `super()` into one, and the base answers as every
 other stub here answers — nothing, as this client's engine delivers its
 answers under the text encoding. The whole family is installed from Python
-(`ibkr_dx/_protobuf_shapes.py`), and the reference spellings are generated for
+(`ib_dx/_protobuf_shapes.py`), and the reference spellings are generated for
 it as for any other method, so both `reqMarketDataProtoBuf` and
 `req_market_data_proto_buf` name one call.
 

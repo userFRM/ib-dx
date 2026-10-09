@@ -12,53 +12,53 @@
 #![allow(unused_imports, dead_code)]
 
 // ── The surface a program is written against ────────────────────────────────
-use ibkr_dx::api::error_codes::Refusal;
-use ibkr_dx::api::reliability::{ReconnectConfig, RecoveryBudget};
-use ibkr_dx::api::settings::{GatewaySettings, SessionSettings};
-use ibkr_dx::api::types::{
+use ib_dx::api::error_codes::Refusal;
+use ib_dx::api::reliability::{ReconnectConfig, RecoveryBudget};
+use ib_dx::api::settings::{GatewaySettings, SessionSettings};
+use ib_dx::api::types::{
     BarData, CommissionAndFeesReport, Contract, ContractDescription, ContractDetails,
     Execution, Order, OrderState, TagValue,
 };
-use ibkr_dx::api::{EClient, EClientConfig, Wrapper};
-use ibkr_dx::{EClient as RootEClient, Refusal as RootRefusal};
-use ibkr_dx::{ExerciseStates, FIRST_RESERVED_REQUEST_ID, PROTOCOL_LEVEL};
+use ib_dx::api::{EClient, EClientConfig, Wrapper};
+use ib_dx::{EClient as RootEClient, Refusal as RootRefusal};
+use ib_dx::{ExerciseStates, FIRST_RESERVED_REQUEST_ID, PROTOCOL_LEVEL};
 
 // ── Reachable because a program already reaches it ──────────────────────────
 //
 // These moved during the reorganisation. The path each was published under is
 // kept, so what follows is the whole of what "nothing a caller names has moved"
 // means.
-use ibkr_dx::client_core::{is_open_or_reactivatable, is_open_status, order_status_str};
-use ibkr_dx::config::{
+use ib_dx::client_core::{is_open_or_reactivatable, is_open_status, order_status_str};
+use ib_dx::config::{
     IbExpiry, TimestampBuf, chrono_free_timestamp, days_to_ymd, ib_datetime_to_unix,
     midnight_days_ago, parse_ib_expiry, unix_to_ib_datetime, unix_to_ib_utc_dash,
 };
-use ibkr_dx::control::calendar::CalendarQuery;
-use ibkr_dx::gateway::{build_mktdata_subscribe, build_mktdata_unsubscribe};
-use ibkr_dx::protocol::fix::{fix_build, fix_parse, fix_read_deadline};
+use ib_dx::control::calendar::CalendarQuery;
+use ib_dx::gateway::{build_mktdata_subscribe, build_mktdata_unsubscribe};
+use ib_dx::protocol::fix::{fix_build, fix_parse, fix_read_deadline};
 
 /// Items a `use` cannot name on its own: an associated function, and a method.
 #[test]
 fn every_published_name_still_resolves() {
-    let _ = ibkr_dx::gateway::chrono_free_timestamp();
-    let _ = ibkr_dx::gateway::days_to_ymd(0);
-    let _ = ibkr_dx::client_core::ClientCore::contract_identity("", 0.0, "", "", "");
-    let _ = ibkr_dx::client_core::parse_algo_params("", &[]);
-    let _ = ibkr_dx::types::model::contract_identity("", 0.0, "", "", "");
+    let _ = ib_dx::gateway::chrono_free_timestamp();
+    let _ = ib_dx::gateway::days_to_ymd(0);
+    let _ = ib_dx::client_core::ClientCore::contract_identity("", 0.0, "", "", "");
+    let _ = ib_dx::client_core::parse_algo_params("", &[]);
+    let _ = ib_dx::types::model::contract_identity("", 0.0, "", "", "");
 
     // Handing the open connections to the loop is named on the engine, where
     // what it builds lives. Named on the session module instead, that module
     // named the engine while the engine was already naming the session.
-    let _built_by_the_engine = ibkr_dx::engine::hot_loop::HotLoop::for_session;
+    let _built_by_the_engine = ib_dx::engine::hot_loop::HotLoop::for_session;
 }
 
 /// The three a caller configures, reachable from the crate root as well as
 /// through `api`, because that is where a caller looks first.
 #[test]
 fn what_a_caller_configures_is_reachable_from_the_root() {
-    let _: ibkr_dx::settings::GatewaySettings = Default::default();
-    let _: ibkr_dx::reliability::ReconnectConfig = Default::default();
-    let _ = ibkr_dx::error_codes::Refusal::NOT_CONNECTED;
+    let _: ib_dx::settings::GatewaySettings = Default::default();
+    let _: ib_dx::reliability::ReconnectConfig = Default::default();
+    let _ = ib_dx::error_codes::Refusal::NOT_CONNECTED;
 }
 
 /// What a program needs to name to call the whole of `EClient`: the exercise

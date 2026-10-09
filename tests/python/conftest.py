@@ -1,6 +1,6 @@
 """Shared fixtures for the compatibility tests."""
 
-from ibkr_dx import EWrapper
+from ib_dx import EWrapper
 
 
 class NotConnectedProbe(EWrapper):

@@ -9,7 +9,7 @@ wire either way.
 Run: pytest tests/python/test_an_order_leaves_the_routing_choices_unstated.py -v
 """
 
-from ibkr_dx import Order
+from ib_dx import Order
 
 CHOICES = ["routeMarketableToBbo", "seekPriceImprovement", "usePriceMgmtAlgo"]
 

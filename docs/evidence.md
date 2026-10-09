@@ -189,7 +189,7 @@ at all (`tests/malformed_input.rs`).
 
 What a request meets here. Each says whether it is the protocol's or this
 client's own allocation; what a gateway answers the same way is on
-[Venue behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html).
+[Venue behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html).
 
 - **Two order fields a gateway sends are refused by the server by name.**
   `algo_id` → *Invalid value in field # 8016*; `scale_init_fill_qty` → *Can
@@ -254,7 +254,7 @@ states when that session logged in.
 | The heartbeat is the interval the venue answered with | ✅ Supported | The interval a logon proposes is not what it is held to; the answer is read from the logon response and applied on every reconnect |
 | A reconnect follows the venue | ✅ Supported | It uses the hosts this session reached the venue through, on the port the venue named in its redirect, and stops walking hosts when one answers and refuses |
 | The first connect knocks on the next door when one does not answer | ✅ Supported | One host per region. A door that answers and refuses ends the walk, so a refused logon is not repeated at every door |
-| An order id is counted from what was used and what the account is working | ✅ Supported | An order id belongs to the account, not the process, and the venue refuses one while the order under it is still working. The next id is kept on disk for each account and API client, in `ibkr-dx/order-ids.json` under the user's data directory unless `order_id_file` names another file (an empty path keeps none). At each connect the venue replays what the account is working, and ids count from the higher of the one kept and one past the highest of those — from one when neither states any. A new order under an id below the one kept is refused with 103, as through a gateway |
+| An order id is counted from what was used and what the account is working | ✅ Supported | An order id belongs to the account, not the process, and the venue refuses one while the order under it is still working. The next id is kept on disk for each account and API client, in `ib-dx/order-ids.json` under the user's data directory unless `order_id_file` names another file (an empty path keeps none). At each connect the venue replays what the account is working, and ids count from the higher of the one kept and one past the highest of those — from one when neither states any. A new order under an id below the one kept is refused with 103, as through a gateway |
 | A session survives losing its connection | ✅ Supported | A dropped connection is rebuilt on the session already open, with no second factor: five forced drops recovered in 2-8s, and an eight hour session rode through its losses unattended |
 | A session does not survive its process | ✅ Documented | The venue holds a session for a socket, not for an account: killed without logging out, it was already gone forty seconds later, and a later start is answered with a handshake. A session is therefore bound to the socket that opened it, so a restart is a fresh logon and an uninterrupted session is not. What that costs an account with a second factor has not been measured here; a paper session presents none |
 | A session that has ended answers at once | ✅ Supported | Requests made after a terminal loss are refused with 504 immediately, rather than waiting out a timeout each. Every request already answered keeps the venue's answer |
@@ -372,7 +372,7 @@ each says why or names what stands in for it (no window geometry, no local
 listening socket, no JVM heap, and no message pacing: a gateway paces requests
 at the rate its logon states (fifty a second where it states none) unless it is
 set to reject them instead, and nothing here does either).
-Rust: `EClientConfig.gateway`. Python: `ibkr_dx.configure()`.
+Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()`.
 `order_id_file` retains the next ID per account and API client across restarts;
 reservations share an exclusive file lock. See [order IDs across sessions](book/src/reference/venue-behaviour.md#order-ids-across-sessions)
 for the location, configuration and storage-failure behaviour. Attached children

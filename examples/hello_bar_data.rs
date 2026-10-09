@@ -6,9 +6,9 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig};
-use ibkr_dx::api::types::BarData;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig};
+use ib_dx::api::types::BarData;
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {

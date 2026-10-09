@@ -9,7 +9,7 @@ Run: pytest tests/python/test_scanners.py -v -s
 import os, threading, time
 import pytest
 from conftest import inside_the_session, liquid_hours
-from ibkr_dx import Contract, EWrapper, EClient
+from ib_dx import Contract, EWrapper, EClient
 
 
 pytestmark = pytest.mark.skipif(

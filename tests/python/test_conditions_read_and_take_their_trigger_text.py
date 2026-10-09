@@ -12,7 +12,7 @@ Run: pytest tests/python/test_conditions_read_and_take_their_trigger_text.py -v
 
 import pytest
 
-from ibkr_dx import (
+from ib_dx import (
     ExecutionCondition, MarginCondition, PercentChangeCondition,
     PriceCondition, TimeCondition, VolumeCondition,
 )

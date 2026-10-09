@@ -20,9 +20,9 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::types::OrderState;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::types::OrderState;
+use ib_dx::api::wrapper::Wrapper;
 
 const STATE_FILE: &str = ".tmp/premarket_orders.json";
 const SPY_CON_ID: i64 = 756733;
@@ -50,7 +50,7 @@ struct OrderWrapper {
 
 impl Wrapper for OrderWrapper {
     fn order_status(
-        &mut self, order_id: i64, status: &str, _filled: ibkr_dx::api::Decimal, _remaining: ibkr_dx::api::Decimal,
+        &mut self, order_id: i64, status: &str, _filled: ib_dx::api::Decimal, _remaining: ib_dx::api::Decimal,
         _avg_fill: f64, perm_id: i64, _parent_id: i64, _last_fill: f64,
         _client_id: i64, _why_held: &str, _mkt_cap_price: f64,
     ) {

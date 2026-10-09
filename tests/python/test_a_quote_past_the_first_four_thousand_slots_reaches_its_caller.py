@@ -7,7 +7,7 @@ while the venue would have served it. They grow now, and a caller reads a slot
 past that size as it reads any other.
 """
 
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 class _Quotes(EWrapper):

@@ -1,9 +1,9 @@
 //! Historical data, scanner, news, and fundamental data test phases.
 
 use super::common::*;
-use ibkr_dx::control::historical::{self};
-use ibkr_dx::control::scanner;
-use ibkr_dx::gateway::connect_farm;
+use ib_dx::control::historical::{self};
+use ib_dx::control::scanner;
+use ib_dx::gateway::connect_farm;
 
 /// A farm this session was routed to, opened on the route the venue gave.
 ///
@@ -17,18 +17,18 @@ use ibkr_dx::gateway::connect_farm;
 /// A route the venue did not state connects nothing rather than
 /// falling back to a literal: that fallback is the client's own, it is not
 /// visible from here, and writing it in again is the defect this replaces.
-pub(super) fn open_farm(kind: ibkr_dx::gateway::Farm) -> std::io::Result<Connection> {
+pub(super) fn open_farm(kind: ib_dx::gateway::Farm) -> std::io::Result<Connection> {
     let auth = RECOVERY_AUTH.get().ok_or_else(|| {
         std::io::Error::other("no session credentials were remembered to reach a farm with")
     })?;
     let (host, farm, port) = match kind {
-        ibkr_dx::gateway::Farm::Historical => {
+        ib_dx::gateway::Farm::Historical => {
             (&auth.hmds_host, &auth.hmds_farm, auth.hmds_port)
         }
-        ibkr_dx::gateway::Farm::MarketData => {
+        ib_dx::gateway::Farm::MarketData => {
             (&auth.trading_host, &auth.trading_farm, auth.trading_port)
         }
-        ibkr_dx::gateway::Farm::SecurityDefinition => {
+        ib_dx::gateway::Farm::SecurityDefinition => {
             (&auth.secdef_host, &auth.secdef_farm, auth.secdef_port)
         }
     };
@@ -52,7 +52,7 @@ pub(super) fn phase_historical_data(mut conns: Conns) -> Conns {
     phase!("--- Phase 11: Historical Data Bars (SPY, 1 day of 5-min bars) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -125,7 +125,7 @@ pub(super) fn phase_historical_daily_bars(mut conns: Conns) -> Conns {
     phase!("--- Phase 76: Historical Daily Bars (SPY, 5 days of 1-day bars) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -192,7 +192,7 @@ pub(super) fn phase_cancel_historical(mut conns: Conns) -> Conns {
     phase!("--- Phase 77: Cancel Historical Request (SPY) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -204,7 +204,7 @@ pub(super) fn phase_cancel_historical(mut conns: Conns) -> Conns {
     );
 
     // Request 5-min bars for 5 days (multi-chunk response, cancelable)
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 7700, end_date_time: now_ib_timestamp(), duration: "5 D".into(), bar_size: "5 mins".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 7700, end_date_time: now_ib_timestamp(), duration: "5 D".into(), bar_size: "5 mins".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     let join = run_hot_loop(hot_loop);
 
     // Wait for first chunk
@@ -259,7 +259,7 @@ pub(super) fn phase_query_error_surfaces(mut conns: Conns) -> Conns {
     phase!("--- Phase 186: HMDS QueryError surfaces (trades on a quoted-only instrument) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -281,7 +281,7 @@ pub(super) fn phase_query_error_surfaces(mut conns: Conns) -> Conns {
     // bar size and duration the venue refused as an invalid length, and that
     // limit was lifted, so the phase reported SKIP twice a run and verified
     // nothing. If this one is ever answered with bars, the skip below says so.
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(), exchange: "IDEALPRO".into(), currency: "USD".to_string(), ..Default::default() }, req_id: REQ_ID, end_date_time: now_ib_timestamp(), duration: "1 D".into(), bar_size: "1 hour".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 12087792, symbol: "EUR".into(), sec_type: "CASH".into(), exchange: "IDEALPRO".into(), currency: "USD".to_string(), ..Default::default() }, req_id: REQ_ID, end_date_time: now_ib_timestamp(), duration: "1 D".into(), bar_size: "1 hour".into(), what_to_show: "TRADES".into(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     let join = run_hot_loop(hot_loop);
 
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -345,7 +345,7 @@ pub(super) fn phase_head_timestamp(mut conns: Conns) -> Conns {
     phase!("--- Phase 79: Head Timestamp (SPY, TRADES) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -356,7 +356,7 @@ pub(super) fn phase_head_timestamp(mut conns: Conns) -> Conns {
         shared.clone(), None, account_id.clone(), conns.farm, conns.ccp, Some(hmds), None,
     );
 
-    control_tx.send(ControlCommand::FetchHeadTimestamp { include_expired: false, format_date: 1, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "".to_string(), sec_type: "".to_string(), exchange: "".to_string(), currency: "".to_string(), ..Default::default() }, req_id: 7900, what_to_show: "TRADES".into(), use_rth: true, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHeadTimestamp { include_expired: false, format_date: 1, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "".to_string(), sec_type: "".to_string(), exchange: "".to_string(), currency: "".to_string(), ..Default::default() }, req_id: 7900, what_to_show: "TRADES".into(), use_rth: true, filters: Default::default() }).unwrap();
     let join = run_hot_loop(hot_loop);
 
     let mut response: Option<historical::HeadTimestampResponse> = None;
@@ -389,7 +389,7 @@ pub(super) fn phase_scanner_subscription(mut conns: Conns) -> Conns {
     phase!("--- Phase 82: Scanner Subscription (TOP_PERC_GAIN, STK.US.MAJOR) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -446,7 +446,7 @@ pub(super) fn phase_fundamental_data(mut conns: Conns) -> Conns {
     phase!("--- Phase 83: Fundamental Data (AAPL, ReportSnapshot) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: HMDS reconnect failed: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -461,7 +461,7 @@ pub(super) fn phase_fundamental_data(mut conns: Conns) -> Conns {
     // not named the contract refuses before the venue hears of it: named first,
     // as a caller would, so what follows is the venue's answer.
     control_tx.send(ControlCommand::FetchContractDetails {
-        contract: ibkr_dx::types::ContractRef { con_id: 265598, ..Default::default() },
+        contract: ib_dx::types::ContractRef { con_id: 265598, ..Default::default() },
         req_id: 8299, include_expired: false, filters: Default::default(),
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -477,7 +477,7 @@ pub(super) fn phase_fundamental_data(mut conns: Conns) -> Conns {
     }
     control_tx.send(ControlCommand::FetchFundamentalData {
         req_id: 8300,
-        contract: ibkr_dx::types::ContractRef { con_id: 265598, ..Default::default() },
+        contract: ib_dx::types::ContractRef { con_id: 265598, ..Default::default() },
         report_type: "ReportSnapshot".into(),
         filters: Default::default(),
     }).unwrap();
@@ -526,7 +526,7 @@ pub(super) fn phase_historical_news(mut conns: Conns) -> Conns {
     phase!("--- Phase 85: Historical News (AAPL, end-to-end) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -536,7 +536,7 @@ pub(super) fn phase_historical_news(mut conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         conns.farm, conns.ccp, Some(hmds), None,
     );
 
@@ -605,7 +605,7 @@ pub(super) fn phase_historical_ticks(mut conns: Conns) -> Conns {
     phase!("--- Phase 88: Historical Ticks (SPY, TRADES) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -689,7 +689,7 @@ pub(super) fn phase_histogram_data(mut conns: Conns) -> Conns {
     phase!("--- Phase 89: Histogram Data (SPY, 1 week) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -702,7 +702,7 @@ pub(super) fn phase_histogram_data(mut conns: Conns) -> Conns {
 
     control_tx.send(ControlCommand::FetchHistogramData {
         req_id: 3001,
-        contract: ibkr_dx::types::ContractRef {
+        contract: ib_dx::types::ContractRef {
             con_id: 756733, sec_type: "STK".to_string(), exchange: "SMART".to_string(),
             ..Default::default()
         },
@@ -745,7 +745,7 @@ pub(super) fn phase_historical_schedule(mut conns: Conns) -> Conns {
     phase!("--- Phase 90: Historical Schedule (SPY) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -803,7 +803,7 @@ pub(super) fn phase_realtime_bars(mut conns: Conns) -> Conns {
     phase!("--- Phase 91: Real-Time Bars (SPY, 5-second) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -859,7 +859,7 @@ pub(super) fn phase_news_article(mut conns: Conns) -> Conns {
     phase!("--- Phase 92: News Article Fetch (AAPL) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -950,7 +950,7 @@ pub(super) fn phase_fundamental_data_channel(mut conns: Conns) -> Conns {
     phase!("--- Phase 93: Fundamental Data via HotLoop (AAPL) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -965,7 +965,7 @@ pub(super) fn phase_fundamental_data_channel(mut conns: Conns) -> Conns {
     // not named the contract refuses before the venue hears of it: named first,
     // as a caller would, so what follows is the venue's answer.
     control_tx.send(ControlCommand::FetchContractDetails {
-        contract: ibkr_dx::types::ContractRef { con_id: 265598, ..Default::default() },
+        contract: ib_dx::types::ContractRef { con_id: 265598, ..Default::default() },
         req_id: 7000, include_expired: false, filters: Default::default(),
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -981,7 +981,7 @@ pub(super) fn phase_fundamental_data_channel(mut conns: Conns) -> Conns {
     }
     control_tx.send(ControlCommand::FetchFundamentalData {
         req_id: 7001,
-        contract: ibkr_dx::types::ContractRef { con_id: 265598, ..Default::default() },
+        contract: ib_dx::types::ContractRef { con_id: 265598, ..Default::default() },
         report_type: "ReportSnapshot".to_string(),
         filters: Default::default(),
     }).unwrap();
@@ -1016,7 +1016,7 @@ pub(super) fn phase_parallel_historical(mut conns: Conns) -> Conns {
     phase!("--- Phase 94: Parallel Historical Requests (SPY: 1d/5min, 5d/1day, 1w/1h) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -1031,9 +1031,9 @@ pub(super) fn phase_parallel_historical(mut conns: Conns) -> Conns {
     let end_dt = format_utc_timestamp(now);
 
     // Send 3 requests in quick succession
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8001, end_date_time: end_dt.clone(), duration: "1 d".to_string(), bar_size: "5 mins".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8002, end_date_time: end_dt.clone(), duration: "5 d".to_string(), bar_size: "1 day".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8003, end_date_time: end_dt, duration: "1 W".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8001, end_date_time: end_dt.clone(), duration: "1 d".to_string(), bar_size: "5 mins".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8002, end_date_time: end_dt.clone(), duration: "5 d".to_string(), bar_size: "1 day".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 8003, end_date_time: end_dt, duration: "1 W".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
 
     let join = run_hot_loop(hot_loop);
 
@@ -1071,7 +1071,7 @@ pub(super) fn phase_scanner_params(mut conns: Conns) -> Conns {
     phase!("--- Phase 95: Scanner Parameters + HOT_BY_VOLUME Scan ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -1145,7 +1145,7 @@ pub(super) fn phase_historical_ohlc_validation(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
 
     let req_id = 6001u32;
@@ -1236,7 +1236,7 @@ pub(super) fn phase_large_historical_dataset(mut conns: Conns) -> Conns {
     phase!("--- Phase 111: Large Historical Dataset (SPY, 1 year of daily bars) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -1250,7 +1250,7 @@ pub(super) fn phase_large_historical_dataset(mut conns: Conns) -> Conns {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let end_dt = format_utc_timestamp(now);
 
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 11001, end_date_time: end_dt, duration: "1 Y".to_string(), bar_size: "1 day".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 11001, end_date_time: end_dt, duration: "1 Y".to_string(), bar_size: "1 day".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     let join = run_hot_loop(hot_loop);
 
     let deadline = Instant::now() + Duration::from_secs(60);
@@ -1300,7 +1300,7 @@ pub(super) fn phase_dst_boundary_historical(mut conns: Conns) -> Conns {
     phase!("--- Phase 112: DST Boundary Historical Data (SPY, bars spanning March DST) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); c }
         Err(e) => { skipped!("  SKIP: the historical farm could not be reached: {e}\n"); return Conns { farm: conns.farm, ccp: conns.ccp, hmds: None, account_id: conns.account_id }; }
     };
@@ -1314,7 +1314,7 @@ pub(super) fn phase_dst_boundary_historical(mut conns: Conns) -> Conns {
     // Request 2 weeks of 1-hour bars ending after the March DST transition
     // DST 2026: March 8 (second Sunday of March) — spring forward
     // End date: March 14 2026, covering March 2-14 (spans DST)
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 12001, end_date_time: "20260314-20:00:00".to_string(), duration: "2 W".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 12001, end_date_time: "20260314-20:00:00".to_string(), duration: "2 W".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     let join = run_hot_loop(hot_loop);
 
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -1369,7 +1369,7 @@ pub(super) fn phase_cancel_data_requests(mut conns: Conns) -> Conns {
     phase!("--- Phase 127: Cancel Data Requests (4 cancel ControlCommands) ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); Some(c) }
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -1381,23 +1381,23 @@ pub(super) fn phase_cancel_data_requests(mut conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, hmds, None,
     );
 
     let now = now_ib_timestamp();
 
     // 1. FetchHistorical + CancelHistorical
-    control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 20001, end_date_time: now.clone(), duration: "1 d".to_string(), bar_size: "5 mins".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 20001, end_date_time: now.clone(), duration: "1 d".to_string(), bar_size: "5 mins".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     control_tx.send(ControlCommand::CancelHistorical { req_id: 20001 }).unwrap();
 
     // 2. FetchHeadTimestamp + CancelHeadTimestamp
-    control_tx.send(ControlCommand::FetchHeadTimestamp { include_expired: false, format_date: 1, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "".to_string(), sec_type: "".to_string(), exchange: "".to_string(), currency: "".to_string(), ..Default::default() }, req_id: 20002, what_to_show: "TRADES".to_string(), use_rth: true, filters: Default::default() }).unwrap();
+    control_tx.send(ControlCommand::FetchHeadTimestamp { include_expired: false, format_date: 1, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "".to_string(), sec_type: "".to_string(), exchange: "".to_string(), currency: "".to_string(), ..Default::default() }, req_id: 20002, what_to_show: "TRADES".to_string(), use_rth: true, filters: Default::default() }).unwrap();
     control_tx.send(ControlCommand::CancelHeadTimestamp { req_id: 20002 }).unwrap();
 
     // 3. FetchFundamentalData + CancelFundamentalData
     control_tx.send(ControlCommand::FetchFundamentalData {
         req_id: 20003,
-        contract: ibkr_dx::types::ContractRef { con_id: 265598, ..Default::default() },
+        contract: ib_dx::types::ContractRef { con_id: 265598, ..Default::default() },
         report_type: "ReportsFinStatements".to_string(),
         filters: Default::default(),
     }).unwrap();
@@ -1406,7 +1406,7 @@ pub(super) fn phase_cancel_data_requests(mut conns: Conns) -> Conns {
     // 4. FetchHistogramData + CancelHistogramData
     control_tx.send(ControlCommand::FetchHistogramData {
         req_id: 20004,
-        contract: ibkr_dx::types::ContractRef {
+        contract: ib_dx::types::ContractRef {
             con_id: 756733, sec_type: "STK".to_string(), exchange: "SMART".to_string(),
             ..Default::default()
         },
@@ -1467,7 +1467,7 @@ pub(super) fn phase_historical_and_orders(mut conns: Conns) -> Conns {
     phase!("--- Phase 130: Historical Data + Live Orders Coexistence ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => { println!("  HMDS reconnected"); Some(c) }
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -1479,7 +1479,7 @@ pub(super) fn phase_historical_and_orders(mut conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
     hot_loop.context_mut().set_symbol(inst_id, "SPY".to_string());
@@ -1490,15 +1490,15 @@ pub(super) fn phase_historical_and_orders(mut conns: Conns) -> Conns {
 
     // Step 1: Submit a limit order (far from market, won't fill)
     let oid = next_order_id();
-    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: oid, instrument: inst_id, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).unwrap();
+    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: oid, instrument: inst_id, side: Side::Buy, qty: ib_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).unwrap();
 
     // Step 2: Fire 5 historical requests while order is pending
     let now = now_ib_timestamp();
     for i in 0..5u32 {
-        control_tx.send(ControlCommand::FetchHistorical { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 30001 + i, end_date_time: now.clone(), duration: "1 d".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
+        control_tx.send(ControlCommand::FetchHistorical { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "".to_string(), ..Default::default() }, req_id: 30001 + i, end_date_time: now.clone(), duration: "1 d".to_string(), bar_size: "1 hour".to_string(), what_to_show: "TRADES".to_string(), use_rth: true, keep_up_to_date: false, format_date: 1, include_expired: false, filters: Default::default() }).unwrap();
     }
 
-    control_tx.send(ControlCommand::Subscribe { req_id: 90014, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx.send(ControlCommand::Subscribe { req_id: 90014, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -1579,7 +1579,7 @@ pub(super) fn phase_corporate_actions_reply(mut conns: Conns) -> Conns {
     phase!("--- Phase 187: corporate actions, what the venue answers ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let mut hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let mut hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => c,
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -1587,8 +1587,8 @@ pub(super) fn phase_corporate_actions_reply(mut conns: Conns) -> Conns {
         }
     };
 
-    let xml = ibkr_dx::control::adjustments::build_adjustments_request_xml(
-        &ibkr_dx::control::adjustments::AdjustmentRequest {
+    let xml = ib_dx::control::adjustments::build_adjustments_request_xml(
+        &ib_dx::control::adjustments::AdjustmentRequest {
             query_id: "adj_1".into(),
             // A contract that split inside the window and paid dividends across
             // it, so one answer states both kinds and a bar series over the same
@@ -1602,8 +1602,8 @@ pub(super) fn phase_corporate_actions_reply(mut conns: Conns) -> Conns {
     );
     let ts = now_ib_timestamp();
     if let Err(e) = hmds.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "10020"),
         (6118, &xml),
     ]) {
@@ -1619,16 +1619,16 @@ pub(super) fn phase_corporate_actions_reply(mut conns: Conns) -> Conns {
             match frame {
                 // A compressed frame carries its messages inside, and printing
                 // the envelope says nothing about what the venue answered.
-                ibkr_dx::protocol::connection::Frame::FixComp(raw) => {
+                ib_dx::protocol::connection::Frame::FixComp(raw) => {
                     if let Some(unsigned) = hmds.unsign(&raw)
-                        && let Ok(inner) = ibkr_dx::protocol::fixcomp::fixcomp_decompress(&unsigned)
+                        && let Ok(inner) = ib_dx::protocol::fixcomp::fixcomp_decompress(&unsigned)
                     {
                         for m in inner {
                             answered.push(String::from_utf8_lossy(&m).replace('\x01', "|"));
                         }
                     }
                 }
-                ibkr_dx::protocol::connection::Frame::Fix(raw) => {
+                ib_dx::protocol::connection::Frame::Fix(raw) => {
                     if let Some(unsigned) = hmds.unsign(&raw) {
                         answered.push(String::from_utf8_lossy(&unsigned).replace('\x01', "|"));
                     }
@@ -1690,10 +1690,10 @@ fn still_connected(conn: &mut Connection) -> bool {
 fn put_the_scan_back_down(hmds: &mut Connection, scan_id: &str) {
     let ts = now_ib_timestamp();
     if let Err(e) = hmds.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "10004"),
-        (6118, &ibkr_dx::control::scanner::build_scanner_cancel_xml(scan_id)),
+        (6118, &ib_dx::control::scanner::build_scanner_cancel_xml(scan_id)),
     ]) {
         println!("  note: the scan could not be withdrawn: {e}");
     }
@@ -1751,7 +1751,7 @@ pub(super) fn phase_what_the_gated_wires_answer(mut conns: Conns) -> Conns {
     phase!("--- Phase 188: what the gated wires answer when asked ---");
 
     ccp_keepalive(&mut conns.ccp);
-    let mut hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let mut hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => c,
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -1764,8 +1764,8 @@ pub(super) fn phase_what_the_gated_wires_answer(mut conns: Conns) -> Conns {
     // empty, so one is subscribed first and it is that scan the rest asks
     // about. The id is this client's to choose, as it is on every query here.
     let scan_id = "scan_gate_1";
-    let subscribe = ibkr_dx::control::scanner::build_scanner_subscribe_xml(
-        &ibkr_dx::control::scanner::ScannerSubscription {
+    let subscribe = ib_dx::control::scanner::build_scanner_subscribe_xml(
+        &ib_dx::control::scanner::ScannerSubscription {
             instrument: "STK".into(),
             location_code: "STK.US.MAJOR".into(),
             scan_code: "TOP_PERC_GAIN".into(),
@@ -1776,8 +1776,8 @@ pub(super) fn phase_what_the_gated_wires_answer(mut conns: Conns) -> Conns {
     ).expect("a fixed scan builds");
     let ts = now_ib_timestamp();
     if let Err(e) = hmds.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "10003"),
         (6118, &subscribe),
     ]) {
@@ -1832,8 +1832,8 @@ pub(super) fn phase_what_the_gated_wires_answer(mut conns: Conns) -> Conns {
         let xml = format!("<{element}><id>{scan_id}</id></{element}>");
         let ts = now_ib_timestamp();
         if let Err(e) = hmds.send_fix(&[
-            (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-            (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+            (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+            (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
             (6040, subtype),
             (6118, &xml),
         ]) {
@@ -1874,16 +1874,16 @@ pub(super) fn phase_what_the_gated_wires_answer(mut conns: Conns) -> Conns {
                     }
                 };
                 match frame {
-                    ibkr_dx::protocol::connection::Frame::FixComp(raw) => {
+                    ib_dx::protocol::connection::Frame::FixComp(raw) => {
                         if let Some(unsigned) = hmds.unsign(&raw)
-                            && let Ok(inner) = ibkr_dx::protocol::fixcomp::fixcomp_decompress(&unsigned)
+                            && let Ok(inner) = ib_dx::protocol::fixcomp::fixcomp_decompress(&unsigned)
                         {
                             for m in inner {
                                 keep(&m);
                             }
                         }
                     }
-                    ibkr_dx::protocol::connection::Frame::Fix(raw) => {
+                    ib_dx::protocol::connection::Frame::Fix(raw) => {
                         if let Some(unsigned) = hmds.unsign(&raw) {
                             keep(&unsigned);
                         }
@@ -1958,8 +1958,8 @@ pub(super) fn phase_transaction_reporting_config(mut conns: Conns) -> Conns {
     // request and wants that field; sending it empty asks the next question,
     // whether it is the field's presence or its content that is required.
     if let Err(e) = conns.ccp.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "211"),
         (6556, ASKED_UNDER),
         (1, &account),
@@ -2059,8 +2059,8 @@ pub(super) fn phase_what_a_quote_request_answers(mut conns: Conns) -> Conns {
     // for — an option and a bond — and the answer to each is reported.
     let ts = now_ib_timestamp();
     if let Err(e) = conns.ccp.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "R"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "R"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         // The standard field for the id a quote request is answered under.
         (131, ASKED_UNDER),
         // The side the venue asked for. Without it the request is rejected for
@@ -2074,10 +2074,10 @@ pub(super) fn phase_what_a_quote_request_answers(mut conns: Conns) -> Conns {
         // withdrawn below: the smallest quantity there is, on a paper session,
         // taken back as soon as the venue has said what it makes of it.
         (38, "1"),
-        (ibkr_dx::control::contracts::TAG_SYMBOL, "SPY"),
-        (ibkr_dx::control::contracts::TAG_SECURITY_TYPE, "STK"),
-        (ibkr_dx::control::contracts::TAG_EXCHANGE, "SMART"),
-        (ibkr_dx::control::contracts::TAG_CURRENCY, "USD"),
+        (ib_dx::control::contracts::TAG_SYMBOL, "SPY"),
+        (ib_dx::control::contracts::TAG_SECURITY_TYPE, "STK"),
+        (ib_dx::control::contracts::TAG_EXCHANGE, "SMART"),
+        (ib_dx::control::contracts::TAG_CURRENCY, "USD"),
     ]) {
         skipped!("  SKIP: the request could not be sent: {e}\n");
         return conns;
@@ -2138,12 +2138,12 @@ pub(super) fn phase_what_a_quote_request_answers(mut conns: Conns) -> Conns {
         if let Some(order_id) = working {
             let ts = now_ib_timestamp();
             let sent = conns.ccp.send_fix(&[
-                (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "F"),
-                (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+                (ib_dx::protocol::fix::TAG_MSG_TYPE, "F"),
+                (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
                 (37, &order_id),
                 (11, ASKED_UNDER),
                 (54, "1"),
-                (ibkr_dx::control::contracts::TAG_SYMBOL, "SPY"),
+                (ib_dx::control::contracts::TAG_SYMBOL, "SPY"),
             ]);
             if let Err(e) = sent {
                 println!("  the venue is working order {order_id} and the withdrawal \
@@ -2204,7 +2204,7 @@ pub(super) fn phase_what_withdrawing_news_answers(conns: Conns) -> Conns {
     /// The id both the request and its withdrawal go out under.
     const ASKED_UNDER: &str = "news_gate_1";
 
-    let mut hmds = match open_farm(ibkr_dx::gateway::Farm::Historical) {
+    let mut hmds = match open_farm(ib_dx::gateway::Farm::Historical) {
         Ok(c) => c,
         Err(e) => {
             skipped!("  SKIP: the historical farm could not be reached: {e}\n");
@@ -2212,8 +2212,8 @@ pub(super) fn phase_what_withdrawing_news_answers(conns: Conns) -> Conns {
         }
     };
 
-    let request = ibkr_dx::control::news::build_historical_news_xml(
-        &ibkr_dx::control::news::HistoricalNewsRequest {
+    let request = ib_dx::control::news::build_historical_news_xml(
+        &ib_dx::control::news::HistoricalNewsRequest {
             query_id: ASKED_UNDER.to_string(),
             // The contract and the providers a phase in this suite is already
             // answered for. Asked with no provider named, the venue answers
@@ -2228,8 +2228,8 @@ pub(super) fn phase_what_withdrawing_news_answers(conns: Conns) -> Conns {
     );
     let ts = now_ib_timestamp();
     if let Err(e) = hmds.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "10030"),
         (6118, &request),
     ]) {
@@ -2271,8 +2271,8 @@ pub(super) fn phase_what_withdrawing_news_answers(conns: Conns) -> Conns {
     let withdraw = format!("<CancelQuery><id>{ASKED_UNDER}</id></CancelQuery>");
     let ts = now_ib_timestamp();
     if let Err(e) = hmds.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "10031"),
         (6118, &withdraw),
     ]) {
@@ -2345,10 +2345,10 @@ pub(super) fn phase_what_a_chain_reply_carries(mut conns: Conns) -> Conns {
 
     let ts = now_ib_timestamp();
     if let Err(e) = conns.ccp.send_fix(&[
-        (ibkr_dx::protocol::fix::TAG_MSG_TYPE, "U"),
-        (ibkr_dx::protocol::fix::TAG_SENDING_TIME, &ts),
+        (ib_dx::protocol::fix::TAG_MSG_TYPE, "U"),
+        (ib_dx::protocol::fix::TAG_SENDING_TIME, &ts),
         (6040, "138"),
-        (ibkr_dx::control::contracts::TAG_SYMBOL, "SPY"),
+        (ib_dx::control::contracts::TAG_SYMBOL, "SPY"),
         // The underlying's own type, which the request that this client sends
         // carries and the first version of this did not. Asked without it the
         // venue answered nothing, which was this phase asking wrongly.
@@ -2417,7 +2417,7 @@ pub(super) fn phase_withdraw_a_news_query(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, _event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(),
         conns.farm, conns.ccp, conns.hmds, None,
     );
 

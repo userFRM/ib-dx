@@ -14,8 +14,8 @@ utils.
 
 import pytest
 
-from ibkr_dx import EClient, EWrapper, TagValue
-from ibkr_dx.utils import printProtoSingleLine
+from ib_dx import EClient, EWrapper, TagValue
+from ib_dx.utils import printProtoSingleLine
 
 
 class Message:
@@ -34,7 +34,7 @@ class Entry(Message):
 
 
 def contract():
-    from ibkr_dx import Contract
+    from ib_dx import Contract
 
     made = Contract()
     made.conId = 756733
@@ -241,7 +241,7 @@ PARITY = (
 
 
 def _order_text():
-    from ibkr_dx import Order, TagValue
+    from ib_dx import Order, TagValue
 
     made = Order()
     made.action = "BUY"
@@ -256,7 +256,7 @@ def _order_text():
 
 
 def _execution_filter_text():
-    from ibkr_dx import ExecutionFilter
+    from ib_dx import ExecutionFilter
 
     made = ExecutionFilter()
     made.clientId = 1
@@ -265,7 +265,7 @@ def _execution_filter_text():
 
 
 def _wsh_text():
-    from ibkr_dx import WshEventData
+    from ib_dx import WshEventData
 
     made = WshEventData()
     made.conId = 756733
@@ -274,7 +274,7 @@ def _wsh_text():
 
 
 def _scanner_text():
-    from ibkr_dx import ScannerSubscription
+    from ib_dx import ScannerSubscription
 
     made = ScannerSubscription()
     made.instrument = "STK"

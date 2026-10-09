@@ -5,10 +5,10 @@ Python program could read the strategies a scan found and had no way to ask for
 one.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -18,7 +18,7 @@ class Heard(ibkr_dx.EWrapper):
 
 
 def aapl(con_id=265598):
-    con = ibkr_dx.Contract()
+    con = ib_dx.Contract()
     con.conId = con_id
     con.symbol = "AAPL"
     con.secType = "STK"
@@ -28,12 +28,12 @@ def aapl(con_id=265598):
 
 
 def test_a_scan_takes_its_fields_by_name_and_refuses_one_it_does_not_have():
-    scan = ibkr_dx.SpreadScan(version=6, account="DU1234567", min_delta=0.25)
+    scan = ib_dx.SpreadScan(version=6, account="DU1234567", min_delta=0.25)
     assert (scan.version, scan.request, scan.min_delta, scan.max_delta) == (6, 0, 0.25, None)
     scan.allowed_strategies = "VS"
     assert scan.allowed_strategies == "VS"
     try:
-        ibkr_dx.SpreadScan(minDelta=0.25)
+        ib_dx.SpreadScan(minDelta=0.25)
     except RuntimeError as refused:
         assert "minDelta" in str(refused)
     else:
@@ -42,14 +42,14 @@ def test_a_scan_takes_its_fields_by_name_and_refuses_one_it_does_not_have():
 
 def test_a_scan_is_asked_for_beside_the_series_it_is_answered_on():
     heard = Heard()
-    c = ibkr_dx.EClient(heard)
+    c = ib_dx.EClient(heard)
     c._test_connect("DU0000000")
     # Already watched under another request, so this one joins the quotes that
     # are up and asks only for the series the scan is answered on.
     c._test_map_con_id(265598, 3)
     c._test_map_instrument(1, 3)
 
-    c.req_spread_scan(2, aapl(), ibkr_dx.SpreadScan(version=6, account="DU0000000"))
+    c.req_spread_scan(2, aapl(), ib_dx.SpreadScan(version=6, account="DU0000000"))
 
     sent = c._test_take_commands()
     assert any(
@@ -62,10 +62,10 @@ def test_a_scan_is_asked_for_beside_the_series_it_is_answered_on():
 
 def test_a_scan_naming_no_contract_is_refused_on_error():
     heard = Heard()
-    c = ibkr_dx.EClient(heard)
+    c = ib_dx.EClient(heard)
     c._test_connect("DU0000000")
 
-    c.req_spread_scan(3, aapl(con_id=0), ibkr_dx.SpreadScan(version=6))
+    c.req_spread_scan(3, aapl(con_id=0), ib_dx.SpreadScan(version=6))
 
     c.poll()
     assert heard.errors == [(3, 321)]

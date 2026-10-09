@@ -14,9 +14,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvError, Sender, TryRecvError};
 
-use ibkr_dx::bridge::SharedState;
-use ibkr_dx::engine::hot_loop::HotLoop;
-use ibkr_dx::types::ControlCommand;
+use ib_dx::bridge::SharedState;
+use ib_dx::engine::hot_loop::HotLoop;
+use ib_dx::types::ControlCommand;
 
 /// A test client's engine: the channel its calls write to, and the loop that
 /// takes what the engine carries.
@@ -43,7 +43,7 @@ impl Engine {
         let (venue, _) = listener.accept().expect("the venue's end");
         venue.set_read_timeout(Some(std::time::Duration::from_millis(200))).unwrap();
         self.engine.borrow_mut().ccp_conn =
-            Some(ibkr_dx::protocol::connection::Connection::new_raw(ours).expect("a connection"));
+            Some(ib_dx::protocol::connection::Connection::new_raw(ours).expect("a connection"));
         venue
     }
 

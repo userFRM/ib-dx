@@ -8,7 +8,7 @@ import os
 import time
 import pytest
 import threading
-from ibkr_dx import EWrapper, EClient, Contract
+from ib_dx import EWrapper, EClient, Contract
 
 
 pytestmark = pytest.mark.skipif(

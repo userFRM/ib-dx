@@ -16,11 +16,11 @@ and it refuses what a gateway refuses before asking the venue — the series kep
 up to date, an end date, and a bar longer than a day.
 """
 
-import ibkr_dx
+import ib_dx
 from conftest import refused
 
 
-class _Recorder(ibkr_dx.EWrapper):
+class _Recorder(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -31,13 +31,13 @@ class _Recorder(ibkr_dx.EWrapper):
 
 def _client():
     w = _Recorder()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU0000000")
     return w, c
 
 
 def _spy():
-    c = ibkr_dx.Contract()
+    c = ib_dx.Contract()
     c.symbol, c.secType, c.exchange, c.currency = "SPY", "STK", "SMART", "USD"
     c.conId = 756733
     return c
@@ -59,7 +59,7 @@ def test_adjusted_last_without_the_venue_id_is_sent():
     it was given. A contract stated by description is one the venue can resolve
     itself, so the request goes and the venue answers it."""
     w, c = _client()
-    unqualified = ibkr_dx.Contract()
+    unqualified = ib_dx.Contract()
     unqualified.symbol, unqualified.secType = "SPY", "STK"
     unqualified.exchange, unqualified.currency = "SMART", "USD"
     c.req_historical_data(
@@ -91,7 +91,7 @@ def test_what_a_gateway_refuses_before_asking_is_refused_in_its_words():
     combo.secType = "BAG"
     # Legs stated, so the live-update refusal is what fires: a combination
     # naming none is refused for that first.
-    leg = ibkr_dx.ComboLeg()
+    leg = ib_dx.ComboLeg()
     leg.conId, leg.ratio, leg.action, leg.exchange = 756733, 1, "BUY", "SMART"
     combo.comboLegs = []
     combo.comboLegs.append(leg)

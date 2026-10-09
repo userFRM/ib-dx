@@ -4,9 +4,9 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig};
-use ibkr_dx::api::types::ContractDetails;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig};
+use ib_dx::api::types::ContractDetails;
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {
@@ -45,7 +45,7 @@ impl Wrapper for ProbeWrapper {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
 
     let username = env::var("IB_USERNAME")?;
     let password = env::var("IB_PASSWORD")?;

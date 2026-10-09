@@ -10,7 +10,7 @@ whole of the fault.
 
 import time
 
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 class ReferenceStyle(EWrapper):

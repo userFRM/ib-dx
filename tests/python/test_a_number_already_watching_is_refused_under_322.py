@@ -12,10 +12,10 @@ number a request it could not carry out is answered with, in the wire text it
 states one with — the number is what a program branches on.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -25,7 +25,7 @@ class Errors(ibkr_dx.EWrapper):
 
 
 def contract(con_id, symbol):
-    c = ibkr_dx.Contract()
+    c = ib_dx.Contract()
     c.conId = con_id
     c.symbol = symbol
     c.secType = "STK"
@@ -36,7 +36,7 @@ def contract(con_id, symbol):
 
 def test_a_second_contract_under_a_live_number_is_refused():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_map_instrument(5, 7)
 

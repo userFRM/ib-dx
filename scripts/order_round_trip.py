@@ -18,34 +18,34 @@ import os
 import sys
 import time
 
-from ibkr_dx import Contract, Order
+from ib_dx import Contract, Order
 from sdk_sweep import Heard, connect
 
 #: The smaller S&P future, which trades nearly around the clock: the front
-#: month the venue lists, or the month named by `IBKR_DX_RT_EXPIRY`. A month
+#: month the venue lists, or the month named by `IB_DX_RT_EXPIRY`. A month
 #: that has expired is refused by name, which is a clear failure rather than a
 #: quiet one.
 #:
 #: A share can be named instead, which is worth doing during a session or in the
 #: hours either side of one — the order path is the same and the venues are not:
 #:
-#:     IBKR_DX_RT_SYMBOL=SPY IBKR_DX_RT_SEC_TYPE=STK IBKR_DX_RT_EXCHANGE=SMART \
-#:     IBKR_DX_RT_PRICE=400 IBKR_DX_RT_OUTSIDE_RTH=1 python scripts/order_round_trip.py
-SYMBOL = os.environ.get("IBKR_DX_RT_SYMBOL", "MES")
-SEC_TYPE = os.environ.get("IBKR_DX_RT_SEC_TYPE", "FUT")
-EXCHANGE = os.environ.get("IBKR_DX_RT_EXCHANGE", "CME")
-EXPIRY = os.environ.get("IBKR_DX_RT_EXPIRY", "")
+#:     IB_DX_RT_SYMBOL=SPY IB_DX_RT_SEC_TYPE=STK IB_DX_RT_EXCHANGE=SMART \
+#:     IB_DX_RT_PRICE=400 IB_DX_RT_OUTSIDE_RTH=1 python scripts/order_round_trip.py
+SYMBOL = os.environ.get("IB_DX_RT_SYMBOL", "MES")
+SEC_TYPE = os.environ.get("IB_DX_RT_SEC_TYPE", "FUT")
+EXCHANGE = os.environ.get("IB_DX_RT_EXCHANGE", "CME")
+EXPIRY = os.environ.get("IB_DX_RT_EXPIRY", "")
 
 #: Far under the market, so it rests, and on the contract's own increment.
 #: Stated rather than read off a quote: this check is about the order path, and
 #: asking for a quote makes it need an entitlement it does not otherwise use.
 #: No fixed price is below every market, so one that trades anyway is sold
 #: back and the round trip reported as not whole.
-RESTS_AT = float(os.environ.get("IBKR_DX_RT_PRICE", "6000"))
+RESTS_AT = float(os.environ.get("IB_DX_RT_PRICE", "6000"))
 
 #: Whether the order may work outside the regular session. A share resting
 #: before the bell needs this said; a future does not have the distinction.
-OUTSIDE_RTH = os.environ.get("IBKR_DX_RT_OUTSIDE_RTH", "") not in ("", "0")
+OUTSIDE_RTH = os.environ.get("IB_DX_RT_OUTSIDE_RTH", "") not in ("", "0")
 
 #: How long the venue is given to answer each step.
 ANSWER = 20

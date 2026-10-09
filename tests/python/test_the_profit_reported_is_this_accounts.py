@@ -1,8 +1,8 @@
 """A profit request names the account whose profit it reports."""
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -13,7 +13,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def test_naming_another_held_account_carries_that_name():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU123", accounts=["DU123", "DU999"])
     c.reqPnL(9, "DU999", "")
     c.poll()

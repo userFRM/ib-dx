@@ -4,7 +4,7 @@
 //! README that no longer builds is a snippet that turns readers away.
 
 use std::time::{Duration, Instant};
-use ibkr_dx::api::{Contract, Decimal, EClient, EClientConfig, TickAttrib, Wrapper};
+use ib_dx::api::{Contract, Decimal, EClient, EClientConfig, TickAttrib, Wrapper};
 
 struct App;
 

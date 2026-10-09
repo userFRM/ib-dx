@@ -14,12 +14,12 @@ import time
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 INTERNAL = 0xC000_0001
 
 
-class Origins(ibkr_dx.EWrapper):
+class Origins(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.said = []
@@ -42,7 +42,7 @@ class Origins(ibkr_dx.EWrapper):
         self.said.append(("exec_details_end", req_id))
 
 
-class OnlyError(ibkr_dx.EWrapper):
+class OnlyError(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.said = []
@@ -62,7 +62,7 @@ class NotASubclass:
 
 
 def spy():
-    c = ibkr_dx.Contract()
+    c = ib_dx.Contract()
     c.conId = 756733
     c.symbol = "SPY"
     c.secType = "STK"
@@ -72,7 +72,7 @@ def spy():
 
 
 def unsendable():
-    o = ibkr_dx.Order()
+    o = ib_dx.Order()
     o.action = "BUY"
     o.totalQuantity = 1
     o.orderType = "NOT A TYPE"
@@ -82,7 +82,7 @@ def unsendable():
 
 
 def connected(w, **kwargs):
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T", **kwargs)
     return c
 
@@ -131,7 +131,7 @@ def test_the_executions_notice_does_not_end_the_request_and_its_answer_follows()
     c._test_store_execution("e1", "")
     # What this session holds starts now, so the days before are not held.
     c._test_hold_executions_from(int(time.time()))
-    f = ibkr_dx.ExecutionFilter()
+    f = ib_dx.ExecutionFilter()
     f.lastNDays = 2
     c.reqExecutions(7, f)
     c.poll()
@@ -195,7 +195,7 @@ def test_a_refusal_the_program_makes_arrives_in_the_order_it_was_made():
     w = OnlyError()
     c = connected(w)
     c._test_push_historical_error(1, 162, "the venue's, of the request before")
-    c.refuse(ibkr_dx.ErrorOrigin("Request", 2), 320, "the program's own")
+    c.refuse(ib_dx.ErrorOrigin("Request", 2), 320, "the program's own")
     c._test_push_historical_error(3, 162, "the venue's, of the request after")
     c.poll()
     assert w.said == [(1, 162), (2, 320), (3, 162)], w.said
@@ -218,5 +218,5 @@ def test_a_refusal_the_program_makes_arrives_in_the_order_it_was_made():
 )
 def test_an_origin_is_made_from_what_it_reads_back(stated):
     kind, id_, ends, op, question = stated
-    made = ibkr_dx.ErrorOrigin(kind, id_, True if ends is None else ends, op, question)
+    made = ib_dx.ErrorOrigin(kind, id_, True if ends is None else ends, op, question)
     assert (made.kind, made.id, made.ends, made.op, made.question) == stated

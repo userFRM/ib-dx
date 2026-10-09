@@ -7,14 +7,14 @@ page, so a layout that answers none of those lines means no such program ever
 reached its first statement, whatever else was exported.
 
 Under these names, porting is the one rename a person would guess at — `ibapi`
-becomes `ibkr_dx` — and the TWS API's sample programs import unchanged after it.
-Nothing here is a second implementation: each module is a view of what `ibkr_dx`
-already publishes, and `ibkr_dx.client.EClient is ibkr_dx.EClient`.
+becomes `ib_dx` — and the TWS API's sample programs import unchanged after it.
+Nothing here is a second implementation: each module is a view of what `ib_dx`
+already publishes, and `ib_dx.client.EClient is ib_dx.EClient`.
 """
 
 import importlib
 
-import ibkr_dx
+import ib_dx
 
 # (module, the names a sample imports from it)
 LAYOUT = [
@@ -56,38 +56,38 @@ def test_each_module_the_reference_client_publishes_is_importable():
     missing = []
     for name, held in LAYOUT:
         try:
-            module = importlib.import_module(f"ibkr_dx.{name}")
+            module = importlib.import_module(f"ib_dx.{name}")
         except ImportError as why:
-            missing.append(f"ibkr_dx.{name}: {why}")
+            missing.append(f"ib_dx.{name}: {why}")
             continue
         for one in held:
             if not hasattr(module, one):
-                missing.append(f"ibkr_dx.{name}.{one}")
+                missing.append(f"ib_dx.{name}.{one}")
     assert not missing, "\n".join(missing)
 
 
 def test_a_module_is_a_view_and_not_a_second_implementation():
     # `from ibapi.client import EClient` and `from ibapi import EClient` name
     # one class there, and they have to name one here.
-    from ibkr_dx.client import EClient
-    from ibkr_dx.commission_report import CommissionReport
-    from ibkr_dx.contract import Contract
-    from ibkr_dx.execution import ExecutionFilter
+    from ib_dx.client import EClient
+    from ib_dx.commission_report import CommissionReport
+    from ib_dx.contract import Contract
+    from ib_dx.execution import ExecutionFilter
 
-    assert EClient is ibkr_dx.EClient
-    assert Contract is ibkr_dx.Contract
-    assert ExecutionFilter is ibkr_dx.ExecutionFilter
+    assert EClient is ib_dx.EClient
+    assert Contract is ib_dx.Contract
+    assert ExecutionFilter is ib_dx.ExecutionFilter
     # The earlier spelling of the fill-cost report names the one class, not a
     # second one beside it.
-    assert CommissionReport is ibkr_dx.CommissionAndFeesReport
+    assert CommissionReport is ib_dx.CommissionAndFeesReport
 
 
 def test_the_module_is_reachable_as_an_attribute_too():
     # A program writes both spellings: `from ibapi import wrapper` then
     # `wrapper.EWrapper`, and `from ibapi.wrapper import EWrapper`.
-    from ibkr_dx import order_condition, wrapper
+    from ib_dx import order_condition, wrapper
 
-    assert wrapper.EWrapper is ibkr_dx.EWrapper
+    assert wrapper.EWrapper is ib_dx.EWrapper
     assert order_condition.OrderCondition.Price == 1
 
 
@@ -96,15 +96,15 @@ def test_a_star_import_from_one_of_them_brings_something():
     # import and leave the program with nothing.
     for name, _ in LAYOUT:
 
-        module = importlib.import_module(f"ibkr_dx.{name}")
-        assert getattr(module, "__all__", None), f"ibkr_dx.{name} publishes nothing"
+        module = importlib.import_module(f"ib_dx.{name}")
+        assert getattr(module, "__all__", None), f"ib_dx.{name} publishes nothing"
 
 def test_a_module_holds_what_the_reference_puts_in_it():
     # Split the wrong way round once: the attrib classes were in `ticktype`,
     # which there holds `TickType` and `TickTypeEnum` and nothing else, and the
     # reference's own wrapper imports `TickType` from it. What is stated about
     # a tick lives in `common`, which is where its decoder reads them from.
-    from ibkr_dx import common, ticktype
+    from ib_dx import common, ticktype
 
     assert ticktype.TickType is int
     assert not hasattr(ticktype, "TickAttrib"), "that class lives in common"
@@ -115,7 +115,7 @@ def test_a_module_holds_what_the_reference_puts_in_it():
 def test_a_condition_is_made_the_way_that_client_makes_one():
     # Its samples build every conditional order this way, so the six classes
     # being importable is not enough on its own.
-    from ibkr_dx import order_condition
+    from ib_dx import order_condition
 
     made = order_condition.Create(order_condition.OrderCondition.Price)
     assert type(made).__name__ == "PriceCondition"
@@ -136,10 +136,10 @@ def test_a_condition_is_made_the_way_that_client_makes_one():
 def test_the_layout_says_so_when_it_names_something_absent():
     # Filtered to what the package happens to have, a module came out short and
     # the import that wanted the missing name failed at the caller instead.
-    import ibkr_dx._layout as layout
+    import ib_dx._layout as layout
 
     try:
-        layout.install({"EClient": ibkr_dx.EClient})
+        layout.install({"EClient": ib_dx.EClient})
     except AttributeError as why:
         assert "does not publish" in str(why)
         return
@@ -148,9 +148,9 @@ def test_the_layout_says_so_when_it_names_something_absent():
 
 def test_a_star_import_brings_names_and_not_modules():
     brought = {}
-    exec("from ibkr_dx import *", brought)
+    exec("from ib_dx import *", brought)
     assert "EClient" in brought
-    for shadowed in ("order", "contract", "client", "wrapper", "common", "inspect", "ibkr_dx"):
+    for shadowed in ("order", "contract", "client", "wrapper", "common", "inspect", "ib_dx"):
         assert shadowed not in brought, f"{shadowed} would shadow the caller's own"
 
 def test_a_star_import_of_common_brings_what_that_module_imports():
@@ -161,7 +161,7 @@ def test_a_star_import_of_common_brings_what_that_module_imports():
     # middle of a class body. Which is where this was found: driving that
     # sample.
     brought = {}
-    exec("from ibkr_dx.common import *", brought)
+    exec("from ib_dx.common import *", brought)
     for named in ("Object", "floatMaxString", "intMaxString", "decimalMaxString"):
         assert named in brought, named
 

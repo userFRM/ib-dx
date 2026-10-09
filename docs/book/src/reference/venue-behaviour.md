@@ -484,7 +484,7 @@ account, client ID and file should use `next_order_id()` for each allocation
 rather than incrementing separate counters from that callback. The file does
 not coordinate different client IDs, separate files or different machines.
 
-The default file is `ibkr-dx/order-ids.json` under:
+The default file is `ib-dx/order-ids.json` under:
 
 | Platform | Data directory |
 | --- | --- |
@@ -494,8 +494,8 @@ The default file is `ibkr-dx/order-ids.json` under:
 
 Rust sets `EClientConfig.gateway.order_id_file = Some(path.into())`. Python sets
 `connect(settings={"order_id_file": path})` for one session, or
-`ibkr_dx.configure(order_id_file=path)` before connecting. Both read
-`IBKR_DX_ORDER_ID_FILE` when the session leaves it unstated. An empty string
+`ib_dx.configure(order_id_file=path)` before connecting. Both read
+`IB_DX_ORDER_ID_FILE` when the session leaves it unstated. An empty string
 disables persistence; Rust `None` and Python `configure(order_id_file=None)`
 restore the environment/default selection.
 

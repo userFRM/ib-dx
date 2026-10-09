@@ -6,10 +6,10 @@ and nothing the session had queued is delivered after it. A program waiting on
 pass after says nothing more. A client that never connected is told nothing.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.said = []
@@ -23,7 +23,7 @@ class Heard(ibkr_dx.EWrapper):
 
 def test_disconnect_says_the_session_closed_before_it_returns():
     w = Heard()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_push_order_update(88, 0, "Submitted", 0.0, 1.0)
     c.disconnect()
@@ -35,7 +35,7 @@ def test_disconnect_says_the_session_closed_before_it_returns():
 
 def test_a_client_that_never_connected_is_not_told_a_session_closed():
     w = Heard()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c.disconnect()
     c.poll()
     assert w.said == []

@@ -15,9 +15,9 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::types::{ContractDetails, OrderState, TickAttrib};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::types::{ContractDetails, OrderState, TickAttrib};
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {
@@ -59,7 +59,7 @@ impl Wrapper for RejectWrapper {
         self.state.lock().unwrap().preview = Some(st.clone());
     }
     fn order_status(
-        &mut self, order_id: i64, status: &str, _filled: ibkr_dx::api::Decimal, _remaining: ibkr_dx::api::Decimal,
+        &mut self, order_id: i64, status: &str, _filled: ib_dx::api::Decimal, _remaining: ib_dx::api::Decimal,
         _avg: f64, _perm: i64, _parent: i64, _last: f64, _cid: i64, _why: &str, _cap: f64,
     ) {
         println!("[status] oid={order_id} status={status}");

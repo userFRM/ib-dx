@@ -1,4 +1,4 @@
-"""What an installed ibkr-dx carries, checked from outside the repository.
+"""What an installed ib-dx carries, checked from outside the repository.
 
 Run with the interpreter a wheel or a source distribution was installed into;
 it imports only what is installed. The suites cannot answer this: they run
@@ -14,11 +14,11 @@ import sys
 import sysconfig
 from importlib.metadata import version
 
-import ibkr_dx
-from ibkr_dx.client import EClient
-from ibkr_dx.contract import Contract
-from ibkr_dx.order import Order
-from ibkr_dx.wrapper import EWrapper
+import ib_dx
+from ib_dx.client import EClient
+from ib_dx.contract import Contract
+from ib_dx.order import Order
+from ib_dx.wrapper import EWrapper
 
 
 def problems() -> list[str]:
@@ -31,13 +31,13 @@ def problems() -> list[str]:
         ("contract", "Contract", Contract),
         ("order", "Order", Order),
     ):
-        if getattr(ibkr_dx, name, None) is not held:
-            found.append(f"ibkr_dx.{module_name}.{name} is not ibkr_dx.{name}")
+        if getattr(ib_dx, name, None) is not held:
+            found.append(f"ib_dx.{module_name}.{name} is not ib_dx.{name}")
     for name in ("configure", "settings", "describe", "UNAVAILABLE"):
-        if not hasattr(ibkr_dx, name):
-            found.append(f"ibkr_dx.{name} is missing")
-    if getattr(ibkr_dx, "__version__", None) != version("ibkr-dx"):
-        found.append("ibkr_dx.__version__ is not the installed release")
+        if not hasattr(ib_dx, name):
+            found.append(f"ib_dx.{name} is missing")
+    if getattr(ib_dx, "__version__", None) != version("ib-dx"):
+        found.append("ib_dx.__version__ is not the installed release")
     if not callable(getattr(EClient, "req_mkt_data", None)):
         found.append("EClient has no req_mkt_data")
     # The methods that fabricate a session belong to the test build only.
@@ -65,7 +65,7 @@ def main() -> int:
     if found:
         return 1
     threading = "free-threaded" if sysconfig.get_config_var("Py_GIL_DISABLED") else "with the GIL"
-    print(f"ibkr-dx {version('ibkr-dx')} on Python "
+    print(f"ib-dx {version('ib-dx')} on Python "
           f"{sys.version_info.major}.{sys.version_info.minor} {threading}: "
           "EClient, EWrapper and the reference layout present, no test helpers")
     return 0

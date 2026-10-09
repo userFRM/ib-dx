@@ -6,11 +6,11 @@ order id wider than a request. The shared id is one past the widest id a
 request can carry.
 """
 
-import ibkr_dx
+import ib_dx
 
 
 def test_the_shared_id_is_one_a_request_can_carry_past_a_wide_order_id():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("DU0000000")
     c._test_push_venue_order(700, "AAPL", "BUY", 1.0, 100.0)
     c._test_push_venue_order(5_000_000_000, "AAPL", "BUY", 1.0, 100.0)

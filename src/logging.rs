@@ -18,7 +18,7 @@ use crate::protocol::datetime::days_to_ymd;
 pub struct LogConfig {
     /// Directory for log files. `None` = console only.
     pub log_dir: Option<PathBuf>,
-    /// Filter directive (e.g. `"info"`, `"ibkr_dx=debug,warn"`).
+    /// Filter directive (e.g. `"info"`, `"ib_dx=debug,warn"`).
     /// Falls back to `RUST_LOG` env var, then `"info"`.
     pub level: Option<String>,
     /// Non-blocking channel capacity (records before dropping). Default: 65536.
@@ -37,14 +37,14 @@ impl Default for LogConfig {
 
 impl LogConfig {
     /// Build from environment variables:
-    /// - `IBKR_DX_LOG_DIR`   — log file directory (omit for console-only)
-    /// - `IBKR_DX_LOG_LEVEL` — filter directive (falls back to `RUST_LOG`, then `info`)
-    /// - `IBKR_DX_LOG_QUEUE` — non-blocking buffer capacity (default: 65536)
+    /// - `IB_DX_LOG_DIR`   — log file directory (omit for console-only)
+    /// - `IB_DX_LOG_LEVEL` — filter directive (falls back to `RUST_LOG`, then `info`)
+    /// - `IB_DX_LOG_QUEUE` — non-blocking buffer capacity (default: 65536)
     pub fn from_env() -> Self {
         Self {
-            log_dir: std::env::var("IBKR_DX_LOG_DIR").ok().map(PathBuf::from),
-            level: std::env::var("IBKR_DX_LOG_LEVEL").ok(),
-            queue_capacity: std::env::var("IBKR_DX_LOG_QUEUE")
+            log_dir: std::env::var("IB_DX_LOG_DIR").ok().map(PathBuf::from),
+            level: std::env::var("IB_DX_LOG_LEVEL").ok(),
+            queue_capacity: std::env::var("IB_DX_LOG_QUEUE")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(65_536),
@@ -226,11 +226,11 @@ pub fn try_init(config: &LogConfig) -> Option<LogGuard> {
     let appender = config.log_dir.as_ref().and_then(|dir| {
         tracing_appender::rolling::RollingFileAppender::builder()
             .rotation(tracing_appender::rolling::Rotation::DAILY)
-            .filename_prefix("ibkr_dx.log")
+            .filename_prefix("ib_dx.log")
             .build(dir)
             .map_err(|why| {
                 eprintln!(
-                    "ibkr_dx: the log directory {} cannot hold the log ({why}); logging goes to stdout instead",
+                    "ib_dx: the log directory {} cannot hold the log ({why}); logging goes to stdout instead",
                     dir.display()
                 )
             })
@@ -391,7 +391,7 @@ mod tests {
         // A path through a regular file can never be a directory, for any
         // user: create_dir_all answers ENOTDIR rather than EACCES, which no
         // permission can make succeed.
-        let regular_file = std::env::temp_dir().join(format!("ibkr_dx_log_test_{}", std::process::id()));
+        let regular_file = std::env::temp_dir().join(format!("ib_dx_log_test_{}", std::process::id()));
         std::fs::write(&regular_file, b"not a directory").unwrap();
         let config = LogConfig {
             log_dir: Some(regular_file.join("logs")),

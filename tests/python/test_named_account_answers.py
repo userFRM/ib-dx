@@ -1,8 +1,8 @@
 """Account requests keep the account they name throughout the answer."""
-import ibkr_dx
+import ib_dx
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -37,7 +37,7 @@ class Heard(ibkr_dx.EWrapper):
 
 def client():
     heard = Heard()
-    c = ibkr_dx.EClient(heard)
+    c = ib_dx.EClient(heard)
     c._test_connect("DU1", accounts=["DU1", "DU2"])
     for account, net, daily, position in [("DU1", 100, 10, 3), ("DU2", 200, 20, 7)]:
         c._test_set_account(net_liquidation=net, daily_pnl=daily, account=account)
@@ -148,7 +148,7 @@ def test_unapplied_account_selections_keep_the_existing_answer():
 
 def test_an_exercise_checks_the_named_holding_and_waits_for_its_figure():
     c, heard = client()
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 756733
     contract.symbol = "SPY"
     contract.secType = "OPT"

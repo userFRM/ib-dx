@@ -1,6 +1,6 @@
 """The reference client's modules publish their constants and enumerations here too.
 
-A program star-imports `ibkr_dx.order` and writes `order.origin = CUSTOMER`, as
+A program star-imports `ib_dx.order` and writes `order.origin = CUSTOMER`, as
 that client's own `Order.__init__` does; it compares a scan's row count with
 `NO_ROW_NUMBER_SPECIFIED`, a fill's exercise type with
 `OptionExerciseType.NoneItem`, a fund's class with `FundAssetType.Equity`.
@@ -12,8 +12,8 @@ Run: pytest tests/python/test_the_reference_modules_publish_their_constants.py -
 
 import pytest
 
-from ibkr_dx import contract, execution, news, order, scanner
-from ibkr_dx import ContractDetails, Execution, Order, ScannerSubscription
+from ib_dx import contract, execution, news, order, scanner
+from ib_dx import ContractDetails, Execution, Order, ScannerSubscription
 
 
 def test_the_order_module_publishes_the_origin_and_auction_constants():
@@ -61,7 +61,7 @@ def test_a_funds_class_and_policy_are_the_enumeration_members():
 def test_the_errors_module_publishes_the_numbers_this_client_reports_itself():
     # A program compares a callback's number against these rather than a bare
     # 501, so the codes and the standing words are the contract.
-    from ibkr_dx import errors
+    from ib_dx import errors
 
     assert (errors.ALREADY_CONNECTED.errorCode, errors.ALREADY_CONNECTED.errorMsg) == (501, "Already connected.")
     assert (errors.NOT_CONNECTED.errorCode, errors.NOT_CONNECTED.errorMsg) == (504, "Not connected")
@@ -69,7 +69,7 @@ def test_the_errors_module_publishes_the_numbers_this_client_reports_itself():
 
 
 def test_the_order_status_module_publishes_the_states_a_callback_carries():
-    from ibkr_dx.order_status import OrderStatus
+    from ib_dx.order_status import OrderStatus
 
     assert str(OrderStatus.Filled) == "Filled"
     assert OrderStatus.get("filled") is OrderStatus.Filled
@@ -83,8 +83,8 @@ def test_the_order_status_module_publishes_the_states_a_callback_carries():
 def test_the_utils_module_publishes_its_helpers():
     import time
 
-    from ibkr_dx import utils
-    from ibkr_dx.execution import OptionExerciseType
+    from ib_dx import utils
+    from ib_dx.execution import OptionExerciseType
 
     assert utils.isValidFloatValue(1.0) and not utils.isValidFloatValue(utils.UNSET_DOUBLE)
     assert utils.isAsciiPrintable("host\tname") and not utils.isAsciiPrintable("hé")
@@ -102,7 +102,7 @@ def test_the_utils_module_publishes_its_helpers():
     # asked to show it; a spent iterator is a BadMessage of the same module.
     from decimal import Decimal
 
-    from ibkr_dx import UNSET_DECIMAL, UNSET_DOUBLE, UNSET_INTEGER
+    from ib_dx import UNSET_DECIMAL, UNSET_DOUBLE, UNSET_INTEGER
 
     fields = iter([b"42", b"1.5", b"abc"])
     assert utils.decode(int, fields) == 42
@@ -127,7 +127,7 @@ def test_the_utils_module_publishes_its_helpers():
 
 
 def test_the_common_module_publishes_the_plain_enum_holder():
-    from ibkr_dx import common
+    from ib_dx import common
 
     assert common.MarketDataType is int
     assert common.FaDataType is int

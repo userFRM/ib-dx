@@ -14,7 +14,7 @@ reconnecting never fired.
 
 import pytest
 
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 class Records(EWrapper):

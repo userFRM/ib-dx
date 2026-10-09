@@ -7,9 +7,9 @@
 //! Requires IB_USERNAME and IB_PASSWORD environment variables.
 //! Run with: cargo test --test rust_api_live -- --test-threads=1 --nocapture
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::types::*;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::types::*;
+use ib_dx::api::wrapper::Wrapper;
 use std::env;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -261,7 +261,7 @@ struct ContractDescSnapshot {
     currency: String,
 }
 
-fn snap_contract(c: &ibkr_dx::api::types::Contract) -> ContractSnapshot {
+fn snap_contract(c: &ib_dx::api::types::Contract) -> ContractSnapshot {
     ContractSnapshot {
         con_id: c.con_id,
         symbol: c.symbol.clone(),
@@ -324,15 +324,15 @@ impl Wrapper for RecWrapper {
     fn tick_price(&mut self, req_id: i64, tick_type: i32, price: f64, _: &TickAttrib) {
         self.push(Cb::TickPrice { req_id, tick_type, price });
     }
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ibkr_dx::api::Decimal) {
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ib_dx::api::Decimal) {
         self.push(Cb::TickSize { req_id, tick_type, size: size.into() });
     }
     fn order_status(
         &mut self,
         order_id: i64,
         status: &str,
-        filled: ibkr_dx::api::Decimal,
-        remaining: ibkr_dx::api::Decimal,
+        filled: ib_dx::api::Decimal,
+        remaining: ib_dx::api::Decimal,
         _: f64,
         _: i64,
         _: i64,
@@ -352,8 +352,8 @@ impl Wrapper for RecWrapper {
     fn open_order(
         &mut self,
         order_id: i64,
-        contract: &ibkr_dx::api::types::Contract,
-        order: &ibkr_dx::api::types::Order,
+        contract: &ib_dx::api::types::Contract,
+        order: &ib_dx::api::types::Order,
         state: &OrderState,
     ) {
         self.push(Cb::OpenOrder {
@@ -382,8 +382,8 @@ impl Wrapper for RecWrapper {
     }
     fn completed_order(
         &mut self,
-        contract: &ibkr_dx::api::types::Contract,
-        order: &ibkr_dx::api::types::Order,
+        contract: &ib_dx::api::types::Contract,
+        order: &ib_dx::api::types::Order,
         state: &OrderState,
     ) {
         self.push(Cb::CompletedOrder {
@@ -412,7 +412,7 @@ impl Wrapper for RecWrapper {
     fn exec_details(
         &mut self,
         req_id: i64,
-        contract: &ibkr_dx::api::types::Contract,
+        contract: &ib_dx::api::types::Contract,
         execution: &Execution,
     ) {
         self.push(Cb::ExecDetails {
@@ -438,8 +438,8 @@ impl Wrapper for RecWrapper {
     fn position(
         &mut self,
         account: &str,
-        contract: &ibkr_dx::api::types::Contract,
-        pos: ibkr_dx::api::Decimal,
+        contract: &ib_dx::api::types::Contract,
+        pos: ib_dx::api::Decimal,
         avg_cost: f64,
     ) {
         self.push(Cb::Position {
@@ -483,13 +483,13 @@ impl Wrapper for RecWrapper {
     fn head_timestamp(&mut self, req_id: i64, ts: &str) {
         self.push(Cb::HeadTimestamp { req_id, ts: ts.into() });
     }
-    fn histogram_data(&mut self, req_id: i64, items: &[(f64, ibkr_dx::api::Decimal)]) {
+    fn histogram_data(&mut self, req_id: i64, items: &[(f64, ib_dx::api::Decimal)]) {
         self.push(Cb::HistogramData { req_id, count: items.len() });
     }
     fn historical_ticks(
         &mut self,
         req_id: i64,
-        _: &ibkr_dx::types::HistoricalTickData,
+        _: &ib_dx::types::HistoricalTickData,
         done: bool,
     ) {
         self.push(Cb::HistoricalTicks { req_id, done });
@@ -560,28 +560,28 @@ impl Wrapper for RecWrapper {
     fn update_news_bulletin(&mut self, msg_id: i64, msg_type: i32, message: &str, _: &str) {
         self.push(Cb::NewsBulletin { msg_id, msg_type, message: message.into() });
     }
-    fn pnl_single(&mut self, req_id: i64, pos: ibkr_dx::api::Decimal, _: f64, _: f64, _: f64, _: f64) {
+    fn pnl_single(&mut self, req_id: i64, pos: ib_dx::api::Decimal, _: f64, _: f64, _: f64, _: f64) {
         self.push(Cb::PnlSingle { req_id, pos: pos.into() });
     }
     fn market_rule(&mut self, id: i64, increments: &[PriceIncrement]) {
         self.push(Cb::MarketRule { id, count: increments.len() });
     }
-    fn smart_components(&mut self, req_id: i64, components: &[ibkr_dx::types::SmartComponent]) {
+    fn smart_components(&mut self, req_id: i64, components: &[ib_dx::types::SmartComponent]) {
         self.push(Cb::SmartComponents { req_id, count: components.len() });
     }
     fn tick_req_params(&mut self, _: i64, _: f64, bbo_exchange: &str, _: i64) {
         self.push(Cb::TickReqParams { bbo_exchange: bbo_exchange.into() });
     }
-    fn news_providers(&mut self, providers: &[ibkr_dx::types::NewsProvider]) {
+    fn news_providers(&mut self, providers: &[ib_dx::types::NewsProvider]) {
         self.push(Cb::NewsProviders { count: providers.len() });
     }
     fn current_time(&mut self, time: i64) {
         self.push(Cb::CurrentTime { time });
     }
-    fn soft_dollar_tiers(&mut self, req_id: i64, tiers: &[ibkr_dx::types::SoftDollarTier]) {
+    fn soft_dollar_tiers(&mut self, req_id: i64, tiers: &[ib_dx::types::SoftDollarTier]) {
         self.push(Cb::SoftDollarTiers { req_id, count: tiers.len() });
     }
-    fn family_codes(&mut self, codes: &[ibkr_dx::types::FamilyCode]) {
+    fn family_codes(&mut self, codes: &[ib_dx::types::FamilyCode]) {
         self.push(Cb::FamilyCodes { count: codes.len() });
     }
     fn user_info(&mut self, req_id: i64, white_branding_id: &str) {
@@ -680,7 +680,7 @@ fn refused_under(cbs: &[Cb], req_id: i64) -> Option<String> {
 /// request is said and quoted, and silence fails.
 #[test]
 fn the_calls_no_other_live_test_names() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let Some(config) = get_config() else {
         println!("Skipping: IB credentials not set");
         return;
@@ -855,7 +855,7 @@ fn the_calls_no_other_live_test_names() {
 /// cached. Nothing caught it because nothing called them. This does.
 #[test]
 fn reference_and_account_calls_live() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let Some(config) = get_config() else {
         println!("Skipping: IB credentials not set");
         return;
@@ -875,11 +875,11 @@ fn reference_and_account_calls_live() {
         values_multi_end: Vec<i64>,
     }
     struct W(Arc<Mutex<Heard>>);
-    impl ibkr_dx::api::wrapper::Wrapper for W {
+    impl ib_dx::api::wrapper::Wrapper for W {
         fn managed_accounts(&mut self, accounts: &str) {
             self.0.lock().unwrap().accounts.push(accounts.to_string());
         }
-        fn mkt_depth_exchanges(&mut self, d: &[ibkr_dx::types::DepthMktDataDescription]) {
+        fn mkt_depth_exchanges(&mut self, d: &[ib_dx::types::DepthMktDataDescription]) {
             self.0.lock().unwrap().depth_venues += d.len();
         }
         fn position_multi(
@@ -888,7 +888,7 @@ fn reference_and_account_calls_live() {
             account: &str,
             _model: &str,
             _c: &Contract,
-            _pos: ibkr_dx::api::Decimal,
+            _pos: ib_dx::api::Decimal,
             _avg: f64,
         ) {
             self.0.lock().unwrap().positions_multi.push((req_id, account.to_string()));
@@ -976,7 +976,7 @@ fn reference_and_account_calls_live() {
 /// having arrived unread for as long as this client has existed.
 #[test]
 fn the_venue_sends_nothing_this_client_does_not_read() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let Some(config) = get_config() else {
         println!("Skipping: IB credentials not set");
         return;

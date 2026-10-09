@@ -11,7 +11,7 @@ What the caller gave `connect` is kept and read back, as the reference keeps it.
 
 import pytest
 from conftest import NotConnectedProbe
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 def test_the_connection_states_are_the_reference_clients():

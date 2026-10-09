@@ -2,7 +2,7 @@
 
 use super::common::*;
 use std::net::TcpListener;
-use ibkr_dx::gateway::{Gateway, GatewayConfig};
+use ib_dx::gateway::{Gateway, GatewayConfig};
 
 pub(super) fn phase_ccp_auth(gw: &Gateway, has_hmds: bool, connect_time: Duration) {
     phase!("--- Phase 1: CCP Auth + Farm Logon ---");
@@ -65,7 +65,7 @@ pub(super) fn phase_extra_farms(
     gw: &Gateway,
     config: &GatewayConfig,
     ccp: &mut Connection,
-    routed: &ibkr_dx::protocol::routing::RoutingTable,
+    routed: &ib_dx::protocol::routing::RoutingTable,
 ) {
     phase!("--- Phase 18: Additional Farm Connections ---");
 
@@ -109,17 +109,17 @@ pub(super) fn phase_extra_farms(
         ccp_keepalive(ccp);
         let start = Instant::now();
         let kind = if farm.contains("hmds") {
-            ibkr_dx::gateway::Farm::Historical
+            ib_dx::gateway::Farm::Historical
         } else {
-            ibkr_dx::gateway::Farm::MarketData
+            ib_dx::gateway::Farm::MarketData
         };
         // The port the venue stated for this farm, not the one this file would
         // otherwise assume.
-        let where_it_is = ibkr_dx::api::settings::SessionSettings {
+        let where_it_is = ib_dx::api::settings::SessionSettings {
             port: *farm_port,
             ..Default::default()
         };
-        match ibkr_dx::gateway::connect_farm(&where_it_is,
+        match ib_dx::gateway::connect_farm(&where_it_is,
             farm_host, farm,
             &config.username, &config.password, config.paper,
             &gw.server_session_id, &gw.session_token,
@@ -176,7 +176,7 @@ pub(super) fn phase_graceful_shutdown(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
 
     let join = run_hot_loop(hot_loop);
@@ -224,7 +224,7 @@ pub(super) fn phase_graceful_shutdown(conns: Conns) -> Conns {
                 "  the engine gave up its quote feed during the run ({}), opening another",
                 if hl.rebuilding_the_quote_feed() { "a rebuild was out" } else { "no rebuild was out" },
             );
-            super::historical::open_farm(ibkr_dx::gateway::Farm::MarketData)
+            super::historical::open_farm(ib_dx::gateway::Farm::MarketData)
                 .expect("the quote feed could not be opened again")
         }
     };
@@ -255,7 +255,7 @@ pub(super) fn phase_connection_recovery(conns: Conns, _gw: &Gateway, config: &Ga
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     // Use fake farm, real auth connection — hot loop should detect farm disconnect
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), fake_conn, conns.ccp, conns.hmds, None,
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), fake_conn, conns.ccp, conns.hmds, None,
     );
 
     let join = run_hot_loop(hot_loop);
@@ -343,10 +343,10 @@ pub(super) fn phase_reconnection_state_recovery(conns: Conns, _gw: &Gateway, _co
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
 
-    control_tx.send(ControlCommand::Subscribe { req_id: 90006, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx.send(ControlCommand::Subscribe { req_id: 90006, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -372,11 +372,11 @@ pub(super) fn phase_reconnection_state_recovery(conns: Conns, _gw: &Gateway, _co
     let shared2 = Arc::new(SharedState::new());
     let (event_tx2, event_rx2) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop2, control_tx2) = HotLoop::with_connections(
-        shared2.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx2, Default::default())), conns1.account_id.clone(),
+        shared2.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx2, Default::default())), conns1.account_id.clone(),
         conns1.farm, conns1.ccp, conns1.hmds, None,
     );
 
-    control_tx2.send(ControlCommand::Subscribe { req_id: 90007, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx2.send(ControlCommand::Subscribe { req_id: 90007, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
     let join2 = run_hot_loop(hot_loop2);
@@ -410,8 +410,8 @@ pub(super) fn phase_auth_wrong_password(config: &GatewayConfig) {
         password: zeroize::Zeroizing::new("definitely_wrong_password_12345".to_string()),
         host: config.host.clone(),
         paper: config.paper,
-        ib_key_timeout_secs: ibkr_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
-        ib_key_token_sub_type: ibkr_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
+        ib_key_timeout_secs: ib_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
+        ib_key_token_sub_type: ib_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
         code_provider: None,
         cancel: None,
         resume: None,
@@ -440,14 +440,14 @@ pub(super) fn phase_register_instrument_channel(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
     let join = run_hot_loop(hot_loop);
 
     // Register 3 instruments via ControlCommand channel (not context_mut)
-    control_tx.send(ControlCommand::RegisterInstrument { contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
-    control_tx.send(ControlCommand::RegisterInstrument { contract: ibkr_dx::types::ContractRef { con_id: 265598, symbol: "AAPL".to_string(), sec_type: String::new(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
-    control_tx.send(ControlCommand::RegisterInstrument { contract: ibkr_dx::types::ContractRef { con_id: 272093, symbol: "MSFT".to_string(), sec_type: String::new(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
+    control_tx.send(ControlCommand::RegisterInstrument { contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".to_string(), sec_type: "STK".into(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
+    control_tx.send(ControlCommand::RegisterInstrument { contract: ib_dx::types::ContractRef { con_id: 265598, symbol: "AAPL".to_string(), sec_type: String::new(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
+    control_tx.send(ControlCommand::RegisterInstrument { contract: ib_dx::types::ContractRef { con_id: 272093, symbol: "MSFT".to_string(), sec_type: String::new(), exchange: String::new(), ..Default::default() }, identity: String::new() }).unwrap();
 
     // Give hot loop time to process
     std::thread::sleep(Duration::from_millis(500));
@@ -457,7 +457,7 @@ pub(super) fn phase_register_instrument_channel(conns: Conns) -> Conns {
     println!("  Instrument count after 3 registrations: {count}");
 
     // Now subscribe to one of the registered instruments
-    control_tx.send(ControlCommand::Subscribe { req_id: 90008, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx.send(ControlCommand::Subscribe { req_id: 90008, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
 
@@ -489,7 +489,7 @@ pub(super) fn phase_update_param(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (mut hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
     let inst_id = hot_loop.context_mut().register_instrument(756733);
     hot_loop.context_mut().set_symbol(inst_id, "SPY".to_string());
@@ -508,8 +508,8 @@ pub(super) fn phase_update_param(conns: Conns) -> Conns {
 
     // Submit + cancel an order to verify hot loop is still functional after UpdateParam
     let oid = next_order_id();
-    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: oid, instrument: inst_id, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).unwrap();
-    control_tx.send(ControlCommand::Subscribe { req_id: 90009, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx { con_id: 0, order_id: oid, instrument: inst_id, side: Side::Buy, qty: ib_dx::types::QTY_SCALE, kind: OrderKind::Limit { price: 1_00_000_000 }, tif: b'1', attrs: OrderAttrs { outside_rth: true, ..Default::default() } })).unwrap();
+    control_tx.send(ControlCommand::Subscribe { req_id: 90009, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -567,9 +567,9 @@ pub(super) fn phase_farm_recovers_with_credentials(
     let account_id = conns.account_id.clone();
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
-    let (mut hot_loop, control_tx) = ibkr_dx::engine::hot_loop::HotLoop::for_session(
+    let (mut hot_loop, control_tx) = ib_dx::engine::hot_loop::HotLoop::for_session(
         gw,
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), conns.farm, conns.ccp, conns.hmds, None, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), conns.farm, conns.ccp, conns.hmds, None, None,
         gateway::CallerAuth {
             settings: Default::default(),
             host: config.host.clone(),
@@ -588,7 +588,7 @@ pub(super) fn phase_farm_recovers_with_credentials(
     // orders and the farm carries the data, and a client that recovers one is
     // still not trading.
     hot_loop.force_farm_disconnect();
-    if std::env::var("IBKR_DX_RECOVER_FARM_ONLY").is_err() {
+    if std::env::var("IB_DX_RECOVER_FARM_ONLY").is_err() {
         hot_loop.force_ccp_disconnect();
     }
     let join = run_hot_loop(hot_loop);
@@ -626,7 +626,7 @@ pub(super) fn phase_farm_recovers_with_credentials(
     if ticked {
         let oid = next_order_id();
         control_tx.send(ControlCommand::Order(OrderRequest::SubmitEx {
-            order_id: oid, instrument: 0, con_id: 0, side: Side::Buy, qty: ibkr_dx::types::QTY_SCALE,
+            order_id: oid, instrument: 0, con_id: 0, side: Side::Buy, qty: ib_dx::types::QTY_SCALE,
             kind: OrderKind::Limit { price: 1_00_000_000 },
             tif: b'0', attrs: OrderAttrs { outside_rth: true, ..OrderAttrs::default() },
         })).unwrap();

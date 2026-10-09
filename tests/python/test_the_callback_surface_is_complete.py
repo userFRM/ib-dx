@@ -11,7 +11,7 @@ built to avoid.
 
 from decimal import Decimal
 
-from ibkr_dx import EWrapper
+from ib_dx import EWrapper
 
 CALLBACKS = [
     "connect_ack", "connection_closed", "next_valid_id", "managed_accounts",

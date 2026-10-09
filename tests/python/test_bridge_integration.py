@@ -1,6 +1,6 @@
 """Python ↔ Rust bridge compatibility tests.
 
-These tests exercise the REAL ibkr_dx Rust module — not mocks.
+These tests exercise the REAL ib_dx Rust module — not mocks.
 They use _test_* helpers to inject data into SharedState and verify
 callbacks fire with correctly converted types across the PyO3 boundary.
 """
@@ -9,7 +9,7 @@ import pytest
 import threading
 import time
 from decimal import Decimal
-from ibkr_dx import (
+from ib_dx import (
     Contract, Order, TagValue, BarData, ContractDetails, OrderState,
     EWrapper, EClient,
     TickAttrib, TickAttribLast, TickAttribBidAsk, TickTypeEnum,
@@ -702,7 +702,7 @@ class TestOrderAllocation:
     """Regression: OrderAllocation class is exposed and round-trips through OrderState."""
 
     def test_order_allocation_fields(self):
-        from ibkr_dx import OrderAllocation
+        from ib_dx import OrderAllocation
         a = OrderAllocation()
         a.account = "DU123"
         a.position = "100"
@@ -716,7 +716,7 @@ class TestOrderAllocation:
         assert a.is_monetary is True
 
     def test_order_state_allocations_roundtrip(self):
-        from ibkr_dx import OrderState, OrderAllocation
+        from ib_dx import OrderState, OrderAllocation
         s = OrderState()
         a1 = OrderAllocation(); a1.account = "DU111"; a1.position = "100"
         a2 = OrderAllocation(); a2.account = "DU222"; a2.position = "200"

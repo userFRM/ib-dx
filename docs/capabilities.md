@@ -18,7 +18,7 @@ the call does, and the evidence column says how that was established.
 
 | Mark | Meaning |
 | :---: | --- |
-| ● | Present. For ibkr-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |
+| ● | Present. For ib-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |
 | ◐ | Present and not served: a call reports why on the error callback; a callback is declared and not fired here, although a gateway sends it |
 | · | Absent |
 | — | Beyond the canonical list: not on this surface by design. The call is the other surface's own convenience, not one this surface lacks |
@@ -29,7 +29,7 @@ generated this page:
 - **TWS API** — the canonical list this repository keeps of the TWS API's requests and callbacks, in `scripts/gen_api_docs.py`. Beyond that list, a call is marked here where the TWS API's own client, or ib_async's transport, has a method by that name; a helper of ib_async's facade is not.
 - **ibapi** — IBKR's own Python client, version `9.81.1-1`, imported and enumerated. This is the copy published to PyPI; the version IBKR distributes directly is numbered 10.x and names calls this one predates, so a gap in this column is a gap in the copy that was read and not necessarily in the client you have.
 - **ib_async** — version `2.1.0`, imported and enumerated across both the transport and the facade, because it carries some calls on one and some on the other.
-- **ibkr-dx Rust** and **ibkr-dx Python** — this client's two surfaces, from the coverage matrix `scripts/gen_api_docs.py` generates from the source. A mark here says what the call does, not only that it exists.
+- **ib-dx Rust** and **ib-dx Python** — this client's two surfaces, from the coverage matrix `scripts/gen_api_docs.py` generates from the source. A mark here says what the call does, not only that it exists.
 - **Evidence** — how this client's status for a call was established: named by a suite that opens a session, named only by the offline suites, or not named by a test.
 - **Fires on a gateway** — whether the callback fires at all for a program on a gateway. The TWS API declares seven that never do.
 - **Answered from** — beyond the canonical list, whether a call asks the venue or reads what it stated, or answers from this client itself: its own state, a measurement it takes, or a helper.
@@ -41,7 +41,7 @@ filled in from memory. A mark here is a thing that was read.
 
 What a program asks the venue for.
 
-| Category | Call | TWS API | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python | Evidence |
+| Category | Call | TWS API | ibapi | ib_async | ib-dx Rust | ib-dx Python | Evidence |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | Connection | `connect` | ● | ● | ● | ● | ● | Live session |
 |  | `disconnect` | ● | ● | ● | ● | ● | Live session |
@@ -135,7 +135,7 @@ What a program asks the venue for.
 
 What the venue says back. `ib_async` delivers these as events as well as methods, so a mark here says the method exists on its wrapper, not that the information is unavailable by another route.
 
-| Category | Call | TWS API | Fires on a gateway | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python |
+| Category | Call | TWS API | Fires on a gateway | ibapi | ib_async | ib-dx Rust | ib-dx Python |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | Connection | `connect_ack` | ● | yes | ● | ● | ● | ● |
 |  | `connection_closed` | ● | yes | ● | ● | ● | ● |
@@ -243,7 +243,7 @@ A mark against a reference client here means it names the same
 thing; a mark under TWS API means the TWS API's own client, or
 ib_async's transport, has a method by that name.
 
-| Call | Answered from | TWS API | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python |
+| Call | Answered from | TWS API | ibapi | ib_async | ib-dx Rust | ib-dx Python |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | `account` / `account_snapshot` | venue | · | · | · | ● | ● |
 | `account_id` / `get_account_id` | venue | · | · | · | ● | ● |
@@ -419,6 +419,6 @@ ib_async's transport, has a method by that name.
 | TWS API | 87 | 0 | 0 |
 | ibapi | 78 | 0 | 9 |
 | ib_async | 84 | 0 | 3 |
-| ibkr-dx Rust | 87 | 0 | 0 |
-| ibkr-dx Python | 87 | 0 | 0 |
+| ib-dx Rust | 87 | 0 | 0 |
+| ib-dx Python | 87 | 0 | 0 |
 

@@ -9,7 +9,7 @@ Run: pytest tests/python/test_account_state_full.py -v -s
 import os, threading, time
 import pytest
 from conftest import declined, give_back, inside_the_session, liquid_hours, wait_for
-from ibkr_dx import EWrapper, EClient, Contract, Order
+from ib_dx import EWrapper, EClient, Contract, Order
 
 pytestmark = pytest.mark.skipif(
     not (os.environ.get("IB_USERNAME") and os.environ.get("IB_PASSWORD")),

@@ -13,7 +13,7 @@
 //! - [`EClient`] for requests and [`Wrapper`] for what arrives
 //!
 //! ```no_run
-//! use ibkr_dx::api::client::{EClient, EClientConfig};
+//! use ib_dx::api::client::{EClient, EClientConfig};
 //!
 //! let client = EClient::connect(&EClientConfig {
 //!     username: "…".into(),
@@ -24,7 +24,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! In Python, the same surface is `ibkr_dx.EClient` and `ibkr_dx.EWrapper`.
+//! In Python, the same surface is `ib_dx.EClient` and `ib_dx.EWrapper`.
 //! For `ib_async`, use [ib_async-dx](https://github.com/userFRM/ib_async-dx),
 //! which runs it on this engine.
 //!

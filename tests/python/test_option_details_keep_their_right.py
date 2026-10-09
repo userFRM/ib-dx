@@ -6,10 +6,10 @@ request. Left off, that request names whichever of the two the venue picks; sent
 back as the word this crate spells it with, it names neither.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Details(ibkr_dx.EWrapper):
+class Details(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.details = []
@@ -23,7 +23,7 @@ class Details(ibkr_dx.EWrapper):
 
 def _details_for(right):
     w = Details()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_push_contract_details(1, 756733, "SPY", right)
     c._test_dispatch_once()

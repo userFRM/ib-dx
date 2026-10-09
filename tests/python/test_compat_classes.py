@@ -1,7 +1,7 @@
 """Tests for ibapi-compatible class construction, fields, and subclassing."""
 
 import pytest
-from ibkr_dx import (
+from ib_dx import (
     UNSET_DECIMAL,
     UNSET_DOUBLE,
     Contract, Order, BarData, ContractDetails, TagValue, OrderState,
@@ -71,7 +71,7 @@ def test_order_defaults():
     # Where the reference client starts a figure unset, so does this one: a
     # program written against it compares with its unset values.
     from ibapi.order import Order as Reference
-    from ibkr_dx import UNSET_DOUBLE, UNSET_INTEGER
+    from ib_dx import UNSET_DOUBLE, UNSET_INTEGER
 
     unset = [
         name for name, value in vars(Reference()).items()
@@ -157,7 +157,7 @@ def test_depth_description_defaults_agg_group_to_the_unset_marker():
     # gateway's unstated answer decodes to the same marker: a program telling
     # "the venue did not state a group" by comparing against UNSET_INTEGER has
     # to read a fresh row the way it reads a delivered one.
-    from ibkr_dx import UNSET_INTEGER, DepthMktDataDescription
+    from ib_dx import UNSET_INTEGER, DepthMktDataDescription
 
     assert DepthMktDataDescription().aggGroup == UNSET_INTEGER
     assert DepthMktDataDescription(agg_group=3).aggGroup == 3
@@ -466,7 +466,7 @@ def test_auto_binding_is_refused_only_for_a_client_that_is_not_zero():
     this session hears about every order on the account either way, so the
     refusal is the observable part.
     """
-    from ibkr_dx import EClient, EWrapper
+    from ib_dx import EClient, EWrapper
 
     class W(EWrapper):
         def __init__(self):
@@ -502,7 +502,7 @@ def test_solving_an_option_answers_rather_than_refusing():
     against the same session gave a number in one language and an error in
     the other.
     """
-    from ibkr_dx import EClient, EWrapper, Contract
+    from ib_dx import EClient, EWrapper, Contract
 
     class W(EWrapper):
         def __init__(self):
@@ -551,7 +551,7 @@ def test_a_question_kept_for_a_model_does_not_outlive_its_session():
     Left behind, the next session answers it under a request id nobody there
     ever used, or waits on a model for a contract it is not watching.
     """
-    from ibkr_dx import EClient, EWrapper, Contract
+    from ib_dx import EClient, EWrapper, Contract
 
     class W(EWrapper):
         def __init__(self):
@@ -602,7 +602,7 @@ def test_a_calculation_asked_before_the_model_waits_for_it():
     and this one refused it, which is the same divergence as above one step
     earlier.
     """
-    from ibkr_dx import EClient, EWrapper, Contract
+    from ib_dx import EClient, EWrapper, Contract
 
     class W(EWrapper):
         def __init__(self):
@@ -663,7 +663,7 @@ def test_a_model_the_venue_left_blank_reaches_a_wrapper_that_did_not_write_the_m
     session, on every caller that had not written the method itself. Every test
     here had written one, so nothing saw it.
     """
-    from ibkr_dx import EWrapper
+    from ib_dx import EWrapper
 
     EWrapper().tick_option_computation(
         1, 13, 0, None, None, None, None, None, None, None, None,

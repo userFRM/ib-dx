@@ -12,9 +12,9 @@ Which is how this was found: driving that layer against a live crypto pair,
 where every tick raised `type object 'TickTypeEnum' has no attribute 'toStr'`.
 """
 
-import ibkr_dx
+import ib_dx
 
-T = ibkr_dx.TickTypeEnum
+T = ib_dx.TickTypeEnum
 
 
 def test_the_number_a_name_carries_is_its_place_in_the_table():

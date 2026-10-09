@@ -7,7 +7,7 @@ ends — here one naming an account a login holding several does not hold.
 Run: pytest tests/python/test_a_refused_execution_request_still_ends.py -v
 """
 
-from ibkr_dx import EWrapper, EClient
+from ib_dx import EWrapper, EClient
 
 
 class Recorder(EWrapper):

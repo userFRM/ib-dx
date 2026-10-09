@@ -10,10 +10,10 @@ working.
 
 import time
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -26,7 +26,7 @@ class Errors(ibkr_dx.EWrapper):
 
 
 def spy():
-    c = ibkr_dx.Contract()
+    c = ib_dx.Contract()
     c.conId = 756733
     c.symbol = "SPY"
     c.secType = "STK"
@@ -36,7 +36,7 @@ def spy():
 
 
 def limit_order():
-    o = ibkr_dx.Order()
+    o = ib_dx.Order()
     o.action = "BUY"
     o.totalQuantity = 1
     o.orderType = "LMT"
@@ -47,7 +47,7 @@ def limit_order():
 
 def test_a_withdrawal_naming_nothing_says_so():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
 
     c.cancelOrder(42, "")
@@ -59,7 +59,7 @@ def test_a_withdrawal_naming_nothing_says_so():
 
 def test_a_withdrawal_of_an_order_this_session_placed_goes():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_map_con_id(756733, 0)
 
@@ -80,7 +80,7 @@ def test_a_withdrawal_before_the_replay_has_landed_is_sent():
     it lands is sent rather than refused: the order may be live, and once the
     bounded wait has passed nobody waits again on this connection."""
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T", replay_done=False)
     c.cancelOrder(42, "")
     assert w.seen == [], f"nothing is refused before the venue has said: {w.seen}"

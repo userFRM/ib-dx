@@ -10,7 +10,7 @@ import importlib.util
 import pathlib
 import re
 
-from ibkr_dx import EWrapper
+from ib_dx import EWrapper
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 

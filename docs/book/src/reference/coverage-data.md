@@ -2,7 +2,7 @@
 
 *Auto-generated from source — do not edit.*
 
-Canonical IB API methods vs ibkr-dx implementation status.
+Canonical IB API methods vs ib-dx implementation status.
 
 - **Y** = Implemented: a call is served; a callback is declared and fired
   whenever what it reports arrives

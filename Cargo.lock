@@ -338,7 +338,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ibkr-dx"
+name = "ib-dx"
 version = "0.1.0"
 dependencies = [
  "aes",

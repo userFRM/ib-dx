@@ -8,10 +8,10 @@ what they answered there — the parameter the session cannot carry, by the
 name that client gives it, or nothing.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -21,7 +21,7 @@ class Errors(ibkr_dx.EWrapper):
 
 
 def test_an_order_parameter_the_level_cannot_carry_is_named():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     # Before a session the level reads as nought, as it does there, and every
     # gate asks.
     for stated, named in [
@@ -33,18 +33,18 @@ def test_an_order_parameter_the_level_cannot_carry_is_named():
         ("hedgeMaxSize", "hedgeMaxSize"),
         ("conditionsIncludeOvernight", "conditionsIncludeOvernight"),
     ]:
-        order = ibkr_dx.Order()
+        order = ib_dx.Order()
         setattr(order, stated, 1 if stated in ("whatIfType", "hedgeMaxSize") else True)
         assert c.validateOrderParameters(order) == named, stated
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.routeMarketableToBbo = False
     assert c.validateOrderParameters(order) == "routeMarketableToBbo"
-    assert c.validateOrderParameters(ibkr_dx.Order()) is None
+    assert c.validateOrderParameters(ib_dx.Order()) is None
 
     # At the level a session answers — 217 — the two additional-parameter
     # blocks are carried, and the gates above it still ask.
     c._test_connect("T")
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.deactivate = True
     order.whatIfType = 1
     assert c.validateOrderParameters(order) is None
@@ -57,9 +57,9 @@ def test_an_order_parameter_the_level_cannot_carry_is_named():
 
 
 def test_an_attached_order_field_below_its_level_is_named():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
-    assert c.validateAttachedOrdersParameters(ibkr_dx.Order()) is None
-    order = ibkr_dx.Order()
+    c = ib_dx.EClient(ib_dx.EWrapper())
+    assert c.validateAttachedOrdersParameters(ib_dx.Order()) is None
+    order = ib_dx.Order()
     order.slOrderId = 7
     assert c.validateAttachedOrdersParameters(order) == "slOrderId"
     # The keyword the reference client's own signature names reaches the
@@ -76,7 +76,7 @@ def test_an_attached_order_field_below_its_level_is_named():
 
 def test_a_host_the_wire_cannot_carry_is_said_under_579():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     # The bounds are pinned: the last character the wire can carry is
     # refused nowhere along the host's length, and the first one it cannot

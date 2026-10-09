@@ -248,7 +248,7 @@ pub fn adjustments(&self, con_id: &str) -> Option<(AdjustedContract, Vec<Adjustm
 
 #### `unread_wire`
 
-What the venue sent this session that nothing here reads, by connection: each kind of message named once, the first time it arrives. With `IBKR_DX_CAPTURE_WIRE` set, every frame is kept here as well, whole and as sent — a reading checked only against frames this client made up says nothing about the ones that arrive.
+What the venue sent this session that nothing here reads, by connection: each kind of message named once, the first time it arrives. With `IB_DX_CAPTURE_WIRE` set, every frame is kept here as well, whole and as sent — a reading checked only against frames this client made up says nothing about the ones that arrive.
 
 ```rust
 pub fn unread_wire(&self) -> Vec<(&'static str, String)>

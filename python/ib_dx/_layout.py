@@ -9,11 +9,11 @@ else was exported.
 
 Each name below is a module holding what that client's module of the same name
 holds, of what this one has. Porting is then the one rename a person would
-guess at — `ibapi` becomes `ibkr_dx` — rather than a rewrite of every import in
+guess at — `ibapi` becomes `ib_dx` — rather than a rewrite of every import in
 the file and a set of hand-written stand-ins beside it.
 
 Nothing here is a second implementation: each is a view of what
-:mod:`ibkr_dx` already publishes.
+:mod:`ib_dx` already publishes.
 """
 
 import sys
@@ -21,7 +21,7 @@ import types
 
 
 def _module(name: str, contents: dict, doc: str) -> types.ModuleType:
-    """One module of the layout, registered so `from ibkr_dx.x import y` resolves."""
+    """One module of the layout, registered so `from ib_dx.x import y` resolves."""
     full = f"{__package__}.{name}"
     made = types.ModuleType(full, doc)
     for held, value in contents.items():
@@ -58,9 +58,9 @@ def _creator(surface: dict):
 def install(surface: dict) -> dict:
     """Lay the reference client's module names over `surface`.
 
-    `surface` is what :mod:`ibkr_dx` publishes. Returns the modules, so the package
-    can bind them as attributes of itself — `from ibkr_dx import wrapper` reads the
-    attribute, `from ibkr_dx.wrapper import EWrapper` reads the registration, and a
+    `surface` is what :mod:`ib_dx` publishes. Returns the modules, so the package
+    can bind them as attributes of itself — `from ib_dx import wrapper` reads the
+    attribute, `from ib_dx.wrapper import EWrapper` reads the registration, and a
     program does both.
     """
     def held(*names):

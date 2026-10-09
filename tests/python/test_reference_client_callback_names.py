@@ -7,7 +7,7 @@ on the do-nothing default this base class supplies: those callbacks never run,
 and nothing says so. Silence is the whole of the fault.
 """
 import threading
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 def _watchdog(seconds=5.0):
@@ -121,9 +121,9 @@ def test_the_base_wrapper_still_refuses_a_name_that_is_no_callback():
 
 
 def test_a_payload_still_refuses_a_name_that_is_no_field():
-    import ibkr_dx
+    import ib_dx
     try:
-        ibkr_dx.Execution().thisIsNotAField
+        ib_dx.Execution().thisIsNotAField
     except AttributeError:
         return
     raise AssertionError("a name that names no field was answered")
@@ -131,9 +131,9 @@ def test_a_payload_still_refuses_a_name_that_is_no_field():
 
 def test_a_field_the_reference_client_spells_differently_still_resolves():
     """Three fields carry the same value under a different word there."""
-    import ibkr_dx
+    import ib_dx
 
-    d = ibkr_dx.ContractDetails()
+    d = ib_dx.ContractDetails()
     for f in ("putable", "notes", "fundSubsequentMinimumPurchase"):
         assert hasattr(d, f), f"contract details do not answer to {f}"
     # And the spelling this crate uses keeps working.

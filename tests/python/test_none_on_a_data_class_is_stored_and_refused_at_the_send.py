@@ -7,7 +7,7 @@ callback under that request's own sending-error code — for `placeOrder`, 512,
 "Order Sending Error - Cannot send None to TWS", under the order's id.
 """
 
-from ibkr_dx import Contract, EClient, EWrapper, Order
+from ib_dx import Contract, EClient, EWrapper, Order
 
 
 class _Recorder(EWrapper):

@@ -7,9 +7,9 @@
 
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{EClient, EClientConfig};
-use ibkr_dx::api::types::Contract;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{EClient, EClientConfig};
+use ib_dx::api::types::Contract;
+use ib_dx::api::wrapper::Wrapper;
 
 /// What the venue said, and about which request.
 #[derive(Default)]
@@ -36,11 +36,11 @@ impl Wrapper for Heard {
         req_id: i64,
         _field: i32,
         _price: f64,
-        _attrib: &ibkr_dx::api::types::TickAttrib,
+        _attrib: &ib_dx::api::types::TickAttrib,
     ) {
         self.ticking.insert(req_id);
     }
-    fn tick_size(&mut self, req_id: i64, _field: i32, _size: ibkr_dx::api::Decimal) {
+    fn tick_size(&mut self, req_id: i64, _field: i32, _size: ib_dx::api::Decimal) {
         self.ticking.insert(req_id);
     }
 }
@@ -67,7 +67,7 @@ fn chain(expiry: &str) -> Vec<Contract> {
 }
 
 fn main() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let username = std::env::var("IB_USERNAME").unwrap_or_default();
     let password = std::env::var("IB_PASSWORD").unwrap_or_default();
     if username.trim().is_empty() || password.trim().is_empty() {
@@ -93,7 +93,7 @@ fn main() {
 
     let mut heard = Heard::default();
     let mut asked = 0i64;
-    let expiry = std::env::var("IBKR_DX_EXPIRY").unwrap_or_else(|_| "20260918".to_string());
+    let expiry = std::env::var("IB_DX_EXPIRY").unwrap_or_else(|_| "20260918".to_string());
     for (i, contract) in chain(&expiry).into_iter().enumerate() {
         let req_id = 1000 + i as i64;
         // A refusal, this client's or the venue's, is heard on the error

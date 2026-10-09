@@ -12,7 +12,7 @@ It sends a snapshot each kind of tick once, the first it holds, and the bid's,
 the ask's and the last's sizes only beside their prices.
 """
 
-from ibkr_dx import Contract, EClient, EWrapper
+from ib_dx import Contract, EClient, EWrapper
 
 
 class Heard(EWrapper):

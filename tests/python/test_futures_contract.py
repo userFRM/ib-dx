@@ -9,7 +9,7 @@ Run: pytest tests/python/test_futures_contract.py -v -s
 import datetime
 import os, threading, time
 import pytest
-from ibkr_dx import EWrapper, EClient, Contract, Order
+from ib_dx import EWrapper, EClient, Contract, Order
 
 from conftest import declined
 

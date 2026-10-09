@@ -9,10 +9,10 @@ off is still the default, which is what the reference client does with one.
 import ib_async
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -23,7 +23,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def _client():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     return w, c
 

@@ -11,7 +11,7 @@ Run: pytest tests/python/test_an_order_state_leaves_the_outside_hours_figures_un
 
 from decimal import Decimal
 
-from ibkr_dx import (
+from ib_dx import (
     UNSET_DECIMAL,
     UNSET_DOUBLE,
     Contract,

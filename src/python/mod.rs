@@ -1,8 +1,8 @@
-//! PyO3 bindings for ibkr_dx. Feature-gated behind `python`.
+//! PyO3 bindings for ib_dx. Feature-gated behind `python`.
 //!
 //! Provides an ibapi-compatible API (callback-based):
 //! ```python
-//! from ibkr_dx import EClient, EWrapper, Contract, Order
+//! from ib_dx import EClient, EWrapper, Contract, Order
 //! class App(EWrapper):
 //!     def next_valid_id(self, order_id):
 //!         ..
@@ -21,7 +21,7 @@ pub mod compat;
 
 /// What a session runs under, from the names the Python client states them by.
 ///
-/// The same names `ibkr_dx.configure` uses, so a caller states a setting the same
+/// The same names `ib_dx.configure` uses, so a caller states a setting the same
 /// way whether it is for one session or for the process.
 pub(crate) fn settings_from(
     stated: std::collections::HashMap<String, String>,
@@ -56,8 +56,8 @@ pub(crate) fn settings_from(
             // — which for this client is before it is imported.
             "log_dir" | "log_queue" => {
                 return Err(format!(
-                    "{name} belongs to the process, not one session: importing ibkr_dx \
-                     installs the logger, so set IBKR_DX_{} in the environment before that",
+                    "{name} belongs to the process, not one session: importing ib_dx \
+                     installs the logger, so set IB_DX_{} in the environment before that",
                     name.to_uppercase(),
                 ));
             }
@@ -136,7 +136,7 @@ pub(crate) fn set_log_level(level: Option<&str>) -> Result<(), String> {
 
 fn not_this_clients(level: &str) -> String {
     format!(
-        "log_level: {level} was not applied because ibkr_dx did not install the \
+        "log_level: {level} was not applied because ib_dx did not install the \
          logger in this process; whoever did holds the level"
     )
 }
@@ -150,9 +150,9 @@ fn _set_log_level(level: Option<&str>) -> PyResult<()> {
 
 /// Python module definition.
 #[pymodule]
-fn ibkr_dx(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn ib_dx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Forward Rust `log::*` records wherever the environment asks for them.
-    // `IBKR_DX_LOG_DIR` is published to callers as a setting, so a wheel that
+    // `IB_DX_LOG_DIR` is published to callers as a setting, so a wheel that
     // answered it with stderr was answering something else. Both paths are
     // no-ops when a logger is already installed, which is what a module
     // initialiser wants: it runs once per interpreter, not once per process.
@@ -163,13 +163,13 @@ fn ibkr_dx(m: &Bound<'_, PyModule>) -> PyResult<()> {
         }
     } else if crate::logging::try_init_from_env("warn")
         && let Some(level) = &settings.level
-        // `IBKR_DX_LOG_LEVEL` is a setting this client publishes, and it wins
+        // `IB_DX_LOG_LEVEL` is a setting this client publishes, and it wins
         // over `RUST_LOG` here as it does beside a log directory. Read only
         // there, it did nothing on the ordinary path to stderr; and one that
         // is not a level is said rather than passed over.
         && crate::logging::set_level(level).is_err()
     {
-        log::warn!("IBKR_DX_LOG_LEVEL {level} is not a level this logger reads, so the level stays");
+        log::warn!("IB_DX_LOG_LEVEL {level} is not a level this logger reads, so the level stays");
     }
     if let Some(level) = crate::logging::current_level() {
         let _ = LEVEL_AT_IMPORT.set(level);

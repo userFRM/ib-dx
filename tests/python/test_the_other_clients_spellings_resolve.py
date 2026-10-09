@@ -13,7 +13,7 @@ import importlib.util
 import pathlib
 
 import pytest
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -122,7 +122,7 @@ def test_the_attribute_objects_answer_to_both_spellings():
     loop logged it and carried on, and the tick reached nobody — no exception,
     no missing method, no tick.
     """
-    from ibkr_dx import TickAttrib, TickAttribBidAsk, TickAttribLast
+    from ib_dx import TickAttrib, TickAttribBidAsk, TickAttribLast
 
     attrib = TickAttrib()
     assert attrib.canAutoExecute == attrib.can_auto_execute

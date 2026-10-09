@@ -26,7 +26,7 @@ import threading
 import time
 import zoneinfo
 
-from ibkr_dx import Contract, EClient, EWrapper, Order
+from ib_dx import Contract, EClient, EWrapper, Order
 
 #: Notices about a connection coming and going, which answer nothing.
 CONNECTION_NOTICES = {2100, 2103, 2104, 2105, 2106, 2107, 2119, 2158}

@@ -10,7 +10,7 @@ The caller was left holding a number that reads as subscribed with nothing
 arriving on it.
 """
 
-from ibkr_dx import Contract, EClient, EWrapper
+from ib_dx import Contract, EClient, EWrapper
 
 
 class StreamsAfterTheSnapshot(EWrapper):

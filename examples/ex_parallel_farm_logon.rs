@@ -20,7 +20,7 @@ use std::fs;
 use std::thread;
 use std::time::Instant;
 
-use ibkr_dx::gateway::{connect_farm, Gateway, GatewayConfig};
+use ib_dx::gateway::{connect_farm, Gateway, GatewayConfig};
 
 fn load_dotenv() {
     if let Ok(text) = fs::read_to_string(".env") {
@@ -39,7 +39,7 @@ fn load_dotenv() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     load_dotenv();
 
     let live = env::args().any(|a| a == "--live");
@@ -58,8 +58,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         password: zeroize::Zeroizing::new(password.clone()),
         host: host.clone(),
         paper: !live,
-        ib_key_timeout_secs: ibkr_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
-        ib_key_token_sub_type: ibkr_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
+        ib_key_timeout_secs: ib_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
+        ib_key_token_sub_type: ib_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
         code_provider: None,
         cancel: None,
         resume: None,
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("== Initial Gateway::connect ({}, host={})", if live { "LIVE" } else { "PAPER" }, host);
     let t0 = Instant::now();
-    let ibkr_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: _ccp_conn, historical: hmds, .. } = Gateway::connect(&cfg)?;
+    let ib_dx::gateway::Session { gateway: gw, market_data: farm_conn, trading: _ccp_conn, historical: hmds, .. } = Gateway::connect(&cfg)?;
     let initial_ms = t0.elapsed().as_millis();
     println!("   initial connect: {} ms (account={})", initial_ms, gw.account_id);
 
@@ -86,13 +86,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t_a1 = Instant::now();
     let trading_a = connect_farm(
         &Default::default(), &host, "usfarm", &cfg.username, &cfg.password, cfg.paper,
-        &server_session_id, &session_token, &hw_info, &encoded, ibkr_dx::gateway::Farm::MarketData, None, 0, None
+        &server_session_id, &session_token, &hw_info, &encoded, ib_dx::gateway::Farm::MarketData, None, 0, None
     );
     let trading_a_ms = t_a1.elapsed().as_millis();
     let t_a2 = Instant::now();
     let mktdata_a = connect_farm(
         &Default::default(), &host, "ushmds", &cfg.username, &cfg.password, cfg.paper,
-        &server_session_id, &session_token, &hw_info, &encoded, ibkr_dx::gateway::Farm::Historical, None, 0, None
+        &server_session_id, &session_token, &hw_info, &encoded, ib_dx::gateway::Farm::Historical, None, 0, None
     );
     let mktdata_a_ms = t_a2.elapsed().as_millis();
     let serial_total_ms = t_a.elapsed().as_millis();
@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::spawn(move || {
             let t = Instant::now();
             let r = connect_farm(&Default::default(), &host, "usfarm", &user, &pass, paper_b,
-                &ssid, &token, &hw, &enc, ibkr_dx::gateway::Farm::MarketData, None, 0, None);
+                &ssid, &token, &hw, &enc, ib_dx::gateway::Farm::MarketData, None, 0, None);
             (t.elapsed().as_millis(), r)
         })
     };
@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::spawn(move || {
             let t = Instant::now();
             let r = connect_farm(&Default::default(), &host, "ushmds", &user, &pass, paper_b,
-                &ssid, &token, &hw, &enc, ibkr_dx::gateway::Farm::Historical, None, 0, None);
+                &ssid, &token, &hw, &enc, ib_dx::gateway::Farm::Historical, None, 0, None);
             (t.elapsed().as_millis(), r)
         })
     };

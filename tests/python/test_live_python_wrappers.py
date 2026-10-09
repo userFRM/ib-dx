@@ -11,7 +11,7 @@ import os
 import time
 import threading
 import pytest
-from ibkr_dx import EWrapper, EClient, Contract, Order, TagValue
+from ib_dx import EWrapper, EClient, Contract, Order, TagValue
 from conftest import declined, inside_the_session, liquid_hours, wait_for
 
 
@@ -845,7 +845,7 @@ class TestCorporateEventsCalendar:
         subscription the venue answers every query with an empty one."""
         import json
 
-        from ibkr_dx import WshEventData
+        from ib_dx import WshEventData
 
         wrapper, client = ib_connection
         asked = WshEventData()
@@ -862,7 +862,7 @@ class TestCorporateEventsCalendar:
         answer still arrives past the cancel."""
         import json
 
-        from ibkr_dx import WshEventData
+        from ib_dx import WshEventData
 
         wrapper, client = ib_connection
         if not [e for e in wrapper._get_events("wsh_meta_data") if e[1] == 7201]:

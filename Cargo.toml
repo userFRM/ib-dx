@@ -1,5 +1,5 @@
 [package]
-name = "ibkr-dx"
+name = "ib-dx"
 version = "0.1.0"
 edition = "2024"
 # The oldest compiler supported, and built on by a job of its own in CI so it
@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.89"
 description = "Talk directly to IBKR: an Interactive Brokers client with the TWS API's EClient interface, and no gateway in between."
 license = "AGPL-3.0-only"
-repository = "https://github.com/userFRM/ibkr-dx"
+repository = "https://github.com/userFRM/ib-dx"
 keywords = ["interactive-brokers", "ibkr", "tws-api", "trading", "market-data"]
 categories = ["api-bindings", "finance", "network-programming"]
 # Every binary is named below, because the tools under `src/bin` are for
@@ -27,12 +27,12 @@ exclude = [
     "scripts/",
     "src/bin/",
     "tests/",
-    "python/ibkr_dx/*.so",
+    "python/ib_dx/*.so",
     "rustfmt.toml",
 ]
 
 [lib]
-name = "ibkr_dx"
+name = "ib_dx"
 # The library alone. The Python extension is a shared library that maturin asks
 # for when it builds a wheel, and a Rust caller has no use for one.
 crate-type = ["lib"]
@@ -54,7 +54,7 @@ test-helpers = []
 # Split out so a test binary can link libpython. `extension-module` tells PyO3
 # not to link it, which is right for the wheel and wrong for `cargo test`: the
 # harness then fails at link time on every Python symbol, and no Rust-side test
-# under this feature has ever run (ibkr_dx#381). The wheel build asks for both.
+# under this feature has ever run (ib_dx#381). The wheel build asks for both.
 extension-module = ["pyo3/extension-module"]
 
 [[bin]]

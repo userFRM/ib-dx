@@ -11,7 +11,7 @@ Run: pytest tests/python/test_a_field_set_under_the_reference_spelling_lands.py 
 """
 
 import pytest
-from ibkr_dx import (
+from ib_dx import (
     BarData,
     ContractDescription,
     ContractDetails,

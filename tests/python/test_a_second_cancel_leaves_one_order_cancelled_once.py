@@ -19,7 +19,7 @@ import time
 
 import pytest
 from conftest import wait_for
-from ibkr_dx import Contract, EClient, EWrapper, Order
+from ib_dx import Contract, EClient, EWrapper, Order
 
 pytestmark = pytest.mark.skipif(
     not (os.environ.get("IB_USERNAME") and os.environ.get("IB_PASSWORD")),

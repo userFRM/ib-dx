@@ -6,11 +6,11 @@ nowhere to go were decoded and dropped — the rate greek among them, which is t
 one first-order greek the documented surface cannot answer at all.
 """
 
-import ibkr_dx
+import ib_dx
 
 
 def _client():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("T")
     return c
 

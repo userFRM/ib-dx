@@ -2,12 +2,12 @@
 
 import pytest
 
-import ibkr_dx
-from ibkr_dx import Contract
+import ib_dx
+from ib_dx import Contract
 from conftest import refused
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -18,7 +18,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def client_and_contract(expiry="20260230", con_id=756733):
     wrapper = Errors()
-    client = ibkr_dx.EClient(wrapper)
+    client = ib_dx.EClient(wrapper)
     client._test_connect("DU123")
     client._test_map_con_id(756733, 0)
     contract = Contract()
@@ -97,7 +97,7 @@ def test_depth_requires_an_exchange_before_checking_expiry():
 
 def test_order_fields_are_checked_before_contract_expiry():
     wrapper, client, contract = client_and_contract()
-    client.placeOrder(71, contract, ibkr_dx.Order())
+    client.placeOrder(71, contract, ib_dx.Order())
     client._test_dispatch_once()
     assert len(wrapper.seen) == 1
     assert wrapper.seen[0][0:2] == (71, 321)

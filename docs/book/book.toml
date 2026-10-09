@@ -1,18 +1,18 @@
 [book]
-title = "ibkr-dx"
+title = "ib-dx"
 description = "Talk directly to IBKR: the TWS API with no gateway in between. Rust and Python."
-authors = ["ibkr-dx contributors"]
+authors = ["ib-dx contributors"]
 language = "en"
 src = "src"
 
 [output.html]
 # The project-pages path the docs workflow deploys to. Without it the 404 page
 # served for any missing URL links home to `/`, off the book.
-site-url = "/ibkr-dx/"
+site-url = "/ib-dx/"
 default-theme = "light"
 preferred-dark-theme = "coal"
-git-repository-url = "https://github.com/userFRM/ibkr-dx"
-edit-url-template = "https://github.com/userFRM/ibkr-dx/edit/main/docs/book/{path}"
+git-repository-url = "https://github.com/userFRM/ib-dx"
+edit-url-template = "https://github.com/userFRM/ib-dx/edit/main/docs/book/{path}"
 no-section-label = true
 additional-css = ["theme/custom.css"]
 

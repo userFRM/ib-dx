@@ -7,7 +7,7 @@ caller named and the others went out priced as a gateway never sends them, and
 each was reported as placed.
 """
 
-from ibkr_dx import ComboLeg, Contract, EClient, EWrapper, Order, OrderComboLeg
+from ib_dx import ComboLeg, Contract, EClient, EWrapper, Order, OrderComboLeg
 
 
 class _Recorder(EWrapper):

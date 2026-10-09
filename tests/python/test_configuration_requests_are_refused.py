@@ -2,7 +2,7 @@
 
 import pytest
 
-from ibkr_dx import EClient, EWrapper
+from ib_dx import EClient, EWrapper
 
 
 MESSAGE = ("Configuration access via API is not available. Please refer to the "

@@ -8,21 +8,21 @@ import threading
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
-class Wrapper(ibkr_dx.EWrapper):
+class Wrapper(ib_dx.EWrapper):
     pass
 
 
 def connected():
-    c = ibkr_dx.EClient(Wrapper())
+    c = ib_dx.EClient(Wrapper())
     c._test_connect("DU0000000")
     return c
 
 
 def spy():
-    con = ibkr_dx.Contract()
+    con = ib_dx.Contract()
     con.symbol = "SPY"
     con.secType = "STK"
     con.exchange = "SMART"
@@ -92,7 +92,7 @@ def test_one_question_does_not_take_another_questions_answer():
 
 
 def test_a_question_asked_of_a_client_that_is_not_connected_says_so():
-    c = ibkr_dx.EClient(Wrapper())
+    c = ib_dx.EClient(Wrapper())
     with pytest.raises(RuntimeError):
         c.contract_details(spy())
 
@@ -182,14 +182,14 @@ def test_a_lookup_that_found_nothing_says_nothing_to_the_wrapper():
     itself and has let go, so the next pass hands it to nobody."""
     heard = []
 
-    class W(ibkr_dx.EWrapper):
+    class W(ib_dx.EWrapper):
         def contractDetailsEnd(self, reqId):
             heard.append(("contractDetailsEnd", reqId))
 
         def error(self, reqId, *rest):
             heard.append(("error", reqId))
 
-    c = ibkr_dx.EClient(W())
+    c = ib_dx.EClient(W())
     c._test_connect("DU0000000")
     asked = c._test_peek_ask_id()
     c._test_push_historical_error(asked, 200, "No security definition has been found for the request")
@@ -204,11 +204,11 @@ def test_a_lookup_that_found_nothing_says_nothing_to_the_wrapper():
 def test_a_dispatch_loop_still_delivers_a_callers_own_request():
     seen = []
 
-    class W(ibkr_dx.EWrapper):
+    class W(ib_dx.EWrapper):
         def contractDetails(self, reqId, details):
             seen.append((reqId, details.contract.conId))
 
-    c = ibkr_dx.EClient(W())
+    c = ib_dx.EClient(W())
     c._test_connect("DU0000000")
     c._test_push_contract_details(42, 111111, "AAPL")
     c._test_dispatch_once()

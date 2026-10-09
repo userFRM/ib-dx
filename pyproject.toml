@@ -3,7 +3,7 @@ requires = ["maturin>=1.9.2,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "ibkr-dx"
+name = "ib-dx"
 version = "0.1.0"
 description = "Talk directly to IBKR: an Interactive Brokers client with the TWS API's EClient/EWrapper interface, and no gateway in between."
 readme = "README.md"
@@ -12,8 +12,8 @@ keywords = ["interactive-brokers", "ibkr", "tws-api", "ibapi", "trading"]
 requires-python = ">=3.11"
 
 [project.urls]
-Repository = "https://github.com/userFRM/ibkr-dx"
-Documentation = "https://userfrm.github.io/ibkr-dx/"
+Repository = "https://github.com/userFRM/ib-dx"
+Documentation = "https://userfrm.github.io/ib-dx/"
 
 [tool.maturin]
 # Named rather than detected: the crate declares no shared library, which
@@ -22,4 +22,4 @@ Documentation = "https://userfrm.github.io/ibkr-dx/"
 bindings = "pyo3"
 features = ["python", "extension-module"]
 python-source = "python"
-module-name = "ibkr_dx.ibkr_dx"
+module-name = "ib_dx.ib_dx"

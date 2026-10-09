@@ -3959,7 +3959,7 @@ fn the_published_time_follows_the_datetime_format_setting() {
         ("instrument", 44, "Mars/Olympus_Mons", "20260729 13:00:00 Europe/Brussels"),
         ("utc", 42, "America/New_York", "20260729-11:00:00"),
     ] {
-        unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", stated) };
+        unsafe { std::env::set_var("IB_DX_DATETIME_FORMAT", stated) };
         let (client, _rx, shared) = test_client();
         shared.set_settings(Arc::new(
             crate::settings::GatewaySettings {
@@ -3986,7 +3986,7 @@ fn the_published_time_follows_the_datetime_format_setting() {
         client.req_executions(1, &crate::types::model::ExecutionFilter::default());
         client.process_msgs(&mut w);
         assert_eq!(w.seen, vec![want], "{stated} on con_id {con_id} (zone {zone:?})");
-        unsafe { std::env::remove_var("IBKR_DX_DATETIME_FORMAT") };
+        unsafe { std::env::remove_var("IB_DX_DATETIME_FORMAT") };
     }
 }
 
@@ -14410,7 +14410,7 @@ pub(crate) struct Scratch(pub(crate) std::path::PathBuf);
 impl Scratch {
     pub(crate) fn new(name: &str) -> Self {
         let dir = std::env::temp_dir()
-            .join(format!("ibkr-dx-{name}-{}-{}", std::process::id(), rand::random::<u64>()));
+            .join(format!("ib-dx-{name}-{}-{}", std::process::id(), rand::random::<u64>()));
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }
@@ -14562,7 +14562,7 @@ fn order_ids_fall_back_to_memory_where_they_cannot_be_saved() {
 /// engine and in-memory counter.
 #[test]
 fn order_id_reservations_are_exclusive_between_processes() {
-    const CHILD: &str = "IBKR_DX_ORDER_ID_TEST_CHILD";
+    const CHILD: &str = "IB_DX_ORDER_ID_TEST_CHILD";
     let bound = std::time::Duration::from_secs(30);
     if let Some(path) = std::env::var_os(CHILD) {
         let path = std::path::PathBuf::from(path);

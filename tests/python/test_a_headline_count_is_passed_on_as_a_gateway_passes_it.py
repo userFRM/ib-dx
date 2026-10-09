@@ -5,11 +5,11 @@ smaller positive number on as stated. A count below one is refused with 321
 "Total results must be > 0" before the venue is asked anything.
 """
 
-import ibkr_dx
+import ib_dx
 from conftest import refused
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -20,7 +20,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def _client():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     c._test_set_news_providers(["BRFG"])
     return w, c

@@ -12,7 +12,7 @@ import pytest
 import threading
 from decimal import Decimal
 from conftest import give_back, inside_the_session, liquid_hours, wait_for
-from ibkr_dx import EWrapper, EClient, Contract, Order
+from ib_dx import EWrapper, EClient, Contract, Order
 
 SPY_CON_ID = 756733
 

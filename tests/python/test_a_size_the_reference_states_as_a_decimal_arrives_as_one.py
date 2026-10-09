@@ -17,11 +17,11 @@ Run: pytest tests/python/test_a_size_the_reference_states_as_a_decimal_arrives_a
 import time
 from decimal import Decimal
 
-import ibkr_dx
-from ibkr_dx import UNSET_DECIMAL
+import ib_dx
+from ib_dx import UNSET_DECIMAL
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.sizes = []
@@ -85,7 +85,7 @@ class Heard(ibkr_dx.EWrapper):
 
 def test_every_delivered_size_is_the_decimal_the_reference_states():
     heard = Heard()
-    client = ibkr_dx.EClient(heard)
+    client = ib_dx.EClient(heard)
     client._test_connect("DU1", True, accounts=["DU1"])
     client._test_set_instrument_count(8)
     client._test_map_instrument(1, 7)
@@ -175,19 +175,19 @@ def test_every_delivered_size_is_the_decimal_the_reference_states():
 def test_a_fresh_record_leaves_its_size_unset():
     """The reference builds each of these with UNSET_DECIMAL in the field."""
     fresh = [
-        ibkr_dx.Execution().shares,
-        ibkr_dx.Execution().cumQty,
-        ibkr_dx.BarData().volume,
-        ibkr_dx.BarData().wap,
-        ibkr_dx.HistoricalTick().size,
-        ibkr_dx.HistoricalTickLast().size,
-        ibkr_dx.HistoricalTickBidAsk().sizeBid,
-        ibkr_dx.HistoricalTickBidAsk().sizeAsk,
-        ibkr_dx.Order().totalQuantity,
-        ibkr_dx.Order().filledQuantity,
-        ibkr_dx.ContractDetails().minSize,
-        ibkr_dx.ContractDetails().sizeIncrement,
-        ibkr_dx.ContractDetails().suggestedSizeIncrement,
+        ib_dx.Execution().shares,
+        ib_dx.Execution().cumQty,
+        ib_dx.BarData().volume,
+        ib_dx.BarData().wap,
+        ib_dx.HistoricalTick().size,
+        ib_dx.HistoricalTickLast().size,
+        ib_dx.HistoricalTickBidAsk().sizeBid,
+        ib_dx.HistoricalTickBidAsk().sizeAsk,
+        ib_dx.Order().totalQuantity,
+        ib_dx.Order().filledQuantity,
+        ib_dx.ContractDetails().minSize,
+        ib_dx.ContractDetails().sizeIncrement,
+        ib_dx.ContractDetails().suggestedSizeIncrement,
     ]
     for value in fresh:
         assert isinstance(value, Decimal), f"got {type(value).__name__} {value!r}"

@@ -10,9 +10,9 @@ pub(super) fn phase_heartbeat_keepalive(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
-    control_tx.send(ControlCommand::Subscribe { req_id: 90013, contract: ibkr_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
+    control_tx.send(ControlCommand::Subscribe { req_id: 90013, contract: ib_dx::types::ContractRef { con_id: 756733, symbol: "SPY".into(), exchange: String::new(), sec_type: "STK".into(), currency: String::new(), last_trade_date: String::new(), strike: 0.0, right: String::new(), multiplier: String::new() }, filters: Default::default(), mode_9887: 0, delayed_mode: None, frozen: false, delayed_frozen: false, regulatory_snapshot: false, snapshot: false,
         generic_ticks: Vec::new(), news: None, spread_scan: None, calculation: None,
     }).unwrap();
     let join = run_hot_loop(hot_loop);
@@ -57,7 +57,7 @@ pub(super) fn phase_farm_heartbeat_keepalive(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared, Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
+        shared, Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, conns.ccp, conns.hmds, None,
     );
     let join = run_hot_loop(hot_loop);
 
@@ -113,7 +113,7 @@ pub(super) fn phase_heartbeat_timeout_detection(conns: Conns) -> Conns {
     // Nothing has been received since the connection was made, so detection
     // lands on the dead threshold itself, and the report follows one reconnect
     // attempt later.
-    use ibkr_dx::engine::hot_loop::LIVENESS_DEAD_SECS;
+    use ib_dx::engine::hot_loop::LIVENESS_DEAD_SECS;
     let detect_at = Duration::from_secs(LIVENESS_DEAD_SECS);
     let report_by = detect_at + Duration::from_secs(25);
     let budget = report_by + Duration::from_secs(15);
@@ -136,7 +136,7 @@ pub(super) fn phase_heartbeat_timeout_detection(conns: Conns) -> Conns {
     let shared = Arc::new(SharedState::new());
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel(4096);
     let (hot_loop, control_tx) = HotLoop::with_connections(
-        shared.clone(), Some(ibkr_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, dead_ccp, conns.hmds, None,
+        shared.clone(), Some(ib_dx::engine::hot_loop::EventSink::new(event_tx, Default::default())), account_id.clone(), conns.farm, dead_ccp, conns.hmds, None,
     );
     let join = run_hot_loop(hot_loop);
 

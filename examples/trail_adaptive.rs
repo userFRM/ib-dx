@@ -8,8 +8,8 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default, Clone, Debug)]
 struct State {
@@ -26,8 +26,8 @@ impl Wrapper for ProbeWrapper {
         &mut self,
         order_id: i64,
         status: &str,
-        _filled: ibkr_dx::api::Decimal,
-        _remaining: ibkr_dx::api::Decimal,
+        _filled: ib_dx::api::Decimal,
+        _remaining: ib_dx::api::Decimal,
         _avg_fill_price: f64,
         _perm_id: i64,
         _parent_id: i64,
@@ -112,7 +112,7 @@ fn run_one(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
 
     let username = env::var("IB_USERNAME")?;
     let password = env::var("IB_PASSWORD")?;
@@ -171,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         lmt_price: 1.0,
         tif: "DAY".into(),
         algo_strategy: "Adaptive".into(),
-        algo_params: vec![ibkr_dx::api::types::TagValue {
+        algo_params: vec![ib_dx::api::types::TagValue {
             tag: "adaptivePriority".into(),
             value: "Normal".into(),
         }],

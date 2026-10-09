@@ -7,13 +7,13 @@ travels the other way: the reference client forwards it, and the refusal the
 caller hears is the intake's own sentence, not one invented here.
 """
 
-import ibkr_dx
+import ib_dx
 from conftest import refused
 
 FA_PROFILE_UNSUPPORTED = "FA Profile is not supported anymore, use FA Group instead - "
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -24,7 +24,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def _client():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     return w, c
 

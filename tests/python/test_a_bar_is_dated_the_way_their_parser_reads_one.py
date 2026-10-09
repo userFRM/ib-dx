@@ -23,18 +23,18 @@ def test_a_bar_is_dated_the_way_their_parser_reads_one():
     """
     from ib_async.util import parseIBDatetime
 
-    import ibkr_dx
+    import ib_dx
 
     seen = []
 
-    class W(ibkr_dx.EWrapper):
+    class W(ib_dx.EWrapper):
         def historical_data(self, req_id, bar):
             seen.append(bar.date)
 
         def error(self, *a):
             pass
 
-    c = ibkr_dx.EClient(W())
+    c = ib_dx.EClient(W())
     c._test_connect("T")
     c._test_push_historical_data(
         1, [("20260812-13:30:00", 1.0, 2.0, 0.5, 1.5, 100)], True, "US/Eastern"
@@ -56,18 +56,18 @@ def test_a_bar_is_dated_the_way_their_parser_reads_one():
     ("1M", "20260901", "20261001", "20260901"),
 ])
 def test_daily_and_longer_bars_keep_their_dates(format_date, size, stated, end, day):
-    import ibkr_dx
+    import ib_dx
     from ib_async.util import parseIBDatetime
 
     seen = []
 
-    class W(ibkr_dx.EWrapper):
+    class W(ib_dx.EWrapper):
         def historical_data(self, req_id, bar):
             seen.append((req_id, bar.date))
 
-    c = ibkr_dx.EClient(W())
+    c = ib_dx.EClient(W())
     c._test_connect("T")
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 756733
     contract.secType, contract.exchange = "STK", "SMART"
     c.req_historical_data(1, contract, "", "1 Y", size, "TRADES", 1, format_date)

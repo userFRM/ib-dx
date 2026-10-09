@@ -18,9 +18,9 @@ Settings are read when a session opens, so set them before ``connect()``.
 Setting one afterwards affects the next session, not the running one.
 
 The three logging settings are read earlier still. A process has one logger and
-importing ``ibkr_dx`` installs it, so ``IBKR_DX_LOG_LEVEL``, ``IBKR_DX_LOG_DIR`` and
-``IBKR_DX_LOG_QUEUE`` are read at that moment. The level can be moved afterwards:
-:func:`configure` moves the logger ``ibkr_dx`` installed. Where it writes and how
+importing ``ib_dx`` installs it, so ``IB_DX_LOG_LEVEL``, ``IB_DX_LOG_DIR`` and
+``IB_DX_LOG_QUEUE`` are read at that moment. The level can be moved afterwards:
+:func:`configure` moves the logger ``ib_dx`` installed. Where it writes and how
 much it buffers are fixed once it runs, so those two belong in the environment
 before the import, and :func:`configure` refuses them rather than storing a
 value nothing will read.
@@ -38,34 +38,34 @@ import os
 # lazily. If settings ever need to differ between two sessions in one process,
 # this becomes a per-session struct passed through connect().
 _SETTINGS: dict[str, tuple[str, str]] = {
-    "timezone": ("IBKR_DX_TZ", "the time zone announced at logon"),
-    "log_level": ("IBKR_DX_LOG_LEVEL", "verbose logging"),
-    "log_dir": ("IBKR_DX_LOG_DIR", "log directory"),
-    "log_queue": ("IBKR_DX_LOG_QUEUE", "how many records logging buffers before dropping them"),
-    "order_id_file": ("IBKR_DX_ORDER_ID_FILE", "the saved next order id per account and API client; an empty path disables persistence"),
-    "market_data_host": ("IBKR_DX_FARM_HOST", "the host every farm connection is opened on"),
-    "port": ("IBKR_DX_MISC_PORT", "the port a farm connection opens on, where the routing names none"),
-    "locale": ("IBKR_DX_LOCALE", "session locale"),
-    "build": ("IBKR_DX_BUILD", "the build announced at logon"),
-    "version": ("IBKR_DX_VERSION", "the version announced at logon"),
-    "encoded": ("IBKR_DX_ENCODED", "the longer string announced with them"),
-    "hardware_id": ("IBKR_DX_HWID", "the machine identity presented at logon"),
-    "mac_address": ("IBKR_DX_MAC", "the network card named as this machine's, where the machine's own is not the one to name"),
-    "lan_ip": ("IBKR_DX_IP", "the address on the local network named as this machine's, for the same reason"),
+    "timezone": ("IB_DX_TZ", "the time zone announced at logon"),
+    "log_level": ("IB_DX_LOG_LEVEL", "verbose logging"),
+    "log_dir": ("IB_DX_LOG_DIR", "log directory"),
+    "log_queue": ("IB_DX_LOG_QUEUE", "how many records logging buffers before dropping them"),
+    "order_id_file": ("IB_DX_ORDER_ID_FILE", "the saved next order id per account and API client; an empty path disables persistence"),
+    "market_data_host": ("IB_DX_FARM_HOST", "the host every farm connection is opened on"),
+    "port": ("IB_DX_MISC_PORT", "the port a farm connection opens on, where the routing names none"),
+    "locale": ("IB_DX_LOCALE", "session locale"),
+    "build": ("IB_DX_BUILD", "the build announced at logon"),
+    "version": ("IB_DX_VERSION", "the version announced at logon"),
+    "encoded": ("IB_DX_ENCODED", "the longer string announced with them"),
+    "hardware_id": ("IB_DX_HWID", "the machine identity presented at logon"),
+    "mac_address": ("IB_DX_MAC", "the network card named as this machine's, where the machine's own is not the one to name"),
+    "lan_ip": ("IB_DX_IP", "the address on the local network named as this machine's, for the same reason"),
     "execution_reports": (
-        "IBKR_DX_EXECUTION_REPORTS",
+        "IB_DX_EXECUTION_REPORTS",
         "which executions arrive when a session opens: 'today' or 'all'",
     ),
     "datetime_format": (
-        "IBKR_DX_DATETIME_FORMAT",
+        "IB_DX_DATETIME_FORMAT",
         "sendInstrumentTimezone: the shape an execution's time is published in — 'operator', 'instrument' or 'utc'",
     ),
     "island_for_nasdaq": (
-        "IBKR_DX_ISLAND_FOR_NASDAQ",
+        "IB_DX_ISLAND_FOR_NASDAQ",
         "whether a US stock on Nasdaq is handed back under the older spelling",
     ),
     "reconnect_on_socket_err": (
-        "IBKR_DX_RECONNECT_ON_SOCKET_ERR",
+        "IB_DX_RECONNECT_ON_SOCKET_ERR",
         "whether a session recovers on its own when a connection goes away",
     ),
 }
@@ -94,7 +94,7 @@ UNAVAILABLE: dict[str, str] = {
 
 
 #: The two that are fixed once the logger runs. A process has one logger, and
-#: importing ``ibkr_dx`` installs it, so a value set from here arrives after the
+#: importing ``ib_dx`` installs it, so a value set from here arrives after the
 #: only moment it could have been read. Refused rather than stored: stored, it
 #: reads back as a setting that was set and did nothing. The level is not one of
 #: them — it moves the running logger.
@@ -107,13 +107,13 @@ def configure(**settings) -> None:
     Raising rather than ignoring: a misspelled setting that is silently dropped
     leaves a caller believing a session is configured a way it is not.
 
-        ibkr_dx.configure(timezone="America/New_York", execution_reports="today")
+        ib_dx.configure(timezone="America/New_York", execution_reports="today")
 
-    ``log_level`` moves the logger ``ibkr_dx`` installed, and raises where the
+    ``log_level`` moves the logger ``ib_dx`` installed, and raises where the
     program installed its own; ``None`` or ``""`` moves it back to the level it
     was installed at, as either leaves the setting unset. ``log_dir`` and
     ``log_queue`` are refused here:
-    set them in the environment before ``import ibkr_dx``, which is when the
+    set them in the environment before ``import ib_dx``, which is when the
     logger is installed.
     """
     unknown = set(settings) - set(_SETTINGS)
@@ -126,12 +126,12 @@ def configure(**settings) -> None:
     if too_late:
         raise ValueError(
             f"{', '.join(too_late)} belongs to the process, not one session: "
-            "importing ibkr_dx installs the logger, so set "
+            "importing ib_dx installs the logger, so set "
             f"{', '.join(_SETTINGS[name][0] for name in too_late)} in the "
             "environment before that"
         )
     if "log_level" in settings:
-        from .ibkr_dx import _set_log_level
+        from .ib_dx import _set_log_level
 
         # Empty is unset, as the session reads it; unset is the level the
         # logger was installed at, rather than wherever it was last moved.

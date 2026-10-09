@@ -10,7 +10,7 @@ Every column is read from the client it names — not recalled, not asserted:
   TWS API     the canonical list this repository already generates
   ibapi       IBKR's own Python client, imported and enumerated
   ib_async    the widely used asynchronous client, imported and enumerated
-  ibkr-dx     this client, from the coverage matrix the build already checks
+  ib-dx     this client, from the coverage matrix the build already checks
 
 A reference client's mark says a method exists and nothing more: enumerating a
 package cannot say what a method does. This client's marks say what it does,
@@ -53,9 +53,9 @@ README_SHUT = "<!-- capabilities:end -->"
 #: page reproducible on exactly one machine: the check that compares a
 #: generated file against the committed one then failed everywhere else, and
 #: the columns for both reference clients silently vanished from the answer.
-#: `IBKR_DX_REFERENCE_CLIENTS` names such a directory where there is one.
+#: `IB_DX_REFERENCE_CLIENTS` names such a directory where there is one.
 EXTRA_PATHS = [
-    pathlib.Path(p) for p in os.environ.get("IBKR_DX_REFERENCE_CLIENTS", "").split(os.pathsep) if p
+    pathlib.Path(p) for p in os.environ.get("IB_DX_REFERENCE_CLIENTS", "").split(os.pathsep) if p
 ] + [ROOT / "vendor"]
 
 #: What a mark means. Three states, because two would lie: a call that exists
@@ -412,8 +412,8 @@ def write_readme(page, calls, backs, columns, back_columns, beyond):
     backs_by = {n: (s, t, a) for n, s, t, a in counted(backs, back_columns) if n not in NOT_A_CLIENT}
     # One line per client, and this client's two surfaces last, because they
     # are the answer and the rest is what the answer is measured against.
-    ours = [n for n in calls_by if n.startswith("ibkr-dx")]
-    theirs = [n for n in calls_by if not n.startswith("ibkr-dx")]
+    ours = [n for n in calls_by if n.startswith("ib-dx")]
+    theirs = [n for n in calls_by if not n.startswith("ib-dx")]
 
     def row(name):
         served, taken, absent = calls_by.get(name, (0, 0, 0))
@@ -432,7 +432,7 @@ def write_readme(page, calls, backs, columns, back_columns, beyond):
         if b_absent:
             missing.append(f"{b_absent} callbacks absent")
         note = ", ".join(missing) or "nothing missing"
-        mine = name.startswith("ibkr-dx")
+        mine = name.startswith("ib-dx")
         cells = [f"**{name}**" if mine else name,
                  f"**{of_calls}**" if mine else of_calls,
                  f"**{of_backs}**" if mine else of_backs,
@@ -517,9 +517,9 @@ def write_readme(page, calls, backs, columns, back_columns, beyond):
         # Absolute, because the readme is also the package page on the
         # registries, where a path relative to the repository leads nowhere.
         "The same table stands on its own in "
-        "[docs/capabilities.md](https://github.com/userFRM/ibkr-dx/blob/main/docs/capabilities.md), "
+        "[docs/capabilities.md](https://github.com/userFRM/ib-dx/blob/main/docs/capabilities.md), "
         "and what each claim rests on is in "
-        "[docs/evidence.md](https://github.com/userFRM/ibkr-dx/blob/main/docs/evidence.md).",
+        "[docs/evidence.md](https://github.com/userFRM/ib-dx/blob/main/docs/evidence.md).",
         "",
         README_SHUT,
     ]
@@ -571,11 +571,11 @@ def main() -> int:
         )
     columns.insert(0, ("TWS API", lambda r: SERVED if r.get("documented", True) else ABSENT))
     columns += [
-        ("ibkr-dx Rust", lambda r: ours(r["rust"])),
-        ("ibkr-dx Python", lambda r: ours(r["python"])),
+        ("ib-dx Rust", lambda r: ours(r["rust"])),
+        ("ib-dx Python", lambda r: ours(r["python"])),
     ]
     read += [
-        "**ibkr-dx Rust** and **ibkr-dx Python** — this client's two surfaces, "
+        "**ib-dx Rust** and **ib-dx Python** — this client's two surfaces, "
         "from the coverage matrix `scripts/gen_api_docs.py` generates from the "
         "source. A mark here says what the call does, not only that it exists.",
         "**Evidence** — how this client's status for a call was established: named "
@@ -599,8 +599,8 @@ def main() -> int:
     if async_backs is not None:
         back_columns.append(("ib_async", lambda r: mark(known(r, async_backs))))
     back_columns += [
-        ("ibkr-dx Rust", lambda r: ours(r["rust"])),
-        ("ibkr-dx Python", lambda r: ours(r["python"])),
+        ("ib-dx Rust", lambda r: ours(r["rust"])),
+        ("ib-dx Python", lambda r: ours(r["python"])),
     ]
 
     out = [
@@ -624,7 +624,7 @@ def main() -> int:
         "",
         f"| Mark | Meaning |",
         "| :---: | --- |",
-        f"| {SERVED} | Present. For ibkr-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |",
+        f"| {SERVED} | Present. For ib-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |",
         f"| {TAKEN} | Present and not served: a call reports why on the error callback; a callback is declared and not fired here, although a gateway sends it |",
         f"| {ABSENT} | Absent |",
         f"| {OWN} | Beyond the canonical list: not on this surface by design. The call is the other surface's own convenience, not one this surface lacks |",
@@ -655,7 +655,7 @@ def main() -> int:
     # marking both surfaces carried invented a Rust column, and calls that
     # exist only in the binding were published as Rust's too.
     beyond: list[str] = []
-    ours_extra, _ = surface_of("ibkr_dx", "EClient", kind=inspect.isroutine)
+    ours_extra, _ = surface_of("ib_dx", "EClient", kind=inspect.isroutine)
     rust_extra = surface_from_reference("rust-reference.md")
     if ours_extra is not None:
         # Both tables above, not only the calls. The Rust surface is read off
@@ -668,7 +668,7 @@ def main() -> int:
         # The Python surface's callbacks are on its wrapper, not its client: a
         # callback beyond the canonical list, which the Rust page names beside
         # the calls, is marked on the Python side from there.
-        ours_backs, _ = surface_of("ibkr_dx", "EWrapper", kind=inspect.isroutine)
+        ours_backs, _ = surface_of("ib_dx", "EWrapper", kind=inspect.isroutine)
         py_plain = {plain(m) for m in ours_extra} | {plain(m) for m in (ours_backs or set())}
         # A field of the Rust client is no heading on its page, so a
         # counterpart that is one is looked for where it is declared.

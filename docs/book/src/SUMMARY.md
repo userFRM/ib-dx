@@ -1,6 +1,6 @@
 # Summary
 
-[ibkr-dx](./introduction.md)
+[ib-dx](./introduction.md)
 [Getting started](./getting-started.md)
 [Beyond the documented API](./reference/beyond-the-api.md)
 

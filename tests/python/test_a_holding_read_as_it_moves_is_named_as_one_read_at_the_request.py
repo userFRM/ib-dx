@@ -12,10 +12,10 @@ the contract's symbol read "".
 
 import time
 
-import ibkr_dx
+import ib_dx
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.portfolio = []
@@ -36,7 +36,7 @@ def _names(contract):
 
 def test_the_streamed_holding_carries_the_names_the_row_states():
     heard = Heard()
-    client = ibkr_dx.EClient(heard)
+    client = ib_dx.EClient(heard)
     client._test_connect("DU1", True, accounts=["DU1"])
     client._test_set_position(756733, 9, 30, account="DU1", symbol="AAPL",
                               sec_type="STK", currency="USD", multiplier="1")

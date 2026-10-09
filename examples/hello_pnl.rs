@@ -6,8 +6,8 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{EClient, EClientConfig};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{EClient, EClientConfig};
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {

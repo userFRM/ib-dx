@@ -15,16 +15,16 @@ Both routes build from the repository.
 
 ```toml
 [dependencies]
-ibkr-dx = { git = "https://github.com/userFRM/ibkr-dx" }
+ib-dx = { git = "https://github.com/userFRM/ib-dx" }
 ```
 
 ### Python
 
 ```bash
-pip install "git+https://github.com/userFRM/ibkr-dx"
+pip install "git+https://github.com/userFRM/ib-dx"
 ```
 
-The package imports as `ibkr_dx`. The build backend is
+The package imports as `ib_dx`. The build backend is
 [maturin](https://www.maturin.rs/), which compiles the Rust core into the
 extension module, and `pyproject.toml` names the features it needs, so there is
 nothing to pass. It builds for CPython 3.11 to 3.14 and the free-threaded
@@ -39,8 +39,8 @@ the OpenSSL headers and `pkg-config` (`libssl-dev` on Debian and Ubuntu,
 Working on the client itself, build it in place:
 
 ```bash
-git clone https://github.com/userFRM/ibkr-dx
-cd ibkr-dx
+git clone https://github.com/userFRM/ib-dx
+cd ib-dx
 uv venv .venv
 source .venv/bin/activate          # .venv\Scripts\activate on Windows
 uv pip install maturin
@@ -119,7 +119,7 @@ by capability.
 
 | Language | Surface | Pick it when |
 | --- | --- | --- |
-| Python | `ibkr_dx.EClient` / `EWrapper` | Your program is written against `ibapi`. Change `ibapi` to `ibkr_dx` in its imports, and its connect call to the one above. |
+| Python | `ib_dx.EClient` / `EWrapper` | Your program is written against `ibapi`. Change `ibapi` to `ib_dx` in its imports, and its connect call to the one above. |
 | Rust | `EClient` / `Wrapper` | You are porting a TWS API program and want its callbacks. |
 
 > For ib_async, use [ib_async-dx](https://github.com/userFRM/ib_async-dx), which runs it on this engine.

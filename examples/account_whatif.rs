@@ -16,9 +16,9 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig, Order};
-use ibkr_dx::api::types::{ContractDetails, OrderState, TickAttrib};
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig, Order};
+use ib_dx::api::types::{ContractDetails, OrderState, TickAttrib};
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {

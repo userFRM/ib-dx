@@ -8,7 +8,7 @@ after the callback returns — and made through the public cancel, it reported
 completed, to a caller who had just closed the session on purpose.
 """
 
-from ibkr_dx import Contract, EClient, EWrapper
+from ib_dx import Contract, EClient, EWrapper
 
 
 class TakesOneAndLeaves(EWrapper):

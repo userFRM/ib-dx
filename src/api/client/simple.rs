@@ -12,8 +12,8 @@
 //! layer decides, the fuller call is still there and takes it.
 //!
 //! ```no_run
-//! # use ibkr_dx::{Config, EClient};
-//! # use ibkr_dx::types::model::{Contract, Order};
+//! # use ib_dx::{Config, EClient};
+//! # use ib_dx::types::model::{Contract, Order};
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let ib = EClient::connect(&Config {
 //!     username: "user".into(), password: "pass".into(),

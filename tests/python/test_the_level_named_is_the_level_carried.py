@@ -7,10 +7,10 @@ of the reference's gates whose feature is carried, and a caller comparing
 against a gate is told the truth about everything below it or refused by name.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class _Recorder(ibkr_dx.EWrapper):
+class _Recorder(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -24,7 +24,7 @@ class _Recorder(ibkr_dx.EWrapper):
 
 
 def test_the_level_is_the_newest_gate_carried_and_none_before_a_session():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     assert c.serverVersion() is None
     c._test_connect()
     # MIN_SERVER_VER_ADDITIONAL_ORDER_PARAMS_2 in the reference's table. The
@@ -42,7 +42,7 @@ def test_the_level_is_the_newest_gate_carried_and_none_before_a_session():
 def test_the_levels_named_above_it_are_levels_a_gateway_has():
     """A gateway announces nothing above 226, so a feature said to be absent
     at a level above that names a level there is not."""
-    doc = ibkr_dx.EClient.server_version.__doc__
+    doc = ib_dx.EClient.server_version.__doc__
     assert "(227)" not in doc, doc
     assert "226 is the highest level a gateway announces" in " ".join(doc.split()), doc
 
@@ -60,8 +60,8 @@ def _on_utc(monkeypatch, w):
     """A session counting days on UTC, whatever the process was told: the
     zone is a setting this client publishes, and one set around the suite
     would move the days these tests count."""
-    monkeypatch.delenv("IBKR_DX_TZ", raising=False)
-    c = ibkr_dx.EClient(w)
+    monkeypatch.delenv("IB_DX_TZ", raising=False)
+    c = ib_dx.EClient(w)
     c._test_connect()
     return c
 
@@ -78,11 +78,11 @@ def test_a_window_in_days_or_dates_is_applied(monkeypatch):
     for back in (0, 2, 5):
         c._test_store_execution(f"back{back}", stamp(back))
 
-    stated = ibkr_dx.ExecutionFilter()
+    stated = ib_dx.ExecutionFilter()
     stated.lastNDays = 3
     c.reqExecutions(1, stated)
 
-    dated = ibkr_dx.ExecutionFilter()
+    dated = ib_dx.ExecutionFilter()
     dated.specificDates = [int((today - datetime.timedelta(days=5)).strftime("%Y%m%d"))]
     c.reqExecutions(2, dated)
     c._test_dispatch_once()
@@ -101,7 +101,7 @@ def test_a_date_a_gateway_cannot_read_refuses_the_request(monkeypatch):
     c = _on_utc(monkeypatch, w)
     c._test_store_execution("held", "20260101-00:00:01")
     for req_id, dates in ((1, [20260231]), (2, ["2026-09-19"]), (3, [None])):
-        f = ibkr_dx.ExecutionFilter()
+        f = ib_dx.ExecutionFilter()
         f.specificDates = dates
         c.reqExecutions(req_id, f)
     c._test_dispatch_once()
@@ -125,10 +125,10 @@ def test_dates_are_taken_as_the_reference_writes_them(monkeypatch):
     for back in (0, 2):
         c._test_store_execution(f"back{back}", stamp(back))
 
-    in_a_set = ibkr_dx.ExecutionFilter()
+    in_a_set = ib_dx.ExecutionFilter()
     in_a_set.specificDates = {ymd(2)}
     c.reqExecutions(1, in_a_set)
-    twice = ibkr_dx.ExecutionFilter()
+    twice = ib_dx.ExecutionFilter()
     twice.specificDates = [ymd(0), str(ymd(0))]
     c.reqExecutions(2, twice)
     c._test_dispatch_once()
@@ -139,10 +139,10 @@ def test_dates_are_taken_as_the_reference_writes_them(monkeypatch):
 
 def test_the_reference_defaults_pass_through():
     w = _Recorder()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect()
     # UNSET_INTEGER and None, which is what a filter that states no window carries.
-    c.reqExecutions(3, ibkr_dx.ExecutionFilter())
+    c.reqExecutions(3, ib_dx.ExecutionFilter())
     c._test_dispatch_once()
     assert not w.errors, w.errors
     assert 3 in w.ended
@@ -168,7 +168,7 @@ def test_every_surface_answers_the_question_with_one_number():
 def test_the_most_a_beta_hedge_may_trade_is_a_field_of_an_order():
     """`hedgeMaxSize` is taken, at the reference client's unset value until
     stated."""
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     assert order.hedgeMaxSize == 2147483647
     order.hedgeMaxSize = 50
     assert (order.hedgeMaxSize, order.hedge_max_size) == (50, 50)
@@ -178,19 +178,19 @@ def test_conditions_that_count_the_overnight_session_reach_the_check():
     """`conditionsIncludeOvernight` is carried to the placement, where a logon
     that does not enable it is refused under 10371 and nothing is sent."""
     w = _Recorder()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect()
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 756733
     contract.secType = "STK"
     contract.exchange = "SMART"
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action = "BUY"
     order.totalQuantity = 1
     order.orderType = "LMT"
     order.lmtPrice = 100
     order.tif = "DAY"
-    order.conditions = [ibkr_dx.TimeCondition(time="20260925-20:30:00", isMore=True)]
+    order.conditions = [ib_dx.TimeCondition(time="20260925-20:30:00", isMore=True)]
     assert order.conditionsIncludeOvernight is False
     order.conditionsIncludeOvernight = True
     c.placeOrder(9401, contract, order)

@@ -1,6 +1,6 @@
 use std::env;
 
-use ibkr_dx::api::{EClient, EClientConfig, Wrapper, Contract, TickAttrib};
+use ib_dx::api::{EClient, EClientConfig, Wrapper, Contract, TickAttrib};
 
 struct QuotePrinter;
 
@@ -19,7 +19,7 @@ impl Wrapper for QuotePrinter {
         println!("req_id={req_id} {label}={price:.2}");
     }
 
-    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ibkr_dx::api::Decimal) {
+    fn tick_size(&mut self, req_id: i64, tick_type: i32, size: ib_dx::api::Decimal) {
         let label = match tick_type {
             0 => "bid_size",
             3 => "ask_size",
@@ -32,8 +32,8 @@ impl Wrapper for QuotePrinter {
 }
 
 fn main() {
-    let _log = ibkr_dx::logging::init(&ibkr_dx::logging::LogConfig::from_env());
-    println!("ibkr_dx v{}", env!("CARGO_PKG_VERSION"));
+    let _log = ib_dx::logging::init(&ib_dx::logging::LogConfig::from_env());
+    println!("ib_dx v{}", env!("CARGO_PKG_VERSION"));
 
     let username = env::var("IB_USERNAME").unwrap_or_else(|_| {
         eprintln!("Set IB_USERNAME and IB_PASSWORD environment variables");
@@ -48,7 +48,7 @@ fn main() {
     // venue answers by naming which server this account is on, so this is a
     // starting point rather than a destination.
     let host = env::var("IB_HOST")
-        .unwrap_or_else(|_| ibkr_dx::config::CCP_HOSTS[0].to_string());
+        .unwrap_or_else(|_| ib_dx::config::CCP_HOSTS[0].to_string());
 
     let client = EClient::connect(&EClientConfig {
         username,

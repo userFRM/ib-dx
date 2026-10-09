@@ -1,6 +1,6 @@
 # Python API
 
-`ibkr_dx.EClient` / `ibkr_dx.EWrapper` is the TWS API shape: a request under an id, an answer later on a callback.
+`ib_dx.EClient` / `ib_dx.EWrapper` is the TWS API shape: a request under an id, an answer later on a callback.
 The same `EClient` also carries [the calls that answer](#calls-that-answer) and
 [the calls beyond the documented API](../reference/beyond-the-api.md).
 
@@ -32,10 +32,10 @@ there, and the Rust `Order` starts them at the same values. A price left there
 is sent as none, as a gateway sends it; see
 [a price the order does not state](../reference/limits.md#a-price-the-order-does-not-state).
 
-`ibkr_dx.configure()` carries what a gateway would hold in a configuration file:
+`ib_dx.configure()` carries what a gateway would hold in a configuration file:
 the session time zone, the build announced at logon, which executions arrive
-when a session opens, and the rest. `ibkr_dx.describe()` lists them, and
-`ibkr_dx.UNAVAILABLE` names the gateway settings that mean nothing without a local
+when a session opens, and the rest. `ib_dx.describe()` lists them, and
+`ib_dx.UNAVAILABLE` names the gateway settings that mean nothing without a local
 process — a port to listen on, the addresses allowed to reach it, how much heap
 the runtime may take — so a program being migrated finds an answer rather than
 silence.
@@ -51,11 +51,11 @@ account and API client ID; an empty path disables it. See
 for its default location, reservations and moving the file.
 
 Logging is settled at import: a process has one logger and importing
-`ibkr_dx` installs it, reading `IBKR_DX_LOG_LEVEL` (with or without a log
-directory; one that is not a level is said in the log), `IBKR_DX_LOG_DIR` and
-`IBKR_DX_LOG_QUEUE`. The level can be moved afterwards:
+`ib_dx` installs it, reading `IB_DX_LOG_LEVEL` (with or without a log
+directory; one that is not a level is said in the log), `IB_DX_LOG_DIR` and
+`IB_DX_LOG_QUEUE`. The level can be moved afterwards:
 `configure(log_level=...)` and `connect(settings={"log_level": ...})` move
-the logger `ibkr_dx` installed, and raise where the program installed its
+the logger `ib_dx` installed, and raise where the program installed its
 own; `configure(log_level=None)` or `""` moves it back to the level it was
 installed at. A connect refused for another of its settings leaves the level
 where it was. Where the logger writes and how much it buffers are fixed once

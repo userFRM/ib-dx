@@ -7,7 +7,7 @@ call returns without attempting a connection.
 """
 
 from conftest import NotConnectedProbe
-from ibkr_dx import EClient
+from ib_dx import EClient
 
 
 def test_a_host_the_wire_cannot_carry_is_refused_before_the_login():

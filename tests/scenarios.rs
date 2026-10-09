@@ -1,17 +1,17 @@
-//! Multi-step scenario tests for ibkr_dx.
+//! Multi-step scenario tests for ib_dx.
 //!
 //! Each test exercises a realistic workflow spanning multiple API calls
 //! And verifying the full sequence of state transitions and callbacks.
 
 use std::sync::Arc;
 
-use ibkr_dx::api::client::{EClient, Contract, Order, TagValue};
-use ibkr_dx::api::wrapper::tests::RecordingWrapper;
-use ibkr_dx::bridge::SharedState;
-use ibkr_dx::control::historical::{HistoricalResponse, HistoricalBar, HeadTimestampResponse};
-use ibkr_dx::control::contracts::{ContractDefinition, SecurityType};
-use ibkr_dx::types::ContractRef;
-use ibkr_dx::types::*;
+use ib_dx::api::client::{EClient, Contract, Order, TagValue};
+use ib_dx::api::wrapper::tests::RecordingWrapper;
+use ib_dx::bridge::SharedState;
+use ib_dx::control::historical::{HistoricalResponse, HistoricalBar, HeadTimestampResponse};
+use ib_dx::control::contracts::{ContractDefinition, SecurityType};
+use ib_dx::types::ContractRef;
+use ib_dx::types::*;
 
 #[path = "support/engine.rs"]
 mod engine;
@@ -351,7 +351,7 @@ fn market_data_subscribe_ticks_unsubscribe() {
     // subscription stays up at the far end, which is the leak rather than the
     // withdrawal.
     assert!(
-        rx.try_iter().any(|c| matches!(c, ibkr_dx::types::ControlCommand::CancelMktData { req_id: 1 })),
+        rx.try_iter().any(|c| matches!(c, ib_dx::types::ControlCommand::CancelMktData { req_id: 1 })),
         "the withdrawal never reached the engine",
     );
     client.process_msgs(&mut w);
@@ -415,7 +415,7 @@ fn market_data_tbt_trades_and_quotes() {
 
     // TBT trade
     shared.market.push_tbt_trade(TbtTrade {
-        req_id: 1, kind: ibkr_dx::types::TbtType::Last,
+        req_id: 1, kind: ib_dx::types::TbtType::Last,
         instrument: 0, price: 150 * PRICE_SCALE, size: 100,
         timestamp: 1700000001, exchange: "ARCA".into(), conditions: "".into(),
         past_limit: false,
@@ -431,7 +431,7 @@ fn market_data_tbt_trades_and_quotes() {
     });
     // Second trade
     shared.market.push_tbt_trade(TbtTrade {
-        req_id: 1, kind: ibkr_dx::types::TbtType::Last,
+        req_id: 1, kind: ib_dx::types::TbtType::Last,
         instrument: 0, price: 151 * PRICE_SCALE, size: 200,
         timestamp: 1700000003, exchange: "NYSE".into(), conditions: "".into(),
         past_limit: false,
@@ -738,7 +738,7 @@ fn mixed_all_data_types_single_process() {
 
     // TBT trade
     shared.market.push_tbt_trade(TbtTrade {
-        req_id: 1, kind: ibkr_dx::types::TbtType::Last,
+        req_id: 1, kind: ib_dx::types::TbtType::Last,
         instrument: 0, price: 150 * PRICE_SCALE, size: 50,
         timestamp: 0, exchange: "".into(), conditions: "".into(),
         past_limit: false,

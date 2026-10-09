@@ -10,7 +10,7 @@ on the base type misrouted.
 
 import pytest
 
-from ibkr_dx import (
+from ib_dx import (
     ExecutionCondition, MarginCondition, OrderCondition,
     PercentChangeCondition, PriceCondition, TimeCondition, VolumeCondition,
 )

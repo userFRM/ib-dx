@@ -12,7 +12,7 @@ import time
 import pytest
 import threading
 from conftest import inside_the_session, liquid_hours
-from ibkr_dx import EWrapper, EClient, Contract
+from ib_dx import EWrapper, EClient, Contract
 
 
 pytestmark = pytest.mark.skipif(

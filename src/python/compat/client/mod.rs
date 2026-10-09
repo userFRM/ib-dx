@@ -470,7 +470,7 @@ impl EClient {
         ib_key_token_sub_type: Option<String>,
         code_provider: Option<Py<PyAny>>,
         readonly: bool,
-        // What this session runs under, by the names `ibkr_dx.configure` uses.
+        // What this session runs under, by the names `ib_dx.configure` uses.
         // Stated here it belongs to this session; stated there it is the
         // process's, and is what a session that states nothing falls back to.
         settings: Option<std::collections::HashMap<String, String>>,
@@ -1220,7 +1220,7 @@ impl EClient {
 
     /// What the venue sent this session that nothing here reads, as pairs of
     /// the connection and what arrived: each kind of message named once, the
-    /// first time it arrives. With `IBKR_DX_CAPTURE_WIRE` set, every frame is
+    /// first time it arrives. With `IB_DX_CAPTURE_WIRE` set, every frame is
     /// kept here as well, whole and as sent.
     fn unread_wire(&self) -> Vec<(String, String)> {
         self.shared_state()

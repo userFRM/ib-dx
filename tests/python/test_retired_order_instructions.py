@@ -2,11 +2,11 @@
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 from conftest import refused
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         self.errors = []
         self.orders = []
@@ -20,12 +20,12 @@ class Heard(ibkr_dx.EWrapper):
 
 def session(features=()):
     heard = Heard()
-    client = ibkr_dx.EClient(heard)
+    client = ib_dx.EClient(heard)
     client._test_connect("DU1")
     client._test_map_con_id(756733, 0)
     client._test_set_enabled_features(list(features))
-    contract = ibkr_dx.Contract(conId=756733, symbol="SPY", secType="STK", exchange="SMART")
-    order = ibkr_dx.Order(action="BUY", totalQuantity=1, orderType="LMT", lmtPrice=100)
+    contract = ib_dx.Contract(conId=756733, symbol="SPY", secType="STK", exchange="SMART")
+    order = ib_dx.Order(action="BUY", totalQuantity=1, orderType="LMT", lmtPrice=100)
     client._test_take_commands()
     return client, heard, contract, order
 
@@ -49,7 +49,7 @@ def test_retired_order_instructions_are_refused(camel, snake, value, code, name)
 def test_retired_order_instructions_are_warned_and_removed():
     client, heard, contract, order = session()
     assert not order.eTradeOnly and not order.firmQuoteOnly
-    assert order.nbboPriceCap == ibkr_dx.UNSET_DOUBLE
+    assert order.nbboPriceCap == ib_dx.UNSET_DOUBLE
     order.eTradeOnly = order.firmQuoteOnly = True
     order.nbboPriceCap = 0.0
     order.optOutSmartRouting = True
@@ -63,7 +63,7 @@ def test_retired_order_instructions_are_warned_and_removed():
     client._test_dispatch_once()
     assert heard.orders
     assert not heard.orders[-1].eTradeOnly and not heard.orders[-1].firmQuoteOnly
-    assert heard.orders[-1].nbboPriceCap == ibkr_dx.UNSET_DOUBLE
+    assert heard.orders[-1].nbboPriceCap == ib_dx.UNSET_DOUBLE
     assert order.eTradeOnly and order.firmQuoteOnly and order.nbboPriceCap == 0.0
 
 
@@ -72,7 +72,7 @@ def test_the_option_list_is_checked_before_retired_order_instructions():
     order.eTradeOnly = order.firmQuoteOnly = True
     order.nbboPriceCap = 0.0
     order.optOutSmartRouting = True
-    order.orderMiscOptions = [ibkr_dx.TagValue("unknown", "1")]
+    order.orderMiscOptions = [ib_dx.TagValue("unknown", "1")]
     client.placeOrder(93, contract, order)
     assert not heard.errors
     client.poll()
@@ -102,7 +102,7 @@ def test_retired_order_warnings_precede_a_later_instruction_refusal():
 
 def test_an_orders_option_list_is_checked_before_its_destination_and_conditions():
     client, heard, contract, order = session()
-    order.orderMiscOptions = [ibkr_dx.TagValue("unknown", "1")]
+    order.orderMiscOptions = [ib_dx.TagValue("unknown", "1")]
     order.conditions = [object()]
     contract.exchange = ""
     client.placeOrder(95, contract, order)
@@ -120,7 +120,7 @@ def test_an_orders_option_list_is_checked_before_its_destination_and_conditions(
 
 def test_an_orders_manual_value_is_checked_after_its_preview_and_trail():
     client, heard, contract, order = session(["NOAPIMISCVLD", "DEPRETFQNC"])
-    order.orderMiscOptions = [ibkr_dx.TagValue("manual", "2")]
+    order.orderMiscOptions = [ib_dx.TagValue("manual", "2")]
     order.eTradeOnly = True
     order.whatIf = True
     order.transmit = False

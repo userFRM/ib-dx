@@ -17,11 +17,11 @@ import re
 
 import pytest
 
-import ibkr_dx
-from ibkr_dx import Contract, ScannerSubscription, TagValue
+import ib_dx
+from ib_dx import Contract, ScannerSubscription, TagValue
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -32,7 +32,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def _client():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     # The contract already holds a slot, so a request that is not refused
     # goes to the channel without waiting on an engine this session lacks.
@@ -145,7 +145,7 @@ def test_an_entry_without_a_tag_and_value_is_written_as_its_text():
 
     # An order's list is written the same way.
     w, c = _client()
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action, order.totalQuantity, order.orderType, order.lmtPrice = "BUY", 1, "LMT", 1.0
     order.orderMiscOptions = [object()]
     c.placeOrder(7, _spy(), order)

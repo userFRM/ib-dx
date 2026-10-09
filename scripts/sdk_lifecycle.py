@@ -17,7 +17,7 @@ prints the hours and returns. The order is withdrawn before this returns.
 import sys
 import time
 
-from ibkr_dx import Order
+from ib_dx import Order
 from sdk_sweep import Heard, connect, described, inside_the_session
 
 

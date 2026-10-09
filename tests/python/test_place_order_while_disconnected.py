@@ -15,7 +15,7 @@ Run with: pytest tests/python/test_place_order_while_disconnected.py -v
 """
 import os, threading, time
 import pytest
-from ibkr_dx import EClient, EWrapper, Contract, Order
+from ib_dx import EClient, EWrapper, Contract, Order
 from conftest import NotConnectedProbe
 
 

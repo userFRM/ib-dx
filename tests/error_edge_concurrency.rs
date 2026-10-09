@@ -1,4 +1,4 @@
-//! Error path, edge case, and concurrency tests for ibkr_dx.
+//! Error path, edge case, and concurrency tests for ib_dx.
 //!
 //! Validates that the library handles bad inputs, boundary conditions,
 //! And concurrent access without panics or data races.
@@ -6,13 +6,13 @@
 use std::sync::{Arc, Barrier};
 use std::thread;
 
-use ibkr_dx::api::client::{EClient, Contract, Order};
-use ibkr_dx::api::wrapper::tests::RecordingWrapper;
-use ibkr_dx::bridge::SharedState;
-use ibkr_dx::control::historical::HistoricalResponse;
-use ibkr_dx::engine::hot_loop::HotLoop;
-use ibkr_dx::protocol::fix;
-use ibkr_dx::types::*;
+use ib_dx::api::client::{EClient, Contract, Order};
+use ib_dx::api::wrapper::tests::RecordingWrapper;
+use ib_dx::bridge::SharedState;
+use ib_dx::control::historical::HistoricalResponse;
+use ib_dx::engine::hot_loop::HotLoop;
+use ib_dx::protocol::fix;
+use ib_dx::types::*;
 
 #[path = "support/engine.rs"]
 mod engine;
@@ -32,10 +32,10 @@ fn test_client() -> (EClient, Engine, Arc<SharedState>) {
 
 /// What a call came to: a refusal is a record in the session's order, read
 /// here off the session.
-fn outcome(shared: &SharedState) -> Result<(), ibkr_dx::Refusal> {
+fn outcome(shared: &SharedState) -> Result<(), ib_dx::Refusal> {
     match shared.drain_refused().pop() {
         None => Ok(()),
-        Some((_, code, message)) => Err(ibkr_dx::Refusal::stated(code as i32, message)),
+        Some((_, code, message)) => Err(ib_dx::Refusal::stated(code as i32, message)),
     }
 }
 
@@ -101,7 +101,7 @@ fn place_order_with_an_unmodelled_algo_is_sent() {
         action: "BUY".into(), total_quantity: 100.0,
         order_type: "LMT".into(), lmt_price: 150.0,
         algo_strategy: "vwap".into(),
-        algo_params: vec![ibkr_dx::api::types::TagValue {
+        algo_params: vec![ib_dx::api::types::TagValue {
             tag: "maxPctVol".into(), value: "not a number".into(),
         }],
         ..Default::default()
@@ -250,7 +250,7 @@ fn fill_dedup_duplicate_exec_id_no_double_position() {
     let mut engine = HotLoop::new(shared.clone(), None, None);
     engine.context_mut().register_instrument(265598);
 
-    engine.context_mut().insert_order(ibkr_dx::types::Order {
+    engine.context_mut().insert_order(ib_dx::types::Order {
         order_id: 70, instrument: 0, side: Side::Buy,
         price: 150 * PRICE_SCALE, qty: 100 * QTY_SCALE * QTY_SCALE, filled: 0,
         status: OrderStatus::Submitted,
@@ -277,7 +277,7 @@ fn fill_dedup_different_exec_ids_both_count() {
     let mut engine = HotLoop::new(shared.clone(), None, None);
     engine.context_mut().register_instrument(265598);
 
-    engine.context_mut().insert_order(ibkr_dx::types::Order {
+    engine.context_mut().insert_order(ib_dx::types::Order {
         order_id: 71, instrument: 0, side: Side::Buy,
         price: 150 * PRICE_SCALE, qty: 200 * QTY_SCALE * QTY_SCALE, filled: 0,
         status: OrderStatus::Submitted,
@@ -309,7 +309,7 @@ fn fill_dedup_different_exec_ids_both_count() {
 fn every_slot_in_the_table_can_be_taken() {
     let shared = Arc::new(SharedState::new());
     let mut engine = HotLoop::new(shared.clone(), None, None);
-    for i in 0..ibkr_dx::types::MAX_INSTRUMENTS {
+    for i in 0..ib_dx::types::MAX_INSTRUMENTS {
         let id = engine.context_mut().register_instrument(i as i64 + 1000);
         assert_eq!(id, i as u32);
     }
@@ -322,7 +322,7 @@ fn every_slot_in_the_table_can_be_taken() {
 fn a_slot_past_the_size_the_table_is_made_with_is_taken() {
     let shared = Arc::new(SharedState::new());
     let mut engine = HotLoop::new(shared.clone(), None, None);
-    for i in 0..ibkr_dx::types::MAX_INSTRUMENTS + 1 {
+    for i in 0..ib_dx::types::MAX_INSTRUMENTS + 1 {
         let id = engine.context_mut().register_instrument(i as i64 + 1000);
         assert_eq!(id, i as u32);
     }
@@ -422,7 +422,7 @@ fn empty_historical_data_response() {
 
 #[test]
 fn empty_scanner_results() {
-    use ibkr_dx::control::scanner::ScannerResult;
+    use ib_dx::control::scanner::ScannerResult;
     let (client, _rx, shared) = test_client();
     shared.reference.push_scanner_data(3, ScannerResult {
         con_ids: vec![],
@@ -801,7 +801,7 @@ fn shared_state_all_drains_empty_after_first_call() {
         status: OrderStatus::Filled, filled_qty: 1.0, remaining_qty: 0.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0 });
     ss.orders.push_cancel_reject(CancelReject { order_id: 1, instrument: 0,
         reject_type: 1, reason_code: 0, answers_a_live_change: true, still_working: None, timestamp_ns: 0 });
-    ss.market.push_tbt_trade(TbtTrade { req_id: 1, kind: ibkr_dx::types::TbtType::Last, instrument: 0, price: PRICE_SCALE,
+    ss.market.push_tbt_trade(TbtTrade { req_id: 1, kind: ib_dx::types::TbtType::Last, instrument: 0, price: PRICE_SCALE,
         size: 1, timestamp: 0, exchange: String::new(), conditions: String::new(),
         past_limit: false, unreported: false });
     ss.market.push_tbt_quote(TbtQuote { req_id: 1, instrument: 0, bid: PRICE_SCALE, ask: PRICE_SCALE,

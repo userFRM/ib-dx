@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/userFRM/ibkr-dx/main/docs/book/src/banner-dark.svg">
-    <img src="https://raw.githubusercontent.com/userFRM/ibkr-dx/main/docs/book/src/banner-light.svg" alt="ibkr-dx: a direct connection engine for Interactive Brokers" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/userFRM/ib-dx/main/docs/book/src/banner-dark.svg">
+    <img src="https://raw.githubusercontent.com/userFRM/ib-dx/main/docs/book/src/banner-light.svg" alt="ib-dx: a direct connection engine for Interactive Brokers" width="100%">
   </picture>
 </p>
 
@@ -10,11 +10,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/userFRM/ibkr-dx/actions"><img src="https://github.com/userFRM/ibkr-dx/actions/workflows/tests.yml/badge.svg" alt="Build"></a>
+  An independent project: not an official Interactive Brokers product, and not endorsed by Interactive Brokers.
+</p>
+
+<p align="center">
+  <a href="https://github.com/userFRM/ib-dx/actions"><img src="https://github.com/userFRM/ib-dx/actions/workflows/tests.yml/badge.svg" alt="Build"></a>
   <img src="https://img.shields.io/badge/rust-1.89+-orange.svg" alt="Rust version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python version">
-  <a href="https://github.com/userFRM/ibkr-dx/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
-  <a href="https://userfrm.github.io/ibkr-dx/"><img src="https://img.shields.io/badge/docs-book-green.svg" alt="Docs"></a>
+  <a href="https://github.com/userFRM/ib-dx/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://userfrm.github.io/ib-dx/"><img src="https://img.shields.io/badge/docs-book-green.svg" alt="Docs"></a>
 </p>
 
 > [!TIP]
@@ -36,7 +40,7 @@
 
 ## Introduction
 
-ibkr-dx implements the IBKR client protocol directly. It authenticates, maintains
+ib-dx implements the IBKR client protocol directly. It authenticates, maintains
 the market-data, trading, historical and security-definition connections, and
 exposes the same API a program would otherwise reach through IB Gateway — with
 no gateway process, JVM, or local socket in between.
@@ -50,7 +54,7 @@ list of the TWS API's requests and callbacks is present on both surfaces — the
 [Beyond the documented API](#beyond-the-documented-api).
 
 Moving an existing Python program across changes its imports (`ibapi` becomes
-`ibkr_dx`) and its connect call:
+`ib_dx`) and its connect call:
 
 ```diff
 - client.connect("127.0.0.1", 4001, clientId=1)     # requires a running gateway
@@ -59,9 +63,9 @@ Moving an existing Python program across changes its imports (`ibapi` becomes
 
 > [!TIP]
 > The calls, callbacks and order objects keep their names and shapes. Where an
-> answer differs from a gateway's, [Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html)
+> answer differs from a gateway's, [Limits](https://userfrm.github.io/ib-dx/reference/limits.html)
 > names the case, and what a gateway answers the same way is under
-> [Venue behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html).
+> [Venue behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html).
 
 ## Why this exists
 
@@ -118,10 +122,10 @@ Both routes build from the repository.
 ### Python
 
 ```bash
-pip install "git+https://github.com/userFRM/ibkr-dx"
+pip install "git+https://github.com/userFRM/ib-dx"
 ```
 
-The package imports as `ibkr_dx`. pip compiles the extension, which needs a
+The package imports as `ib_dx`. pip compiles the extension, which needs a
 Rust toolchain at 1.89 or newer and, on Linux, the OpenSSL headers and
 `pkg-config` (`libssl-dev` on Debian and Ubuntu, `openssl-devel` on Fedora and
 RHEL). It builds for CPython 3.11 to 3.14 and the free-threaded 3.14t; the
@@ -131,7 +135,7 @@ free-threaded 3.13t is not supported.
 
 ```toml
 [dependencies]
-ibkr-dx = { git = "https://github.com/userFRM/ibkr-dx" }
+ib-dx = { git = "https://github.com/userFRM/ib-dx" }
 ```
 
 The Rust client needs no feature turned on. Rust 1.89 is the minimum supported
@@ -143,8 +147,8 @@ version (`rust-version`), and on Linux the build needs the OpenSSL headers and
 For working on the client itself:
 
 ```bash
-git clone https://github.com/userFRM/ibkr-dx
-cd ibkr-dx
+git clone https://github.com/userFRM/ib-dx
+cd ib-dx
 uv venv .venv
 source .venv/bin/activate          # .venv\Scripts\activate on Windows
 uv pip install maturin
@@ -153,14 +157,14 @@ maturin develop
 
 `pyproject.toml` names the features the extension is built with, so
 `maturin develop` needs none. A Rust program can depend on the checkout with
-`ibkr-dx = { path = "../ibkr-dx" }`.
+`ib-dx = { path = "../ib-dx" }`.
 
 ## Quick start
 
 ```python
 import threading
 import time
-from ibkr_dx import EWrapper, EClient, Contract
+from ib_dx import EWrapper, EClient, Contract
 
 class App(EWrapper):
     def __init__(self):
@@ -195,14 +199,14 @@ delivers callbacks on the thread that calls it; after `connect`, it delivers
 `next_valid_id` once the venue has named the orders the account is working.
 Requests and cancels return after admission; their answers and refusals arrive
 in session order. See
-[Requests, delivery and shutdown](https://userfrm.github.io/ibkr-dx/reference/requests-and-delivery.html)
+[Requests, delivery and shutdown](https://userfrm.github.io/ib-dx/reference/requests-and-delivery.html)
 for admission, delivery order, error origins and shutdown.
 
 In Rust:
 
 ```rust
 use std::time::{Duration, Instant};
-use ibkr_dx::api::{Contract, Decimal, EClient, EClientConfig, TickAttrib, Wrapper};
+use ib_dx::api::{Contract, Decimal, EClient, EClientConfig, TickAttrib, Wrapper};
 
 struct App;
 
@@ -255,7 +259,7 @@ not differ is that none of it is reachable through `ibapi` or `ib_async`.
 
 Each is a call on `EClient`, beside the TWS API's own. The examples are Python;
 the Rust `EClient` carries the same calls, spelled as
-[this table](https://userfrm.github.io/ibkr-dx/reference/beyond-the-api.html#the-same-calls-in-rust)
+[this table](https://userfrm.github.io/ib-dx/reference/beyond-the-api.html#the-same-calls-in-rust)
 gives them.
 
 ### What a company is worth, and what it is
@@ -331,7 +335,7 @@ for that side, with that side's price, and greeks from this client's own option
 model. They are worked from the underlying's price the chain parameters state,
 where a gateway takes the underlying's own quote when it holds one, so their
 underlying's price and greeks are not a gateway's.
-[Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html#option-computation-ticks)
+[Limits](https://userfrm.github.io/ib-dx/reference/limits.html#option-computation-ticks)
 says what they do not carry.
 
 The venue states more on the model's record, and it is all here: **rho**,
@@ -348,7 +352,7 @@ client.closing_option_model(1)      # the same, worked out as the contract close
 ### Asking the venue to find a trade
 
 ```python
-scan = ibkr_dx.SpreadScan(version=6, under_con_id=265598,
+scan = ib_dx.SpreadScan(version=6, under_con_id=265598,
                           account="DU1234567", min_delta=0.25)
 client.req_spread_scan(1, aapl, scan)
 for s in client.scanned_strategies(1):
@@ -365,7 +369,7 @@ let aapl = client.qualify_contract(&Contract {
     currency: "USD".into(),
     ..Default::default()
 })?;
-let scan = ibkr_dx::types::SpreadScan {
+let scan = ib_dx::types::SpreadScan {
     version: 6, under_con_id: aapl.con_id,
     account: "DU1234567".into(), min_delta: Some(0.25),
     ..Default::default()
@@ -387,7 +391,7 @@ client.req_ping(); client.last_rtt_ms()
 ```
 
 The full list, with what each returns, is in
-[Beyond the API](https://userfrm.github.io/ibkr-dx/reference/beyond-the-api.html).
+[Beyond the API](https://userfrm.github.io/ib-dx/reference/beyond-the-api.html).
 
 > [!TIP]
 > The calls under [Beyond the canonical list](#beyond-the-canonical-list) are
@@ -408,8 +412,8 @@ One row per capability, one column per client — every one of the 87 calls and 
 | TWS API | 87 / 87 | 90 / 90 | nothing missing |
 | ibapi | 78 / 87 | 85 / 90 | 9 absent, 5 callbacks absent |
 | ib_async | 84 / 87 | 78 / 90 | 3 absent, 12 callbacks absent |
-| **ibkr-dx Rust** | **87 / 87** | **88 / 90** | 2 callbacks declared, not fired |
-| **ibkr-dx Python** | **87 / 87** | **88 / 90** | 2 callbacks declared, not fired |
+| **ib-dx Rust** | **87 / 87** | **88 / 90** | 2 callbacks declared, not fired |
+| **ib-dx Python** | **87 / 87** | **88 / 90** | 2 callbacks declared, not fired |
 
 **Every call and callback on that list is present on both surfaces.** 2 callbacks are declared and not fired: a gateway reroutes a request to another contract for a contract for difference whose definition asks for it, and this client does not read a definition's flags for that before subscribing: the request goes to the venue as asked. Each says so where it is declared, so a program that implements one still compiles and runs. 7 more are declared by the TWS API and never fire on a gateway — the four steps of the verification handshake, the exchange-for-physical quote, the delta-neutral validation, which a gateway never sends, and `win_error`, which no message on the wire carries — so they fire here exactly as often as there: never.
 
@@ -437,7 +441,7 @@ the call does, and the evidence column says how that was established.
 
 | Mark | Meaning |
 | :---: | --- |
-| ● | Present. For ibkr-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |
+| ● | Present. For ib-dx, also served: a call does what it names; a callback is fired whenever what it reports arrives |
 | ◐ | Present and not served: a call reports why on the error callback; a callback is declared and not fired here, although a gateway sends it |
 | · | Absent |
 | — | Beyond the canonical list: not on this surface by design. The call is the other surface's own convenience, not one this surface lacks |
@@ -448,7 +452,7 @@ generated this page:
 - **TWS API** — the canonical list this repository keeps of the TWS API's requests and callbacks, in `scripts/gen_api_docs.py`. Beyond that list, a call is marked here where the TWS API's own client, or ib_async's transport, has a method by that name; a helper of ib_async's facade is not.
 - **ibapi** — IBKR's own Python client, version `9.81.1-1`, imported and enumerated. This is the copy published to PyPI; the version IBKR distributes directly is numbered 10.x and names calls this one predates, so a gap in this column is a gap in the copy that was read and not necessarily in the client you have.
 - **ib_async** — version `2.1.0`, imported and enumerated across both the transport and the facade, because it carries some calls on one and some on the other.
-- **ibkr-dx Rust** and **ibkr-dx Python** — this client's two surfaces, from the coverage matrix `scripts/gen_api_docs.py` generates from the source. A mark here says what the call does, not only that it exists.
+- **ib-dx Rust** and **ib-dx Python** — this client's two surfaces, from the coverage matrix `scripts/gen_api_docs.py` generates from the source. A mark here says what the call does, not only that it exists.
 - **Evidence** — how this client's status for a call was established: named by a suite that opens a session, named only by the offline suites, or not named by a test.
 - **Fires on a gateway** — whether the callback fires at all for a program on a gateway. The TWS API declares seven that never do.
 - **Answered from** — beyond the canonical list, whether a call asks the venue or reads what it stated, or answers from this client itself: its own state, a measurement it takes, or a helper.
@@ -460,7 +464,7 @@ filled in from memory. A mark here is a thing that was read.
 
 What a program asks the venue for.
 
-| Category | Call | TWS API | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python | Evidence |
+| Category | Call | TWS API | ibapi | ib_async | ib-dx Rust | ib-dx Python | Evidence |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | Connection | `connect` | ● | ● | ● | ● | ● | Live session |
 |  | `disconnect` | ● | ● | ● | ● | ● | Live session |
@@ -554,7 +558,7 @@ What a program asks the venue for.
 
 What the venue says back. `ib_async` delivers these as events as well as methods, so a mark here says the method exists on its wrapper, not that the information is unavailable by another route.
 
-| Category | Call | TWS API | Fires on a gateway | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python |
+| Category | Call | TWS API | Fires on a gateway | ibapi | ib_async | ib-dx Rust | ib-dx Python |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | Connection | `connect_ack` | ● | yes | ● | ● | ● | ● |
 |  | `connection_closed` | ● | yes | ● | ● | ● | ● |
@@ -662,7 +666,7 @@ A mark against a reference client here means it names the same
 thing; a mark under TWS API means the TWS API's own client, or
 ib_async's transport, has a method by that name.
 
-| Call | Answered from | TWS API | ibapi | ib_async | ibkr-dx Rust | ibkr-dx Python |
+| Call | Answered from | TWS API | ibapi | ib_async | ib-dx Rust | ib-dx Python |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | `account` / `account_snapshot` | venue | · | · | · | ● | ● |
 | `account_id` / `get_account_id` | venue | · | · | · | ● | ● |
@@ -838,12 +842,12 @@ ib_async's transport, has a method by that name.
 | TWS API | 87 | 0 | 0 |
 | ibapi | 78 | 0 | 9 |
 | ib_async | 84 | 0 | 3 |
-| ibkr-dx Rust | 87 | 0 | 0 |
-| ibkr-dx Python | 87 | 0 | 0 |
+| ib-dx Rust | 87 | 0 | 0 |
+| ib-dx Python | 87 | 0 | 0 |
 
 </details>
 
-The same table stands on its own in [docs/capabilities.md](https://github.com/userFRM/ibkr-dx/blob/main/docs/capabilities.md), and what each claim rests on is in [docs/evidence.md](https://github.com/userFRM/ibkr-dx/blob/main/docs/evidence.md).
+The same table stands on its own in [docs/capabilities.md](https://github.com/userFRM/ib-dx/blob/main/docs/capabilities.md), and what each claim rests on is in [docs/evidence.md](https://github.com/userFRM/ib-dx/blob/main/docs/evidence.md).
 
 <!-- capabilities:end -->
 
@@ -902,7 +906,7 @@ on `EClient`, `EWrapper` and the records a call or callback hands over:
 `reqMktData` and `req_mkt_data`, `secType` and `sec_type`, `conId` and
 `con_id`; the classes a program only builds, such as `ExecutionFilter`, carry
 the TWS API's spelling alone. The TWS API's module layout resolves under
-`ibkr_dx` (`ibkr_dx.client`, `ibkr_dx.wrapper`, `ibkr_dx.contract`, …).
+`ib_dx` (`ib_dx.client`, `ib_dx.wrapper`, `ib_dx.contract`, …).
 
 A wrapper is called as the ibapi release it was written for calls it. An
 `error` declared as `(reqId, errorCode, errorString)` (ibapi 9.81), with
@@ -911,7 +915,7 @@ release has it receives those arguments, and a wrapper that declares
 `commissionReport` and not `commissionAndFeesReport` receives each charge there.
 
 Where this client answers differently from a gateway,
-[Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html) says so, case
+[Limits](https://userfrm.github.io/ib-dx/reference/limits.html) says so, case
 by case.
 
 For [ib_async](https://github.com/ib-api-reloaded/ib_async), use
@@ -968,7 +972,7 @@ Within a running program, a dropped connection is rebuilt on the session
 already open, with no second factor. A restarted program logs in again, second
 factor included. Offering the saved session (`EClientConfig::resume`, or
 `session_file`) has not spared a login. See
-[Login](https://userfrm.github.io/ibkr-dx/recipes/python/login.html).
+[Login](https://userfrm.github.io/ib-dx/recipes/python/login.html).
 
 ## Configuration
 
@@ -980,9 +984,9 @@ no JVM heap, and no message pacing: a gateway paces requests at the rate its log
 states (fifty a second where it states none) unless it is set to reject them
 instead, and nothing here does either).
 
-Rust: `EClientConfig.gateway`. Python: `ibkr_dx.configure()`.
+Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()`.
 
-Order IDs survive restarts in `ibkr-dx/order-ids.json` under the user's data
+Order IDs survive restarts in `ib-dx/order-ids.json` under the user's data
 directory: `$XDG_DATA_HOME` (or `~/.local/share`) on Linux,
 `~/Library/Application Support` on macOS, and `%APPDATA%` on Windows.
 The file keeps a separate next ID for each account and API client ID (the one
@@ -995,11 +999,11 @@ session's in-memory counter and replay floor.
 
 Set `order_id_file` through `EClientConfig.gateway`, Python
 `connect(settings={"order_id_file": "/path/order-ids.json"})`, or
-`ibkr_dx.configure(order_id_file="/path/order-ids.json")`; the environment name
-is `IBKR_DX_ORDER_ID_FILE`. An empty string disables persistence. To move it,
+`ib_dx.configure(order_id_file="/path/order-ids.json")`; the environment name
+is `IB_DX_ORDER_ID_FILE`. An empty string disables persistence. To move it,
 stop every process using it, move the JSON file, and configure the same new
 path in each process. The `.lock` and `.tmp` files beside it are maintained by
-the client. See [order IDs](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html#order-ids-across-sessions)
+the client. See [order IDs](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html#order-ids-across-sessions)
 for the reservation scope.
 
 Registration is held by the engine and does not wait at the call.
@@ -1007,18 +1011,18 @@ Registration is held by the engine and does not wait at the call.
 Configuration read and update requests through `reqConfigProtoBuf` and
 `updateConfigProtoBuf` (Rust: `req_config` and `update_config`) report 10357
 on every connected session. Configuration payloads are never applied; see
-[Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html#configuration-requests).
+[Limits](https://userfrm.github.io/ib-dx/reference/limits.html#configuration-requests).
 
 ## Documentation
 
-* [The book](https://userfrm.github.io/ibkr-dx/) — guides, recipes and the generated API reference
-* [Capabilities](https://github.com/userFRM/ibkr-dx/blob/main/docs/capabilities.md) — one row per capability, one column per client
-* [Evidence](https://github.com/userFRM/ibkr-dx/blob/main/docs/evidence.md) — what each claim rests on, and the session that produced it
-* [Notebooks](https://github.com/userFRM/ibkr-dx/tree/main/notebooks) — seven walkthroughs of `EClient` and `EWrapper`: connecting and the account, bars, contract details, depth, orders, scanners and ticks
-* [Examples](https://github.com/userFRM/ibkr-dx/tree/main/examples) — 42 runnable single-file programs, 27 in Rust and 15 in Python
-* [Beyond the API](https://userfrm.github.io/ibkr-dx/reference/beyond-the-api.html) — what the session states that no documented call asks for
-* [Venue behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html) — what a program meets here that is the venue's answer or the TWS API's definition
-* [Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html) — what this client will not do, and why
+* [The book](https://userfrm.github.io/ib-dx/) — guides, recipes and the generated API reference
+* [Capabilities](https://github.com/userFRM/ib-dx/blob/main/docs/capabilities.md) — one row per capability, one column per client
+* [Evidence](https://github.com/userFRM/ib-dx/blob/main/docs/evidence.md) — what each claim rests on, and the session that produced it
+* [Notebooks](https://github.com/userFRM/ib-dx/tree/main/notebooks) — seven walkthroughs of `EClient` and `EWrapper`: connecting and the account, bars, contract details, depth, orders, scanners and ticks
+* [Examples](https://github.com/userFRM/ib-dx/tree/main/examples) — 42 runnable single-file programs, 27 in Rust and 15 in Python
+* [Beyond the API](https://userfrm.github.io/ib-dx/reference/beyond-the-api.html) — what the session states that no documented call asks for
+* [Venue behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html) — what a program meets here that is the venue's answer or the TWS API's definition
+* [Limits](https://userfrm.github.io/ib-dx/reference/limits.html) — what this client will not do, and why
 
 ## Questions
 
@@ -1034,7 +1038,7 @@ needed either — this client provides that surface itself.
 
 The imports and the connect call. The calls, the callbacks and the order
 objects keep their names and shapes. Where an answer differs from a gateway's,
-[Limits](https://userfrm.github.io/ibkr-dx/reference/limits.html) names the
+[Limits](https://userfrm.github.io/ib-dx/reference/limits.html) names the
 case. See [Running an existing program](#running-an-existing-program).
 </details>
 
@@ -1078,7 +1082,7 @@ Both run on this engine, with the same calls and the same protocol; a live
 login also enters the second-factor approval, which paper does not. What each
 answers depends on that account's subscriptions and permissions. The
 verification here is on a paper account, with one order round trip on a funded
-account — see [Evidence](https://github.com/userFRM/ibkr-dx/blob/main/docs/evidence.md).
+account — see [Evidence](https://github.com/userFRM/ib-dx/blob/main/docs/evidence.md).
 </details>
 
 <details>
@@ -1145,7 +1149,7 @@ profit taker in order. Percentage-allocation sizing from group or model
 holdings is not carried: use explicitly sized parent and child orders when
 those holdings determine their quantities. The advertised level remains 217;
 226 is the highest level a gateway announces. See
-[attached orders](https://userfrm.github.io/ibkr-dx/reference/limits.html#attached-orders)
+[attached orders](https://userfrm.github.io/ib-dx/reference/limits.html#attached-orders)
 for fields, refusals and the remaining venue evidence.
 
 Individually placed children with `parentId` / `parent_id` share the known
@@ -1161,7 +1165,7 @@ for restating an order. `open_order` states an order's total as a gateway
 does: what has filled, and what is left of the order's own size, which only
 the reports a gateway takes a size from restate. Hedge pricing instructions are
 retained on replacement.
-See [order behaviour](https://userfrm.github.io/ibkr-dx/reference/venue-behaviour.html#orders).
+See [order behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html#orders).
 
 ## Testing
 
@@ -1177,7 +1181,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 Every published count is checked against what is actually there, so a number in
 this file cannot drift from the suite that produced it. What each claim rests on
-is in [Evidence](https://github.com/userFRM/ibkr-dx/blob/main/docs/evidence.md).
+is in [Evidence](https://github.com/userFRM/ib-dx/blob/main/docs/evidence.md).
 
 Readers of the venue's own records are held to a harder standard than passing:
 a test that would pass against a broken reader is not a test. Each is checked by
@@ -1217,19 +1221,19 @@ repository's security advisories rather than in a public issue.
 
 ## License
 
-[AGPL-3.0](https://github.com/userFRM/ibkr-dx/blob/main/LICENSE)
+[AGPL-3.0](https://github.com/userFRM/ib-dx/blob/main/LICENSE)
 
 ## Credits
 
-ibkr-dx began as a fork of [ibx](https://github.com/deepentropy/ibx) by
+ib-dx began as a fork of [ibx](https://github.com/deepentropy/ibx) by
 DeepEntropy and Odyssée, at its v0.7.1 release
 ([deepentropy/ibx@9367845](https://github.com/deepentropy/ibx/commit/9367845), 25 July 2026),
 under the same AGPL-3.0 licence. That history is the first commit here, and its
 full log is in the original repository. Everything after it was written for
-ibkr-dx, from 28 July 2026 on. Thank you to both of them for the foundation.
+ib-dx, from 28 July 2026 on. Thank you to both of them for the foundation.
 
 - ibx: Copyright (C) 2026 DeepEntropy and Odyssée
-- ibkr-dx: Copyright (C) 2026 userFRM
+- ib-dx: Copyright (C) 2026 userFRM
 
 ## Disclaimer
 
@@ -1237,7 +1241,7 @@ Interactive Brokers®, IBKR®, Trader Workstation®, and IB Gateway® are
 registered trademarks of Interactive Brokers Group, Inc. This project is **not
 affiliated with, endorsed by, or supported by Interactive Brokers**.
 
-ibkr-dx is an independent, open-source project provided "as is", without warranty
+ib-dx is an independent, open-source project provided "as is", without warranty
 of any kind.
 
 > [!CAUTION]
@@ -1247,7 +1251,7 @@ of any kind.
 
 ### Legal Considerations
 
-- **No warranty.** ibkr-dx is provided "as is", without warranty of any kind. See [LICENSE](https://github.com/userFRM/ibkr-dx/blob/main/LICENSE) for full terms.
-- **Use at your own risk.** Users are solely responsible for ensuring their use of ibkr-dx complies with Interactive Brokers' Terms of Service, Customer Agreement, and any applicable laws or regulations. Using ibkr-dx may carry risks including but not limited to account restriction or termination by IB.
-- **Orders are real.** ibkr-dx places, modifies and cancels orders on the account it logs into, and is at an early version. It is not intended as a replacement for officially supported IB software in production trading environments. The authors accept no liability for financial losses, missed trades, account issues, or any other damages arising from the use of this software.
-- **Protocol stability.** ibkr-dx relies on an undocumented protocol that IB may change at any time without notice. There is no guarantee of continued functionality.
+- **No warranty.** ib-dx is provided "as is", without warranty of any kind. See [LICENSE](https://github.com/userFRM/ib-dx/blob/main/LICENSE) for full terms.
+- **Use at your own risk.** Users are solely responsible for ensuring their use of ib-dx complies with Interactive Brokers' Terms of Service, Customer Agreement, and any applicable laws or regulations. Using ib-dx may carry risks including but not limited to account restriction or termination by IB.
+- **Orders are real.** ib-dx places, modifies and cancels orders on the account it logs into, and is at an early version. It is not intended as a replacement for officially supported IB software in production trading environments. The authors accept no liability for financial losses, missed trades, account issues, or any other damages arising from the use of this software.
+- **Protocol stability.** ib-dx relies on an undocumented protocol that IB may change at any time without notice. There is no guarantee of continued functionality.

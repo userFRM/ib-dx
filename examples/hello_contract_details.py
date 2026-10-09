@@ -7,7 +7,7 @@ Usage:
 import os
 import threading
 
-from ibkr_dx import EClient, EWrapper, Contract
+from ib_dx import EClient, EWrapper, Contract
 
 
 class DetailsWrapper(EWrapper):

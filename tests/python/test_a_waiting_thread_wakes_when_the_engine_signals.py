@@ -11,11 +11,11 @@ import time
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
 def connected():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("DU0000000")
     return c
 
@@ -41,7 +41,7 @@ def test_a_waiting_thread_wakes_when_the_engine_signals():
 
 def test_a_wait_with_no_session_is_refused():
     with pytest.raises(RuntimeError):
-        ibkr_dx.EClient(ibkr_dx.EWrapper()).wait_for_data(0.01)
+        ib_dx.EClient(ib_dx.EWrapper()).wait_for_data(0.01)
 
 
 def test_a_wait_that_is_not_a_length_of_time_is_refused():

@@ -11,10 +11,10 @@ log line said so.
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 
 
-class Recorder(ibkr_dx.EWrapper):
+class Recorder(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -69,7 +69,7 @@ class Both(Current):
 )
 def test_error_and_the_charge_reach_the_shape_the_wrapper_declares(wrapper, error):
     w = wrapper()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
     c._test_push_historical_error(7, 162, "no data")
     c._test_push_fill(0, 77, "BUY", 150.0, 10, 0, 1.25)

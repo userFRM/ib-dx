@@ -13,11 +13,11 @@
 
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{EClient, EClientConfig};
-use ibkr_dx::api::types::Order;
+use ib_dx::api::client::{EClient, EClientConfig};
+use ib_dx::api::types::Order;
 
 fn main() {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     let username = std::env::var("IB_USERNAME").unwrap_or_default();
     let password = std::env::var("IB_PASSWORD").unwrap_or_default();
     if username.trim().is_empty() || password.trim().is_empty() {

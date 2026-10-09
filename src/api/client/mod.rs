@@ -4,8 +4,8 @@
 //! events to a [`Wrapper`] via `process_msgs()`.
 //!
 //! ```no_run
-//! use ibkr_dx::api::{EClient, EClientConfig, Wrapper, Contract, Order};
-//! use ibkr_dx::api::types::TickAttrib;
+//! use ib_dx::api::{EClient, EClientConfig, Wrapper, Contract, Order};
+//! use ib_dx::api::types::TickAttrib;
 //!
 //! struct MyWrapper;
 //! impl Wrapper for MyWrapper {
@@ -1271,7 +1271,7 @@ impl EClient {
 
     /// What the venue sent this session that nothing here reads, by
     /// connection: each kind of message named once, the first time it
-    /// arrives. With `IBKR_DX_CAPTURE_WIRE` set, every frame is kept here as
+    /// arrives. With `IB_DX_CAPTURE_WIRE` set, every frame is kept here as
     /// well, whole and as sent — a reading checked only against frames this
     /// client made up says nothing about the ones that arrive.
     pub fn unread_wire(&self) -> Vec<(&'static str, String)> {

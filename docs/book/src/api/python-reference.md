@@ -40,7 +40,7 @@ def connect(host, port=0, client_id=0, username="", password="", paper=True, cor
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `host` | `str` | Server hostname. |
-| `port` | `int` | Port number (unused — ibkr-dx connects directly). |
+| `port` | `int` | Port number (unused — ib-dx connects directly). |
 | `client_id` | `int` | API client ID for order ownership and the saved order-id counter. |
 | `username` | `str` | Account username. |
 | `password` | `str` | Account password. |
@@ -349,7 +349,7 @@ def instrument_of(con_id)
 
 #### `unread_wire`
 
-What the venue sent this session that nothing here reads, as pairs of the connection and what arrived: each kind of message named once, the first time it arrives. With `IBKR_DX_CAPTURE_WIRE` set, every frame is kept here as well, whole and as sent.
+What the venue sent this session that nothing here reads, as pairs of the connection and what arrived: each kind of message named once, the first time it arrives. With `IB_DX_CAPTURE_WIRE` set, every frame is kept here as well, whole and as sent.
 
 ```python
 def unread_wire()

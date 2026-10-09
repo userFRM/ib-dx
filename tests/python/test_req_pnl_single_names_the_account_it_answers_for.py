@@ -1,8 +1,8 @@
 """A single-position profit request carries the account named."""
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -13,7 +13,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def test_req_pnl_single_carries_the_named_account():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T", accounts=["T", "DU999"])
     c.reqPnLSingle(7, "DU999", "", 265598)
     c.poll()

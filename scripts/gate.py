@@ -172,7 +172,7 @@ def steps(suites):
         # A manifest here read a file that moved and could not pass at all,
         # and no other step in this list builds the target.
         (["cargo", "test", "--test", "ib_paper_compat"],
-         {"IBKR_DX_ALLOW_SKIP_NO_CREDS": "1"}),
+         {"IB_DX_ALLOW_SKIP_NO_CREDS": "1"}),
     ]
 
 

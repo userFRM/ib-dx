@@ -9,12 +9,12 @@ verification calls and two quiet withdrawals were absent from both.
 
 import pytest
 
-import ibkr_dx
+import ib_dx
 from conftest import NotConnectedProbe
-from ibkr_dx import Contract, Order
+from ib_dx import Contract, Order
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -25,7 +25,7 @@ class Errors(ibkr_dx.EWrapper):
 
 def _client():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     c._test_map_con_id(756733, 0)
     return w, c
@@ -53,7 +53,7 @@ def test_a_contract_names_the_slot_it_holds():
 
 
 def test_no_frames_are_kept_unless_asked_for(monkeypatch):
-    monkeypatch.delenv("IBKR_DX_CAPTURE_WIRE", raising=False)
+    monkeypatch.delenv("IB_DX_CAPTURE_WIRE", raising=False)
     _, c = _client()
     assert c.unread_wire() == []
 
@@ -175,7 +175,7 @@ def test_the_verification_requests_are_answered_as_the_reference_client_answers_
 
 def test_without_a_session_each_is_answered_under_504():
     probe = NotConnectedProbe()
-    c = ibkr_dx.EClient(probe)
+    c = ib_dx.EClient(probe)
     c.verify_request("app", "1")
     c.verify_and_auth_request("app", "1", "key")
     c.verify_message("data")

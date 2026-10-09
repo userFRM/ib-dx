@@ -5,11 +5,11 @@ holding them, so a caller can read what arrived without knowing every series by
 heart. Rows had none: a program had to ask each series it could think of.
 """
 
-import ibkr_dx
+import ib_dx
 
 
 def test_the_series_that_stated_rows_are_named():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("DU1")
     c._test_map_instrument(1, 0)
     assert c.stated_rows_series(1) == []

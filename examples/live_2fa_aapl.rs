@@ -13,9 +13,9 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig};
-use ibkr_dx::api::types::ContractDetails;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig};
+use ib_dx::api::types::ContractDetails;
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct State {
@@ -73,7 +73,7 @@ fn load_dotenv() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
     load_dotenv();
 
     let username = env::var("IB_LIVE_USERNAME")

@@ -64,18 +64,18 @@ pub struct GatewaySettings {
     /// The port a farm connection opens on, where the venue's routing names
     /// none. Logging in is always on the port the protocol fixes for it.
     pub port: Option<u16>,
-    /// How much it wrote down. Logging reads this from `IBKR_DX_LOG_LEVEL`.
+    /// How much it wrote down. Logging reads this from `IB_DX_LOG_LEVEL`.
     pub log_level: Option<String>,
-    /// Where it wrote it. Logging reads this from `IBKR_DX_LOG_DIR`.
+    /// Where it wrote it. Logging reads this from `IB_DX_LOG_DIR`.
     pub log_dir: Option<String>,
     /// How many records it buffered before dropping them. Logging reads this
-    /// from `IBKR_DX_LOG_QUEUE`, and reads it as a count: a boolean here could
+    /// from `IB_DX_LOG_QUEUE`, and reads it as a count: a boolean here could
     /// state nothing the reader understood, so every value fell to the
     /// default.
     pub log_queue: Option<usize>,
     /// File retaining the next order id per account and API client. Unset uses
-    /// `ibkr-dx/order-ids.json` in the user's data directory. An empty path
-    /// disables persistence. Also read from `IBKR_DX_ORDER_ID_FILE`.
+    /// `ib-dx/order-ids.json` in the user's data directory. An empty path
+    /// disables persistence. Also read from `IB_DX_ORDER_ID_FILE`.
     pub order_id_file: Option<String>,
 
     // ── What the gateway did with what it received ──
@@ -84,7 +84,7 @@ pub struct GatewaySettings {
     pub execution_reports: Option<ExecutionReportScope>,
     /// The shape a gateway publishes an execution's time in. Its setting
     /// states `operator`, `instrument` or `utc`; also read from
-    /// `IBKR_DX_DATETIME_FORMAT`.
+    /// `IB_DX_DATETIME_FORMAT`.
     pub datetime_format: Option<DatetimeFormat>,
     /// Whether a US stock trading on Nasdaq is handed back under the older
     /// spelling. The gateway does, so a program written against it compares
@@ -200,7 +200,7 @@ fn order_id_file() -> Option<std::path::PathBuf> {
     if data.is_none() {
         log::warn!("cannot locate the user data directory; order ids will use session memory and venue replay only");
     }
-    data.map(|path| path.join("ibkr-dx/order-ids.json"))
+    data.map(|path| path.join("ib-dx/order-ids.json"))
 }
 
 impl Default for SessionSettings {
@@ -248,23 +248,23 @@ impl GatewaySettings {
         }
         SessionSettings {
             order_id_file: match self.order_id_file.clone()
-                .or_else(|| std::env::var("IBKR_DX_ORDER_ID_FILE").ok()) {
+                .or_else(|| std::env::var("IB_DX_ORDER_ID_FILE").ok()) {
                 Some(path) => (!path.is_empty()).then(|| path.into()),
                 None => order_id_file(),
             },
-            timezone: stated(self.timezone.as_ref(), "IBKR_DX_TZ")
+            timezone: stated(self.timezone.as_ref(), "IB_DX_TZ")
                 .unwrap_or_else(|| "UTC".to_string()),
-            locale: stated(self.locale.as_ref(), "IBKR_DX_LOCALE")
+            locale: stated(self.locale.as_ref(), "IB_DX_LOCALE")
                 .unwrap_or_else(|| crate::config::IB_LOCALE.to_string()),
-            build: stated(self.build.as_ref(), "IBKR_DX_BUILD")
+            build: stated(self.build.as_ref(), "IB_DX_BUILD")
                 .unwrap_or_else(|| crate::config::IB_BUILD.to_string()),
-            version: stated(self.version.as_ref(), "IBKR_DX_VERSION")
+            version: stated(self.version.as_ref(), "IB_DX_VERSION")
                 .unwrap_or_else(|| crate::config::IB_VERSION.to_string()),
             // The whole string, or the locale set into it, or neither. Tag
             // 6266 carries `{jdkVer}/{platform}/{locale}/{dist}` and the venue
             // refuses a locale that is not a canonical one.
-            encoded: stated(self.encoded.as_ref(), "IBKR_DX_ENCODED").unwrap_or_else(|| {
-                match stated(self.locale.as_ref(), "IBKR_DX_LOCALE") {
+            encoded: stated(self.encoded.as_ref(), "IB_DX_ENCODED").unwrap_or_else(|| {
+                match stated(self.locale.as_ref(), "IB_DX_LOCALE") {
                     // The identity this client announces, with the locale
                     // segment replaced. Composing it a second time here makes a
                     // session that states a locale announce a stale runtime and
@@ -282,13 +282,13 @@ impl GatewaySettings {
                     None => crate::config::IB_ENCODED.to_string(),
                 }
             }),
-            hardware_id: stated(self.hardware_id.as_ref(), "IBKR_DX_HWID"),
-            mac_address: stated(self.mac_address.as_ref(), "IBKR_DX_MAC"),
-            lan_ip: stated(self.lan_ip.as_ref(), "IBKR_DX_IP"),
-            market_data_host: stated(self.market_data_host.as_ref(), "IBKR_DX_FARM_HOST"),
+            hardware_id: stated(self.hardware_id.as_ref(), "IB_DX_HWID"),
+            mac_address: stated(self.mac_address.as_ref(), "IB_DX_MAC"),
+            lan_ip: stated(self.lan_ip.as_ref(), "IB_DX_IP"),
+            market_data_host: stated(self.market_data_host.as_ref(), "IB_DX_FARM_HOST"),
             port: self
                 .port
-                .or_else(|| std::env::var("IBKR_DX_MISC_PORT").ok().and_then(|v| v.parse().ok()))
+                .or_else(|| std::env::var("IB_DX_MISC_PORT").ok().and_then(|v| v.parse().ok()))
                 .unwrap_or(crate::config::MISC_PORT),
             execution_reports: self.execution_reports.unwrap_or_else(|| {
                 // However it is spelled, and said out loud when it is spelled
@@ -296,7 +296,7 @@ impl GatewaySettings {
                 // the default and the session asked the venue for every
                 // execution it still holds, which is the opposite of what was
                 // stated and a heavier request on every session that opens.
-                match std::env::var("IBKR_DX_EXECUTION_REPORTS") {
+                match std::env::var("IB_DX_EXECUTION_REPORTS") {
                     Ok(stated) if stated.eq_ignore_ascii_case("today") => {
                         ExecutionReportScope::Today
                     }
@@ -304,7 +304,7 @@ impl GatewaySettings {
                         if !stated.is_empty() && !stated.eq_ignore_ascii_case("all") =>
                     {
                         log::warn!(
-                            "IBKR_DX_EXECUTION_REPORTS names neither today nor all: {stated}. \
+                            "IB_DX_EXECUTION_REPORTS names neither today nor all: {stated}. \
                              This session asks for every execution the venue holds",
                         );
                         ExecutionReportScope::All
@@ -316,11 +316,11 @@ impl GatewaySettings {
                 // However it is cased, and said out loud when it names none
                 // of the three: a value nothing reads is a setting that was
                 // set and did nothing.
-                match std::env::var("IBKR_DX_DATETIME_FORMAT") {
+                match std::env::var("IB_DX_DATETIME_FORMAT") {
                     Ok(stated) if !stated.is_empty() => {
                         DatetimeFormat::named(&stated).unwrap_or_else(|| {
                             log::warn!(
-                                "IBKR_DX_DATETIME_FORMAT names neither operator, instrument \
+                                "IB_DX_DATETIME_FORMAT names neither operator, instrument \
                                  nor utc: {stated}. This session publishes execution times on \
                                  the operator's zone",
                             );
@@ -333,12 +333,12 @@ impl GatewaySettings {
             island_for_nasdaq: self.island_for_nasdaq.unwrap_or_else(|| {
                 // As above: `False` turned the setting on, because only the
                 // lowercase spelling counted as off.
-                !std::env::var("IBKR_DX_ISLAND_FOR_NASDAQ").is_ok_and(|stated| {
+                !std::env::var("IB_DX_ISLAND_FOR_NASDAQ").is_ok_and(|stated| {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
                 })
             }),
             reconnect_on_socket_err: self.reconnect_on_socket_err.unwrap_or_else(|| {
-                !std::env::var("IBKR_DX_RECONNECT_ON_SOCKET_ERR").is_ok_and(|stated| {
+                !std::env::var("IB_DX_RECONNECT_ON_SOCKET_ERR").is_ok_and(|stated| {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
                 })
             }),
@@ -422,7 +422,7 @@ mod tests {
                 String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
             return;
         }
-        unsafe { std::env::set_var("IBKR_DX_LOCALE", "fr_FR") };
+        unsafe { std::env::set_var("IB_DX_LOCALE", "fr_FR") };
         let from_environment = GatewaySettings::default().resolve();
         assert_eq!(from_environment.locale, "fr_FR");
         // The identity this client announces with its locale set into it, read
@@ -440,7 +440,7 @@ mod tests {
         }
         .resolve();
         assert_eq!(stated.locale, "ja_JP", "the caller's own wins");
-        unsafe { std::env::remove_var("IBKR_DX_LOCALE") };
+        unsafe { std::env::remove_var("IB_DX_LOCALE") };
 
         let neither = GatewaySettings::default().resolve();
         assert_eq!(neither.timezone, "UTC");
@@ -455,20 +455,20 @@ mod tests {
         // because these are the process's own variables and a second test
         // setting them races this one reading them.
         for spelling in ["today", "Today", "TODAY"] {
-            unsafe { std::env::set_var("IBKR_DX_EXECUTION_REPORTS", spelling) };
+            unsafe { std::env::set_var("IB_DX_EXECUTION_REPORTS", spelling) };
             assert_eq!(
                 GatewaySettings::default().resolve().execution_reports,
                 ExecutionReportScope::Today,
                 "{spelling} asked for every execution the venue holds",
             );
         }
-        unsafe { std::env::set_var("IBKR_DX_EXECUTION_REPORTS", "yesterday") };
+        unsafe { std::env::set_var("IB_DX_EXECUTION_REPORTS", "yesterday") };
         assert_eq!(
             GatewaySettings::default().resolve().execution_reports,
             ExecutionReportScope::All,
             "a value naming neither keeps the default",
         );
-        unsafe { std::env::remove_var("IBKR_DX_EXECUTION_REPORTS") };
+        unsafe { std::env::remove_var("IB_DX_EXECUTION_REPORTS") };
 
         // The datetime-format setting reads the same way: however it is
         // cased, and a value naming none of the three keeps the default
@@ -478,39 +478,39 @@ mod tests {
             ("Instrument", DatetimeFormat::InstrumentTimezone),
             ("UTC", DatetimeFormat::UtcFormat),
         ] {
-            unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", spelling) };
+            unsafe { std::env::set_var("IB_DX_DATETIME_FORMAT", spelling) };
             assert_eq!(
                 GatewaySettings::default().resolve().datetime_format,
                 want,
                 "{spelling} published on another clock",
             );
         }
-        unsafe { std::env::set_var("IBKR_DX_DATETIME_FORMAT", "sidereal") };
+        unsafe { std::env::set_var("IB_DX_DATETIME_FORMAT", "sidereal") };
         assert_eq!(
             GatewaySettings::default().resolve().datetime_format,
             DatetimeFormat::OperatorTimezone,
             "a value naming none of the three keeps the default",
         );
-        unsafe { std::env::remove_var("IBKR_DX_DATETIME_FORMAT") };
+        unsafe { std::env::remove_var("IB_DX_DATETIME_FORMAT") };
 
         for spelling in ["false", "False", "NO", "0"] {
-            unsafe { std::env::set_var("IBKR_DX_ISLAND_FOR_NASDAQ", spelling) };
+            unsafe { std::env::set_var("IB_DX_ISLAND_FOR_NASDAQ", spelling) };
             assert!(
                 !GatewaySettings::default().resolve().island_for_nasdaq,
                 "{spelling} left the older spelling on",
             );
         }
-        unsafe { std::env::remove_var("IBKR_DX_ISLAND_FOR_NASDAQ") };
+        unsafe { std::env::remove_var("IB_DX_ISLAND_FOR_NASDAQ") };
 
         for (stated, file) in [("ids.json", Some("ids.json")), ("", None)] {
-            unsafe { std::env::set_var("IBKR_DX_ORDER_ID_FILE", stated) };
+            unsafe { std::env::set_var("IB_DX_ORDER_ID_FILE", stated) };
             assert_eq!(
                 GatewaySettings::default().resolve().order_id_file.as_deref(),
                 file.map(std::path::Path::new),
                 "{stated:?}, where an empty path keeps no file",
             );
         }
-        unsafe { std::env::remove_var("IBKR_DX_ORDER_ID_FILE") };
+        unsafe { std::env::remove_var("IB_DX_ORDER_ID_FILE") };
         // A data directory that is not absolute names no default file.
         #[cfg(not(target_os = "windows"))]
         {

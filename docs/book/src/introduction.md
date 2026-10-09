@@ -1,9 +1,9 @@
 <div class="dx-hero">
 
-<h1 class="dx-title">ibkr-dx</h1>
+<h1 class="dx-title">ib-dx</h1>
 
-<img class="dx-banner dx-banner-light" src="./banner-light.svg" alt="ibkr-dx: direct connection engine for Interactive Brokers" />
-<img class="dx-banner dx-banner-dark" src="./banner-dark.svg" alt="ibkr-dx: direct connection engine for Interactive Brokers" />
+<img class="dx-banner dx-banner-light" src="./banner-light.svg" alt="ib-dx: direct connection engine for Interactive Brokers" />
+<img class="dx-banner dx-banner-dark" src="./banner-dark.svg" alt="ib-dx: direct connection engine for Interactive Brokers" />
 
 <p class="dx-lede">Talk directly to IBKR. The TWS API your program already uses, with no IB Gateway, no Trader Workstation and no JVM between you and the venue.</p>
 
@@ -11,7 +11,7 @@
   <a class="dx-primary" href="./getting-started.html">Get started</a>
   <a href="./recipes/python/login.html">Python recipes</a>
   <a href="./recipes/rust/login.html">Rust recipes</a>
-  <a href="https://github.com/userFRM/ibkr-dx">GitHub</a>
+  <a href="https://github.com/userFRM/ib-dx">GitHub</a>
 </p>
 
 </div>
@@ -21,7 +21,7 @@
 ## One line changes
 
 A program written against the TWS API talks to IB Gateway or Trader Workstation
-over a socket on localhost, and that process talks to the venue. ibkr-dx takes
+over a socket on localhost, and that process talks to the venue. ib-dx takes
 the gateway's place: it logs in, holds the trading, market-data, historical and
 security-definition connections open, and gives your program the same calls and
 the same callbacks.
@@ -95,7 +95,7 @@ held, but nothing connects on it. There is no local process to point it at.
 Under active development. Every capability claim in this repository is assigned
 from a named artifact, a test, a script or a recorded server response, never
 from reading the code. The matrix is in
-[capabilities.md](https://github.com/userFRM/ibkr-dx/blob/main/docs/capabilities.md),
+[capabilities.md](https://github.com/userFRM/ib-dx/blob/main/docs/capabilities.md),
 its counts are recomputed on every commit, and the build fails if one moves.
 
 Both install routes build from the repository: see

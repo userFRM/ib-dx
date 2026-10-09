@@ -2,11 +2,11 @@
 a contract stated as any other type, or stating none, before looking it up,
 in its words under 321, and so does this surface. A stock stated as CS, or in
 lower case, is a stock."""
-import ibkr_dx
+import ib_dx
 from conftest import refused
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.seen = []
@@ -17,11 +17,11 @@ class Errors(ibkr_dx.EWrapper):
 
 def test_a_fundamental_report_is_asked_about_a_stock_alone():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU1")
     c._test_map_con_id(756733, 0)
     for req_id, sec_type in enumerate(["FUT", "", "cs", "stk"], start=1):
-        contract = ibkr_dx.Contract()
+        contract = ib_dx.Contract()
         contract.conId, contract.secType = 756733, sec_type
         c.reqFundamentalData(req_id, contract, "ReportSnapshot", [])
     c.poll()

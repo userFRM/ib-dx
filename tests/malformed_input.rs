@@ -15,10 +15,10 @@
 //! The corruption is generated rather than recorded: a fixed sequence, so a
 //! Failure is reproducible from the test name and nothing else.
 
-use ibkr_dx::control::contracts;
-use ibkr_dx::control::fundamental;
-use ibkr_dx::control::{historical, news};
-use ibkr_dx::protocol::{
+use ib_dx::control::contracts;
+use ib_dx::control::fundamental;
+use ib_dx::control::{historical, news};
+use ib_dx::protocol::{
     chain_model, fix, fixcomp, ns, regulatory_snapshot, tbt_stream, tick_decoder,
     trading_status, xyz,
 };

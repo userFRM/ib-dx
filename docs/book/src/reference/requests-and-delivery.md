@@ -143,7 +143,7 @@ for its default location, reservations and moving the file.
 ## Settings and request values
 
 There are 17 carried settings, on Rust `EClientConfig.gateway` and Python
-`ibkr_dx.configure()`, and 15 settings recorded as inapplicable here.
+`ib_dx.configure()`, and 15 settings recorded as inapplicable here.
 Registration is held by the engine and does not wait on a caller thread.
 
 Historical news takes signed `total_results: i32`. Values above 300 are sent as

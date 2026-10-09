@@ -11,9 +11,9 @@ use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ibkr_dx::api::client::{Contract, EClient, EClientConfig};
-use ibkr_dx::api::types::TickAttrib;
-use ibkr_dx::api::wrapper::Wrapper;
+use ib_dx::api::client::{Contract, EClient, EClientConfig};
+use ib_dx::api::types::TickAttrib;
+use ib_dx::api::wrapper::Wrapper;
 
 #[derive(Default)]
 struct Counts {
@@ -38,7 +38,7 @@ impl Wrapper for PrintWrapper {
         println!("[{label:>14}] req_id={req_id} price={price:.4}");
     }
 
-    fn tick_size(&mut self, req_id: i64, _tick_type: i32, size: ibkr_dx::api::Decimal) {
+    fn tick_size(&mut self, req_id: i64, _tick_type: i32, size: ib_dx::api::Decimal) {
         let mut c = self.counts.lock().unwrap();
         let label = match req_id {
             1 => { c.realtime_ticks += 1; "realtime" }
@@ -59,7 +59,7 @@ impl Wrapper for PrintWrapper {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = ibkr_dx::logging::try_init_from_env("error");
+    let _ = ib_dx::logging::try_init_from_env("error");
 
     let username = env::var("IB_USERNAME")?;
     let password = env::var("IB_PASSWORD")?;

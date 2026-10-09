@@ -14,8 +14,8 @@ name: release
 #   1. An environment named `release` (Settings, Environments) with a required
 #      reviewer and a deployment rule that admits only tags matching `v*`. Both
 #      publish jobs name it, so neither runs until the reviewer approves.
-#   2. On PyPI, a pending trusted publisher for the project `ibkr-dx`: owner
-#      `userFRM`, repository `ibkr-dx`, workflow `release.yml`, environment
+#   2. On PyPI, a pending trusted publisher for the project `ib-dx`: owner
+#      `userFRM`, repository `ib-dx`, workflow `release.yml`, environment
 #      `release`. The `pypi` job then signs in with the run's identity and
 #      holds no password.
 #   3. A crates.io token with the publish-new scope and a short expiry, saved
@@ -158,7 +158,7 @@ jobs:
           "${{ steps.python.outputs.python-path }}" -m venv "$RUNNER_TEMP/check"
           BIN="$RUNNER_TEMP/check/bin"
           [ -d "$BIN" ] || BIN="$RUNNER_TEMP/check/Scripts"
-          "$BIN/python" -m pip install --find-links dist --no-index ibkr-dx
+          "$BIN/python" -m pip install --find-links dist --no-index ib-dx
           "$BIN/python" scripts/check_installed_package.py
 
       - uses: actions/upload-artifact@v4

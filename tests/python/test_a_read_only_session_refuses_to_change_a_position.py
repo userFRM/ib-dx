@@ -1,10 +1,10 @@
 """A read-only session refuses to change a position, and a session that is not read-only does not."""
 
-import ibkr_dx
+import ib_dx
 
 
 def spy():
-    c = ibkr_dx.Contract()
+    c = ib_dx.Contract()
     c.symbol = "SPY"
     c.secType = "STK"
     c.exchange = "SMART"
@@ -15,7 +15,7 @@ def spy():
 def test_a_read_only_session_refuses_to_change_a_position():
     """The reference client carries the same control. A research program wants
     the guarantee at the client rather than in its own discipline."""
-    class Errors(ibkr_dx.EWrapper):
+    class Errors(ib_dx.EWrapper):
         def __init__(self):
             super().__init__()
             self.seen = []
@@ -24,10 +24,10 @@ def test_a_read_only_session_refuses_to_change_a_position():
             self.seen.append((req_id, code, msg))
 
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("DU0000000", readonly=True)
 
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action = "BUY"
     order.orderType = "MKT"
     order.totalQuantity = 1
@@ -54,9 +54,9 @@ def test_a_session_that_is_not_read_only_does_not_refuse():
     A test-connected client has no venue behind it, so the order fails further
     down. What matters here is that it fails somewhere other than the guard.
     """
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("DU0000000")
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.action = "BUY"
     order.orderType = "MKT"
     order.totalQuantity = 1

@@ -3,8 +3,8 @@
 //! Sent directly on the market-data connection, so what is being read is the
 //! message this client writes and the venue's answer to it — not the engine's
 //! handling of either.
-use ibkr_dx::gateway::{Gateway, GatewayConfig};
-use ibkr_dx::protocol::fixcomp;
+use ib_dx::gateway::{Gateway, GatewayConfig};
+use ib_dx::protocol::fixcomp;
 use std::time::{Duration, Instant};
 
 fn config() -> GatewayConfig {
@@ -14,8 +14,8 @@ fn config() -> GatewayConfig {
         password: zeroize::Zeroizing::new(std::env::var("IB_PASSWORD").expect("IB_PASSWORD")),
         host: std::env::var("IB_HOST").unwrap_or_else(|_| "cdc1.ibllc.com".to_string()),
         paper: true,
-        ib_key_timeout_secs: ibkr_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
-        ib_key_token_sub_type: ibkr_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
+        ib_key_timeout_secs: ib_dx::auth::session::IB_KEY_DEFAULT_TIMEOUT_SECS,
+        ib_key_token_sub_type: ib_dx::auth::session::IB_KEY_DEFAULT_TOKEN_SUB_TYPE.into(),
         code_provider: None,
         cancel: None,
         resume: None,
@@ -26,7 +26,7 @@ fn config() -> GatewayConfig {
 #[ignore = "opens a session of its own, which the account allows one of; run it with --ignored"]
 fn raw_farm_subscribe_test() {
     let cfg = config();
-    let ibkr_dx::gateway::Session { gateway: _gw, market_data: mut farm, trading: _ccp, historical: _hmds, .. } =
+    let ib_dx::gateway::Session { gateway: _gw, market_data: mut farm, trading: _ccp, historical: _hmds, .. } =
         Gateway::connect(&cfg).expect("Gateway connect failed");
 
     eprintln!("Farm connected, seq={}", farm.seq);
@@ -65,11 +65,11 @@ fn raw_farm_subscribe_test() {
         for frame in &frames {
             total_msgs += 1;
             let raw = match &frame {
-                ibkr_dx::protocol::connection::Frame::Fix(d) |
-                ibkr_dx::protocol::connection::Frame::FixComp(d) |
-                ibkr_dx::protocol::connection::Frame::Binary(d) => d.as_slice(),
+                ib_dx::protocol::connection::Frame::Fix(d) |
+                ib_dx::protocol::connection::Frame::FixComp(d) |
+                ib_dx::protocol::connection::Frame::Binary(d) => d.as_slice(),
                 // Control-state frames are not consumed downstream.
-                ibkr_dx::protocol::connection::Frame::Control(_) => continue,
+                ib_dx::protocol::connection::Frame::Control(_) => continue,
             };
             // Decompress if FIXCOMP
             let msgs = if raw.starts_with(b"8=FIXCOMP") {

@@ -11,7 +11,7 @@ import os
 import sys
 import time
 import threading
-from ibkr_dx import EWrapper, EClient, Contract
+from ib_dx import EWrapper, EClient, Contract
 
 EXPECTED_ACCOUNT_KEYS = {"NetLiquidation", "TotalCashValue", "BuyingPower"}
 

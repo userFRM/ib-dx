@@ -11,7 +11,7 @@ Run: pytest tests/python/test_a_listing_names_what_the_reference_client_reads.py
 from collections import Counter
 
 import pytest
-from ibkr_dx import (
+from ib_dx import (
     BarData,
     ContractDescription,
     ContractDetails,

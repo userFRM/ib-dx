@@ -15,7 +15,7 @@ Run: pytest tests/python/test_a_condition_prints_the_text_the_reference_writes.p
 
 import pytest
 
-from ibkr_dx import (
+from ib_dx import (
     ExecutionCondition, MarginCondition, PercentChangeCondition,
     PriceCondition, TimeCondition, VolumeCondition,
 )

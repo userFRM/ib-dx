@@ -12,11 +12,11 @@ offered on neither surface; the engine keeps its count to itself.
 
 import threading
 
-import ibkr_dx
+import ib_dx
 
 
 def test_ten_thousand_requests_return():
-    c = ibkr_dx.EClient(ibkr_dx.EWrapper())
+    c = ib_dx.EClient(ib_dx.EWrapper())
     c._test_connect("T")
     # Nothing takes from the channel behind a test session.
     admitting = threading.Thread(
@@ -29,4 +29,4 @@ def test_ten_thousand_requests_return():
 
 
 def test_the_admission_count_is_not_offered():
-    assert not hasattr(ibkr_dx.EClient, "backlog")
+    assert not hasattr(ib_dx.EClient, "backlog")

@@ -3,10 +3,10 @@
 //! Tests cross-module interactions: contracts ↔ FIX protocol, historical ↔ FIX protocol,
 //! Account parsing, and full workflows that span multiple control plane components.
 
-use ibkr_dx::control::contracts::*;
-use ibkr_dx::control::historical::*;
-use ibkr_dx::protocol::fix;
-use ibkr_dx::protocol::fixcomp;
+use ib_dx::control::contracts::*;
+use ib_dx::control::historical::*;
+use ib_dx::protocol::fix;
+use ib_dx::protocol::fixcomp;
 
 // ============================================================
 // Contract definition: FIX roundtrip (build request → parse response)
@@ -239,7 +239,7 @@ fn historical_response_parse_multi_bar() {
     assert_eq!(resp.bars[0].close, 151.5);
     assert_eq!(resp.bars[0].high, 152.0);
     assert_eq!(resp.bars[0].low, 149.5);
-    assert_eq!(ibkr_dx::types::qty_to_f64(resp.bars[0].volume), 500000.0);
+    assert_eq!(ib_dx::types::qty_to_f64(resp.bars[0].volume), 500000.0);
     assert_eq!(resp.bars[0].count, 1500);
 
     // Bars are in chronological order

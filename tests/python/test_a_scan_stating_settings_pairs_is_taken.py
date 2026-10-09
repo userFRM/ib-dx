@@ -6,10 +6,10 @@ the venue, which is said once in the log, and the scan goes as its filters
 state it.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Errors(ibkr_dx.EWrapper):
+class Errors(ib_dx.EWrapper):
     def __init__(self):
         super().__init__()
         self.errors = []
@@ -20,9 +20,9 @@ class Errors(ibkr_dx.EWrapper):
 
 def test_a_scan_stating_settings_pairs_goes():
     w = Errors()
-    c = ibkr_dx.EClient(w)
+    c = ib_dx.EClient(w)
     c._test_connect("T")
-    sub = ibkr_dx.ScannerSubscription()
+    sub = ib_dx.ScannerSubscription()
     sub.instrument = "STK"
     sub.locationCode = "STK.US.MAJOR"
     sub.scanCode = "TOP_PERC_GAIN"

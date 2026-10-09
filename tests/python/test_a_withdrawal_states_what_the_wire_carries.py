@@ -14,10 +14,10 @@ time a gateway cannot read is refused as a gateway refuses it, and the order
 keeps working.
 """
 
-import ibkr_dx
+import ib_dx
 
 
-class Heard(ibkr_dx.EWrapper):
+class Heard(ib_dx.EWrapper):
     def __init__(self):
         self.refusals = []
 
@@ -29,7 +29,7 @@ class Heard(ibkr_dx.EWrapper):
 
 def _client():
     heard = Heard()
-    client = ibkr_dx.EClient(heard)
+    client = ib_dx.EClient(heard)
     client._test_connect("DU0000000")
     # A withdrawal names an order this client is working, or it is answered
     # rather than sent. What is under test here is what the withdrawal
@@ -53,7 +53,7 @@ def _withdrew(client):
 
 def test_a_withdrawal_that_states_nothing_goes_through():
     client, heard = _client()
-    client.cancelOrder(1, ibkr_dx.OrderCancel())
+    client.cancelOrder(1, ib_dx.OrderCancel())
     sent = _withdrew(client)
     assert sent, "the order comes back"
     assert 'ext_operator: ""' in sent[0] and "manual_order_indicator: 2147483647" in sent[0], sent
@@ -72,7 +72,7 @@ def test_the_object_is_taken_where_a_bare_time_was_taken_before():
 
 def test_the_operator_and_who_entered_it_travel_on_the_cancel():
     client, heard = _client()
-    withdrawal = ibkr_dx.OrderCancel()
+    withdrawal = ib_dx.OrderCancel()
     withdrawal.extOperator = "someone"
     withdrawal.manualOrderIndicator = 1
     client.cancelOrder(1, withdrawal)
@@ -85,7 +85,7 @@ def test_the_operator_and_who_entered_it_travel_on_the_cancel():
 
 def test_a_time_the_wire_does_not_carry_is_said_and_the_order_still_comes_back():
     client, heard = _client()
-    withdrawal = ibkr_dx.OrderCancel()
+    withdrawal = ib_dx.OrderCancel()
     withdrawal.manualOrderCancelTime = "20260902-14:30:00"
     withdrawal.extOperator = "someone"
     client.cancelOrder(1, withdrawal)
@@ -101,8 +101,8 @@ def test_a_time_the_wire_does_not_carry_is_said_and_the_order_still_comes_back()
 def test_the_unset_indicator_states_nothing():
     client, heard = _client()
     # The number an integer nobody set carries is not a statement.
-    left_alone = ibkr_dx.OrderCancel()
-    assert left_alone.manualOrderIndicator == ibkr_dx.UNSET_INTEGER
+    left_alone = ib_dx.OrderCancel()
+    assert left_alone.manualOrderIndicator == ib_dx.UNSET_INTEGER
     client.cancelOrder(1, left_alone)
     assert "manual_order_indicator: 2147483647" in _withdrew(client)[0]
     assert not _said(client, heard)
@@ -112,7 +112,7 @@ def test_the_global_withdrawal_carries_the_same_and_no_time():
     client, heard = _client()
     client._test_finish_order_replay()
     client._test_set_instrument_count(1)
-    withdrawal = ibkr_dx.OrderCancel()
+    withdrawal = ib_dx.OrderCancel()
     withdrawal.manualOrderCancelTime = "20260902-14:30:00"
     withdrawal.extOperator = "someone"
     withdrawal.manualOrderIndicator = 0
@@ -134,7 +134,7 @@ def _codes(client, heard):
 def test_a_time_a_gateway_cannot_read_withdraws_nothing():
     client, heard = _client()
     for unread in ("garbage", "2026-09-24 14:30:00", "20260924 14:30", "   "):
-        withdrawal = ibkr_dx.OrderCancel()
+        withdrawal = ib_dx.OrderCancel()
         withdrawal.manualOrderCancelTime = unread
         client.cancelOrder(1, withdrawal)
     assert not _withdrew(client), "the order keeps working, as through a gateway"
@@ -152,7 +152,7 @@ def test_the_forms_a_gateway_reads_are_withdrawn():
 
 def test_each_is_written_as_its_text_and_the_indicator_read_as_a_number():
     client, heard = _client()
-    withdrawal = ibkr_dx.OrderCancel()
+    withdrawal = ib_dx.OrderCancel()
     withdrawal.extOperator = 42
     withdrawal.manualOrderIndicator = 1
     client.cancelOrder(1, withdrawal)
@@ -170,7 +170,7 @@ def test_an_operator_that_would_split_the_cancel_withdraws_nothing():
     client, heard = _client()
     client._test_finish_order_replay()
     client._test_set_instrument_count(1)
-    withdrawal = ibkr_dx.OrderCancel()
+    withdrawal = ib_dx.OrderCancel()
     withdrawal.extOperator = "someone\x0111=7"
     client.cancelOrder(1, withdrawal)
     client.reqGlobalCancel(withdrawal)

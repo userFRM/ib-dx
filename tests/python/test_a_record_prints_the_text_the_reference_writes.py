@@ -16,7 +16,7 @@ Run: pytest tests/python/test_a_record_prints_the_text_the_reference_writes.py -
 import re
 from decimal import Decimal
 
-import ibkr_dx
+import ib_dx
 
 
 def _idless(text):
@@ -31,38 +31,38 @@ def _prints(record, expected):
 
 
 def test_fresh_records_print_the_reference_sentences():
-    _prints(ibkr_dx.Order(), "0,0,0:   @ ")
-    _prints(ibkr_dx.OrderComboLeg(), "")
-    _prints(ibkr_dx.OrderAllocation(),
+    _prints(ib_dx.Order(), "0,0,0:   @ ")
+    _prints(ib_dx.OrderComboLeg(), "")
+    _prints(ib_dx.OrderAllocation(),
             "Account: , Position: , PositionDesired: , PositionAfter: , "
             "DesiredAllocQty: , AllowedAllocQty: , IsMonetary: False")
-    _prints(ibkr_dx.Contract(),
+    _prints(ib_dx.Contract(),
             "ConId: 0, Symbol: , SecType: , LastTradeDateOrContractMonth: , "
             "Strike: , Right: , Multiplier: , Exchange: , PrimaryExchange: , "
             "Currency: , LocalSymbol: , TradingClass: , IncludeExpired: False, "
             "SecIdType: , SecId: , Description: , IssuerId: Combo:")
-    _prints(ibkr_dx.ComboLeg(), "0,0,,,0,0,,-1")
-    _prints(ibkr_dx.DeltaNeutralContract(), "0,0,0")
-    _prints(ibkr_dx.Execution(),
+    _prints(ib_dx.ComboLeg(), "0,0,,,0,0,,-1")
+    _prints(ib_dx.DeltaNeutralContract(), "0,0,0")
+    _prints(ib_dx.Execution(),
             "ExecId: , Time: , Account: , Exchange: , Side: , Shares: , "
             "Price: 0, PermId: 0, ClientId: 0, OrderId: 0, Liquidation: 0, "
             "CumQty: , AvgPrice: 0, OrderRef: , EvRule: , EvMultiplier: 0, "
             "ModelCode: , LastLiquidity: 0, PendingPriceRevision: False, "
             "Submitter: , OptExerciseOrLapseType: None")
-    _prints(ibkr_dx.BarData(),
+    _prints(ib_dx.BarData(),
             "Date: , Open: 0, High: 0, Low: 0, Close: 0, Volume: , WAP: , BarCount: 0")
     # The one place a fresh record reads differently from a fresh reference
     # record: its constructor births the coupon as the integer 0 while its
     # decoder — like this client's — keeps a float, and a details off the
     # wire reads the same under both. The field here is that float, so a
     # built one prints 0.0 where the reference's prints 0.
-    _prints(ibkr_dx.ContractDetails(),
+    _prints(ib_dx.ContractDetails(),
             "ConId: 0, Symbol: , SecType: , LastTradeDateOrContractMonth: , Strike: , "
             "Right: , Multiplier: , Exchange: , PrimaryExchange: , Currency: , "
             "LocalSymbol: , TradingClass: , IncludeExpired: False, SecIdType: , "
             "SecId: , Description: , IssuerId: Combo:,,0,,,0,0,,,,,,,,,,0,,,,0,"
             "None,,,,,,,,False,False,0.0,False,,,,,False,,,,,,,,None,,,,")
-    _prints(ibkr_dx.OrderState(),
+    _prints(ib_dx.OrderState(),
             "Status: , InitMarginBefore: , MaintMarginBefore: , EquityWithLoanBefore: , "
             "InitMarginChange: , MaintMarginChange: , EquityWithLoanChange: , "
             "InitMarginAfter: , MaintMarginAfter: , EquityWithLoanAfter: , "
@@ -75,7 +75,7 @@ def test_fresh_records_print_the_reference_sentences():
 
 
 def test_populated_records_print_the_reference_sentences():
-    contract = ibkr_dx.Contract()
+    contract = ib_dx.Contract()
     contract.conId = 1234
     contract.symbol = "AAPL"
     contract.secType = "OPT"
@@ -94,7 +94,7 @@ def test_populated_records_print_the_reference_sentences():
     contract.description = "Apple Inc"
     contract.issuerId = "E1234"
     contract.comboLegsDescrip = "AAPL"
-    leg = ibkr_dx.ComboLeg()
+    leg = ib_dx.ComboLeg()
     leg.conId = 756733
     leg.ratio = 1
     leg.action = "BUY"
@@ -104,7 +104,7 @@ def test_populated_records_print_the_reference_sentences():
     leg.designatedLocation = ""
     leg.exemptCode = -1
     contract.comboLegs = [leg]
-    hedge = ibkr_dx.DeltaNeutralContract()
+    hedge = ib_dx.DeltaNeutralContract()
     hedge.conId = 756733
     hedge.delta = 0.5
     hedge.price = 200.0
@@ -116,7 +116,7 @@ def test_populated_records_print_the_reference_sentences():
             "IncludeExpired: True, SecIdType: ISIN, SecId: US0378331005, Description: Apple Inc, "
             "IssuerId: E1234Combo:AAPL;756733,1,BUY,SMART,1,0,,-1;756733,0.5,200")
 
-    order = ibkr_dx.Order()
+    order = ib_dx.Order()
     order.orderId = 7
     order.clientId = 1
     order.permId = 123456789
@@ -125,15 +125,15 @@ def test_populated_records_print_the_reference_sentences():
     order.totalQuantity = Decimal("100")
     order.lmtPrice = 200.5
     order.tif = "DAY"
-    combo_leg = ibkr_dx.OrderComboLeg()
+    combo_leg = ib_dx.OrderComboLeg()
     combo_leg.price = 1.5
     order.orderComboLegs = [combo_leg]
-    order.conditions = [ibkr_dx.PriceCondition(0, 756733, "SMART", True, 200.0)]
+    order.conditions = [ib_dx.PriceCondition(0, 756733, "SMART", True, 200.0)]
     _prints(order,
             "7,1,123456789: LMT BUY 100@200.5 DAY CMB(1.5,) "
             "COND(Default price of 756733 on SMART is  >=  200.0  ,)")
 
-    state = ibkr_dx.OrderState()
+    state = ib_dx.OrderState()
     state.status = "Submitted"
     state.initMarginBefore = "100.0"
     state.commissionAndFees = 1.25
@@ -144,7 +144,7 @@ def test_populated_records_print_the_reference_sentences():
     state.suggestedSize = Decimal("100")
     state.completedTime = "20260930 10:00:00"
     state.completedStatus = "Filled"
-    allocation = ibkr_dx.OrderAllocation()
+    allocation = ib_dx.OrderAllocation()
     allocation.account = "DU1"
     allocation.position = Decimal("100")
     allocation.positionDesired = Decimal("200")
@@ -168,7 +168,7 @@ def test_populated_records_print_the_reference_sentences():
             "PositionAfter: 200, DesiredAllocQty: 100, AllowedAllocQty: 100, "
             "IsMonetary: True; )")
 
-    execution = ibkr_dx.Execution()
+    execution = ib_dx.Execution()
     execution.execId = "0001"
     execution.time = "20260930  10:00:00"
     execution.acctNumber = "DU1"
@@ -197,7 +197,7 @@ def test_populated_records_print_the_reference_sentences():
             "EvRule: EV, EvMultiplier: 25, ModelCode: MC, LastLiquidity: 1, "
             "PendingPriceRevision: False, Submitter: SUB, OptExerciseOrLapseType: None")
 
-    bar = ibkr_dx.BarData("20260930", 1.0, 2.0, 0.5, 1.5,
+    bar = ib_dx.BarData("20260930", 1.0, 2.0, 0.5, 1.5,
                           Decimal("1000"), Decimal("1.25"), 3)
     _prints(bar,
             "Date: 20260930, Open: 1, High: 2, Low: 0.5, Close: 1.5, "
@@ -205,7 +205,7 @@ def test_populated_records_print_the_reference_sentences():
 
 
 def test_details_print_their_lists_as_the_reference_renders_them():
-    details = ibkr_dx.ContractDetails()
+    details = ib_dx.ContractDetails()
     details.marketName = "AAPL"
     details.minTick = 0.01
     details.evMultiplier = 25
@@ -214,14 +214,14 @@ def test_details_print_their_lists_as_the_reference_renders_them():
     details.notes = "7"
     details.minSize = Decimal("1")
     details.lastPricePrecision = Decimal("0.010")
-    details.secIdList = [ibkr_dx.TagValue("ISIN", "US0378331005")]
+    details.secIdList = [ib_dx.TagValue("ISIN", "US0378331005")]
     assert ",AAPL,0.01," in str(details)
     assert ",5.5,False," in str(details), "the coupon reads as the float it is"
     assert ",False,True," in str(details), "the bond flags read under their reference names"
     assert ",0.010," in str(details), "a precision keeps the digits it was stated with"
     assert "[ID: ISIN=US0378331005;]" in _idless(str(details))
 
-    tag = ibkr_dx.TagValue("ISIN", "US0378331005")
+    tag = ib_dx.TagValue("ISIN", "US0378331005")
     _prints(tag, "ISIN=US0378331005;")
-    reason = ibkr_dx.IneligibilityReason("1", "no borrowing")
+    reason = ib_dx.IneligibilityReason("1", "no borrowing")
     _prints(reason, "[id: 1, description: no borrowing];")

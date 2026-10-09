@@ -25,7 +25,7 @@ import sys
 import threading
 import time
 
-from ibkr_dx import Contract, EClient, EWrapper
+from ib_dx import Contract, EClient, EWrapper
 
 #: Liquid enough to be quoting whenever a market is open, and spread across two
 #: asset classes so one venue going quiet does not read as the client stalling.

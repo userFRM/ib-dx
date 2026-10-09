@@ -8,7 +8,7 @@ import os
 import threading
 import time
 
-from ibkr_dx import EClient, EWrapper, Contract
+from ib_dx import EClient, EWrapper, Contract
 
 
 class Book:
