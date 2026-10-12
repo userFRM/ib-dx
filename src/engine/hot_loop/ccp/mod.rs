@@ -2617,6 +2617,16 @@ impl CcpState {
             (6095, account),
             (6529, &key),
         ]);
+        if shared.settings().send_zero_positions_for_todays_opening_only {
+            // The filter needs this account's opening quantity as well as its
+            // current holdings; only the login account gets it at startup.
+            let pnl_key = Self::next_pnl_key();
+            shared.name_account_request(&pnl_key, account);
+            let _ = conn.send_fix(&[
+                (fix::TAG_MSG_TYPE, "U"), (fix::TAG_SENDING_TIME, &ts),
+                (6040, "142"), (6529, &pnl_key), (1, account),
+            ]);
+        }
         hb.last_ccp_sent = Instant::now();
     }
 

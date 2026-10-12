@@ -37,6 +37,12 @@ impl EClient {
     /// waits here. An account that says nothing within ten seconds is answered
     /// with what this session holds — which reads the same as an account
     /// holding nothing, so it is said on `error` ahead of the answer.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     pub fn req_positions(&self) {
         // Answered from a session that has ended, this hands back the last
         // book with nothing to say it is stale: the shutdown does not clear
@@ -161,6 +167,12 @@ impl EClient {
     /// the subscription. A single-account login ignores the name as a gateway
     /// does. Subscribing asks the venue to restate that account now; the engine
     /// holds the answer until its download ends or the existing wait expires.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     pub fn req_account_updates(&self, subscribe: bool, acct_code: &str) {
         // The session before the account, as for every other request: an
         // ended one is told it has ended, not that it named a wrong account.
@@ -276,6 +288,12 @@ impl EClient {
 
     /// Subscribe to holdings of the named account under this request number.
     /// A model is taken and not applied, with a log notice once per session.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     pub fn req_positions_multi(&self, req_id: i64, account: &str, model_code: &str) {
         if self.number_unread(req_id) { return; }
         if self.session_over() {

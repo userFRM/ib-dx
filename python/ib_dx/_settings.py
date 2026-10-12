@@ -68,6 +68,14 @@ _SETTINGS: dict[str, tuple[str, str]] = {
         "IB_DX_RECONNECT_ON_SOCKET_ERR",
         "whether a session recovers on its own when a connection goes away",
     ),
+    "include_fx_positions": (
+        "IB_DX_INCLUDE_FX_POSITIONS",
+        "include CASH holdings in position, positionMulti and updatePortfolio; on by default",
+    ),
+    "send_zero_positions_for_todays_opening_only": (
+        "IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY",
+        "omit flat holdings with a known zero opening quantity from position and portfolio callbacks; off by default",
+    ),
     "master_client_id": (
         "IB_DX_MASTER_CLIENT_ID",
         "Master API client ID: the client also told of every other client's orders, fills and charges; unset by default",

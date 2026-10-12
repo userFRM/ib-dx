@@ -646,7 +646,7 @@ pub fn calendar_events(&self, con_id: i64) -> Result<String, Refusal>
 
 #### `req_positions`
 
-Request positions. Answered where the account has stated what it holds, which the venue does as a session opens: every holding and `position_end`, stated as the account stands where the answer is delivered, and each move after it on `position`. The engine holds the question until then, and nothing waits here. An account that says nothing within ten seconds is answered with what this session holds — which reads the same as an account holding nothing, so it is said on `error` ahead of the answer.
+Request positions. Answered where the account has stated what it holds, which the venue does as a session opens: every holding and `position_end`, stated as the account stands where the answer is delivered, and each move after it on `position`. The engine holds the question until then, and nothing waits here. An account that says nothing within ten seconds is answered with what this session holds — which reads the same as an account holding nothing, so it is said on `error` ahead of the answer. `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```rust
 pub fn req_positions(&self)
@@ -747,7 +747,7 @@ pub fn cancel_account_summary(&self, req_id: i64)
 
 #### `req_account_updates`
 
-Subscribe to the named account's figures and holdings, or withdraw the subscription. A single-account login ignores the name as a gateway does. Subscribing asks the venue to restate that account now; the engine holds the answer until its download ends or the existing wait expires.
+Subscribe to the named account's figures and holdings, or withdraw the subscription. A single-account login ignores the name as a gateway does. Subscribing asks the venue to restate that account now; the engine holds the answer until its download ends or the existing wait expires. `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```rust
 pub fn req_account_updates(&self, subscribe: bool, acct_code: &str)
@@ -813,7 +813,7 @@ pub fn cancel_account_updates_multi(&self, req_id: i64)
 
 #### `req_positions_multi`
 
-Subscribe to holdings of the named account under this request number. A model is taken and not applied, with a log notice once per session.
+Subscribe to holdings of the named account under this request number. A model is taken and not applied, with a log notice once per session. `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```rust
 pub fn req_positions_multi(&self, req_id: i64, account: &str, model_code: &str)

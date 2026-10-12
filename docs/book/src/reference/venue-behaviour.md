@@ -1027,3 +1027,24 @@ sent unchanged. Callback errors retain the caller's request id. The error
 message is:
 
 > lastTradeDateOrContractMonth: The date entered is invalid. The correct format is yyyyMM for a contract month or yyyyMMdd for a date. E.g.: 202607 or 20260724.
+
+
+## Position filters
+
+The session includes CASH positions by default. Set `include_fx_positions=false`
+in Rust's `EClientConfig.gateway`, or `include_fx_positions=False` in Python's
+`connect(settings={...})` or `ib_dx.configure()`, to omit them from `position`,
+`positionMulti`, and `updatePortfolio`.
+
+`send_zero_positions_for_todays_opening_only` defaults to false. When enabled,
+a flat holding is omitted only if its opening quantity is known to be zero.
+An opening long or short position closed today still arrives with quantity zero;
+so does a flat row whose opening quantity is unknown. A holding opened and closed
+intraday is omitted when its opening quantity is stated as zero. Nonzero holdings,
+including fractional ones, pass this setting.
+
+The opening quantity comes from the venue's daily position figures, rather than
+from the first quantity seen by this process. Both settings apply to initial
+answers and subsequent updates on every account. Their end callbacks are still
+delivered for empty answers. The filters do not remove stored positions or change
+P&L calculations.

@@ -977,14 +977,26 @@ factor included. Offering the saved session (`EClientConfig::resume`, or
 ## Configuration
 
 The gateway's configuration file is replaced by settings on the client:
-announced build, time zone, execution-report scope, and others — 19 in total,
+announced build, time zone, execution-report scope, and others — 21 in total,
 readable at runtime. Fourteen gateway settings are not settings here, and each says
 why or names what stands in for it (no window geometry, no local listening socket,
 no JVM heap, and no message pacing: a gateway paces requests at the rate its logon
 states (fifty a second where it states none) unless it is set to reject them
 instead, and nothing here does either).
 
-Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()`.
+Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()` or per-session
+`connect(settings={...})`.
+
+`include_fx_positions` is on by default. Turn it off to omit CASH rows from
+`position`, `positionMulti`, and `updatePortfolio`.
+`send_zero_positions_for_todays_opening_only` is off by default. Turn it on to
+omit flat rows whose opening quantity the venue states as zero. Flat rows with
+nonzero or unknown opening quantities still arrive, as do all nonzero holdings.
+Both settings apply to initial answers and later updates, including other
+accounts; end callbacks still arrive when every row is filtered. Stored holdings
+and P&L calculations are unchanged. The environment names are
+`IB_DX_INCLUDE_FX_POSITIONS` and
+`IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY`.
 
 Order IDs survive restarts in `ib-dx/order-ids.json` under the user's data
 directory: `$XDG_DATA_HOME` (or `~/.local/share`) on Linux,
@@ -1173,7 +1185,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,315 | No |
+| Rust, unit and integration | 3,317 | No |
 | Python | 1,481 | No |
 | Rust, live | 10 | Yes |
 | Python, live | 122 | Yes |

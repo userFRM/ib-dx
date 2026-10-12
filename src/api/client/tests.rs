@@ -14596,3 +14596,177 @@ fn order_id_reservations_are_exclusive_between_processes() {
     ids.sort_unstable();
     assert_eq!(ids, (1..=256).collect::<Vec<_>>());
 }
+
+
+#[derive(Default)]
+struct PositionCallbacks {
+    rows: Vec<(&'static str, String, i64, f64)>,
+    ends: Vec<&'static str>,
+}
+
+impl Wrapper for PositionCallbacks {
+    fn position(&mut self, account: &str, contract: &Contract, qty: crate::types::model::Decimal, _: f64) {
+        self.rows.push(("position", account.into(), contract.con_id, qty.into()));
+    }
+    fn position_multi(&mut self, _: i64, account: &str, _: &str, contract: &Contract, qty: crate::types::model::Decimal, _: f64) {
+        self.rows.push(("multi", account.into(), contract.con_id, qty.into()));
+    }
+    fn update_portfolio(&mut self, contract: &Contract, qty: crate::types::model::Decimal,
+                        _: f64, _: f64, _: f64, _: f64, _: f64, account: &str) {
+        self.rows.push(("portfolio", account.into(), contract.con_id, qty.into()));
+    }
+    fn position_end(&mut self) { self.ends.push("position"); }
+    fn position_multi_end(&mut self, _: i64) { self.ends.push("multi"); }
+    fn account_download_end(&mut self, _: &str) { self.ends.push("portfolio"); }
+}
+
+/// The FX switch covers snapshots, pending moves and streams on both accounts.
+/// Delivery tests previously exercised only the default, with stock holdings.
+#[test]
+fn the_fx_position_setting_filters_every_position_callback() {
+    for include in [None, Some(false), Some(true)] {
+        for cached in [false, true] {
+            let (client, rx, shared) = test_client();
+            shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                include_fx_positions: include, ..Default::default()
+            }.resolve()));
+            assert_eq!(shared.settings().include_fx_positions, include.unwrap_or(true));
+            let mut heard = PositionCallbacks::default();
+            for account in ["DU123", "DU999"] {
+                let portfolio = shared.portfolio_for(account);
+                for (con_id, sec_type) in [(1, "CASH"), (2, "STK")] {
+                    portfolio.set_position_info(PositionInfo {
+                        con_id, position: 1.0, symbol: "held".into(),
+                        sec_type: if cached { String::new() } else { sec_type.into() },
+                        ..Default::default()
+                    });
+                    if cached {
+                        client.core.cache_contract(con_id, Contract { con_id, sec_type: sec_type.into(), ..Default::default() });
+                    }
+                }
+                portfolio.note_account_value("NetLiquidation", "100", "USD");
+                portfolio.account_download_is_settled();
+            }
+            client.req_account_updates(true, "DU123");
+            client.req_positions();
+            client.req_positions_multi(1, "DU123", "");
+            client.req_positions_multi(2, "DU999", "");
+            the_engine_answers(&rx, &shared);
+            client.process_msgs(&mut heard);
+            assert_eq!(heard.ends.iter().filter(|&&e| e == "position").count(), 1);
+            assert_eq!(heard.ends.iter().filter(|&&e| e == "multi").count(), 2);
+            assert_eq!(heard.ends.iter().filter(|&&e| e == "portfolio").count(), 1);
+            for phase in 0..3 {
+                if phase != 0 {
+                    heard.rows.clear();
+                    for account in ["DU123", "DU999"] {
+                        let portfolio = shared.portfolio_for(account);
+                        for con_id in [1, 2] {
+                            let mut pi = portfolio.position_info(con_id).unwrap();
+                            pi.position = phase as f64 + 1.0;
+                            portfolio.set_position_info(pi);
+                        }
+                    }
+                    // Moves drained while a new answer is composed must use the same filter.
+                    if phase == 2 {
+                        client.req_positions();
+                        client.req_positions_multi(1, "DU123", "");
+                        client.req_positions_multi(2, "DU999", "");
+                        the_engine_answers(&rx, &shared);
+                    }
+                    client.process_msgs(&mut heard);
+                }
+                for (callback, account) in [("position", "DU123"), ("multi", "DU123"), ("multi", "DU999"), ("portfolio", "DU123")] {
+                    let ids: std::collections::BTreeSet<_> = heard.rows.iter()
+                        .filter(|(kind, on, ..)| *kind == callback && on == account).map(|r| r.2).collect();
+                    let expected = if include == Some(false) { vec![2] } else { vec![1, 2] };
+                    assert_eq!(ids.into_iter().collect::<Vec<_>>(), expected, "{include:?} cached={cached} phase={phase} {callback} {account}");
+                }
+            }
+            assert_eq!(shared.portfolio.position_infos().len(), 2, "filtering does not discard holdings");
+        }
+    }
+}
+
+/// Flat holdings are filtered by the venue's opening quantity, never by when
+/// this process first saw them. Existing seed tests checked P&L, not delivery.
+#[test]
+fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
+    use crate::engine::hot_loop::ccp::positions::{handle_pnl_response, handle_position_update};
+    // A request for another account must obtain its opening quantities too.
+    for restrict in [false, true] {
+        use std::io::Read;
+        let (_, _, shared) = test_client();
+        shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+            send_zero_positions_for_todays_opening_only: Some(restrict), ..Default::default()
+        }.resolve()));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+        let mut conn = Some(crate::protocol::connection::Connection::new_raw(stream).unwrap());
+        let mut ccp = crate::engine::hot_loop::ccp::CcpState::new();
+        let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+        ccp.send_account_refresh("DU999", &mut conn, &mut hb, &shared);
+        drop(conn);
+        let mut wire = String::new();
+        peer.read_to_string(&mut wire).unwrap();
+        let opening = wire.split("8=FIX").find(|frame| frame.contains("6040=142\x01"));
+        assert_eq!(opening.is_some(), restrict, "opening figures are requested when needed");
+        if let Some(frame) = opening {
+            assert!(frame.contains("1=DU999\x01"));
+            let key = frame.split('\x01').find_map(|p| p.strip_prefix("6529=")).unwrap();
+            handle_pnl_response(format!("35=U\x016040=143\x016529={key}\x016008=1\x016064=0\x01").as_bytes(), &shared);
+            assert_eq!(shared.portfolio_for("DU999").midnight_seeds()[0].qty_midnight, Some(0.0));
+            assert!(shared.portfolio.midnight_seeds().is_empty(), "the response belongs to the account asked for");
+        }
+    }
+    for restrict in [None, Some(false), Some(true)] {
+        for opening in [None, Some("0"), Some("-0.0"), Some("0.25"), Some("-2"), Some("NaN"), Some("bad")] {
+            let (client, rx, shared) = test_client();
+            shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                send_zero_positions_for_todays_opening_only: restrict, ..Default::default()
+            }.resolve()));
+            assert_eq!(shared.settings().send_zero_positions_for_todays_opening_only, restrict.unwrap_or(false));
+            let mut context = crate::engine::context::Context::new();
+            let opening_tag = opening.map(|qty| format!("6064={qty}\x01")).unwrap_or_default();
+            handle_pnl_response(format!("35=U\x016040=143\x016008=1\x01{opening_tag}8223=9\x01").as_bytes(), &shared);
+            // Another account's known zero must not suppress this account's opening holding.
+            shared.portfolio_for("DU999").set_midnight_seeds(String::new(), vec![crate::types::MidnightSeed {
+                con_id: 1, qty_midnight: Some(0.0), ..Default::default()
+            }]);
+            let mut heard = PositionCallbacks::default();
+            for qty in [0.0, 0.25, 0.0, -0.25, 0.0] {
+                let frame = std::collections::HashMap::from([
+                    (6008, "1".into()), (6064, qty.to_string()), (6068, "held".into()), (167, "STK".into()),
+                ]);
+                handle_position_update(&frame, &mut context, &shared, &None);
+                shared.portfolio.note_account_value("NetLiquidation", "100", "USD");
+                shared.portfolio.account_download_is_settled();
+                heard.rows.clear();
+                if heard.ends.is_empty() {
+                    client.req_account_updates(true, "DU123");
+                    client.req_positions();
+                    client.req_positions_multi(1, "DU123", "");
+                    the_engine_answers(&rx, &shared);
+                }
+                client.process_msgs(&mut heard);
+                let allowed = restrict != Some(true) || qty != 0.0 || !matches!(opening, Some("0" | "-0.0"));
+                for callback in ["position", "multi", "portfolio"] {
+                    let rows: Vec<_> = heard.rows.iter().filter(|r| r.0 == callback).map(|r| r.3).collect();
+                    assert_eq!(rows, if allowed { vec![qty] } else { vec![] }, "{restrict:?} opening={opening:?} qty={qty} {callback}");
+                }
+            }
+            assert_eq!(heard.ends, ["portfolio", "position", "multi"], "ends survive an empty answer");
+            if restrict == Some(true) && matches!(opening, Some("0" | "-0.0")) {
+                heard.rows.clear();
+                handle_pnl_response(b"35=U\x016040=143\x016008=1\x016064=-0.5\x01", &shared);
+                client.process_msgs(&mut heard);
+                for callback in ["position", "multi", "portfolio"] {
+                    assert_eq!(heard.rows.iter().filter(|r| r.0 == callback).map(|r| r.3).collect::<Vec<_>>(),
+                        [0.0], "a newly eligible flat row reaches {callback}");
+                }
+            }
+        }
+    }
+}

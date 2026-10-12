@@ -166,6 +166,12 @@ impl EClient {
     /// call returns, as every other request made before connecting is. A
     /// program written against the reference client has no exception handling
     /// around a request, because that client does not raise there.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     fn req_positions(&self, py: Python<'_>) -> PyResult<()> {
         let refused = ErrorOrigin::Question { q: Question::Positions, ends: true };
         let Some(tx) = self.tx_or_report_as(refused)? else { return Ok(()) };
@@ -200,6 +206,12 @@ impl EClient {
     /// the subscription. A single-account login ignores the name as a gateway
     /// does. Subscribing asks the venue to restate that account now; the engine
     /// holds the answer until its download ends or the existing wait expires.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     #[pyo3(signature = (subscribe, acct_code=""))]
     fn req_account_updates(&self, py: Python<'_>, subscribe: bool, acct_code: &str) -> PyResult<()> {
         // A subscription is the question of the account's figures; its
@@ -300,6 +312,12 @@ impl EClient {
 
     /// Subscribe to holdings of the named account under this request number.
     /// A model is taken and not applied, with a log notice once per session.
+    ///
+    /// `include_fx_positions` (default true) controls CASH rows.
+    /// `send_zero_positions_for_todays_opening_only` (default false) omits
+    /// flat rows only when the venue states a zero opening quantity. A
+    /// nonzero or unknown opening quantity still passes. Both settings apply
+    /// to the initial answer and later updates; end callbacks still arrive.
     #[pyo3(signature = (req_id, account, model_code))]
     fn req_positions_multi(&self, py: Python<'_>, req_id: i64, account: &str, model_code: &str) -> PyResult<()> {
         // As above.

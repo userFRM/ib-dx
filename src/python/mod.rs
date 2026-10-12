@@ -90,6 +90,16 @@ pub(crate) fn settings_from(
                     !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
                 );
             }
+            "include_fx_positions" | "includeFxPositions" => {
+                settings.include_fx_positions = Some(
+                    !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
+                );
+            }
+            "send_zero_positions_for_todays_opening_only" | "sendZeroPositionsForTodaysOpeningOnly" => {
+                settings.send_zero_positions_for_todays_opening_only = Some(
+                    ["1", "true", "yes"].iter().any(|on| value.eq_ignore_ascii_case(on)),
+                );
+            }
             // The client a gateway also tells of every other client's orders.
             "master_client_id" | "masterClientId" => {
                 settings.master_client_id = Some(
@@ -194,7 +204,7 @@ mod settings_from_tests {
     /// a name this map does not know is refused rather than dropped — so
     /// without both spellings the caller's connect line simply fails.
     #[test]
-    fn the_recovery_switch_is_taken_under_either_spelling() {
+    fn session_switches_are_taken_under_either_spelling() {
         for name in ["reconnectOnSocketErr", "reconnect_on_socket_err"] {
             let stated = std::collections::HashMap::from([
                 (name.to_string(), "false".to_string()),
@@ -206,6 +216,18 @@ mod settings_from_tests {
             ("reconnectOnSocketErr".to_string(), "true".to_string()),
         ])).expect("the name is known");
         assert!(on.reconnect_on_socket_err, "and on when it says so");
+        for (fx, zero) in [
+            ("include_fx_positions", "send_zero_positions_for_todays_opening_only"),
+            ("includeFxPositions", "sendZeroPositionsForTodaysOpeningOnly"),
+        ] {
+            for (spelling, on) in [("True", true), ("YES", true), ("1", true), ("False", false), ("no", false), ("0", false)] {
+                let settled = super::settings_from(std::collections::HashMap::from([
+                    (fx.into(), spelling.into()), (zero.into(), spelling.into()),
+                ])).unwrap();
+                assert_eq!(settled.include_fx_positions, on);
+                assert_eq!(settled.send_zero_positions_for_todays_opening_only, on);
+            }
+        }
     }
 }
 

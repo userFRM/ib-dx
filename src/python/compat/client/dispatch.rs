@@ -1192,6 +1192,7 @@ impl EClient {
                 self.positions_requested.store(true, Ordering::Release);
                 let account = self.account();
                 for pi in &shared.portfolio.position_infos() {
+                    if !self.core.position_is_visible(shared, &account, pi) { continue; }
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     owed!(out, py, "position", (account.as_str(), &c_py, DecimalField::from_float(pi.position), avg_cost));
@@ -1199,6 +1200,7 @@ impl EClient {
                 owed!(out, py, "position_end", ());
                 let watching = self.multi_position_watchers();
                 for pi in &already_stated {
+                    if !self.core.position_is_visible(shared, &account, pi) { continue; }
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     for req_id in &watching {
@@ -1225,6 +1227,7 @@ impl EClient {
                 }
                 moves.extend(portfolio.drain_position_changes().into_iter().map(|p| (p.con_id, p)));
                 for pi in moves.values() {
+                    if !self.core.position_is_visible(shared, &on, pi) { continue; }
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     if on == self.account() && self.positions_requested.load(Ordering::Acquire) {
@@ -1237,7 +1240,7 @@ impl EClient {
                     }
                 }
                 self.core.select_positions_account(req_id, &on, &model_code);
-                for pi in portfolio.position_infos().iter().filter(|pi| pi.position != 0.0) {
+                for pi in portfolio.position_infos().iter().filter(|pi| self.core.position_is_visible(shared, &on, pi)) {
                     let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     owed!(out, py, "position_multi",
@@ -1452,6 +1455,7 @@ impl EClient {
             let per_request = self.multi_position_watchers();
             let account = self.account();
             for pi in &positions {
+                if !self.core.position_is_visible(shared, &account, pi) { continue; }
                 let c_py = Py::new(py, self.position_contract(py, pi, shared)?)?.into_any();
                 let avg_cost = pi.avg_cost as f64 / crate::types::PRICE_SCALE as f64;
                 if on_position {
@@ -1467,6 +1471,7 @@ impl EClient {
         }
 
         for (account, pi) in named_positions {
+            if !self.core.position_is_visible(shared, &account, &pi) { continue; }
             let c_py = Py::new(py, self.position_contract(py, &pi, shared)?)?.into_any();
             for req_id in self.multi_position_watchers() {
                 if self.core.positions_account(shared, req_id) == account {

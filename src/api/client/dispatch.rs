@@ -898,6 +898,7 @@ impl EClient {
                 // Watching from here, where the answer stands.
                 self.positions_requested.store(true, Ordering::Release);
                 for pi in &self.shared.portfolio.position_infos() {
+                    if !self.core.position_is_visible(&self.shared, &self.account_id, pi) { continue; }
                     let c = self.position_contract(pi);
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     wrapper.position(&self.account_id, &c, pi.position.into(), avg_cost);
@@ -905,6 +906,7 @@ impl EClient {
                 wrapper.position_end();
                 let watching = self.multi_position_watchers();
                 for pi in &already_stated {
+                    if !self.core.position_is_visible(&self.shared, &self.account_id, pi) { continue; }
                     let c = self.position_contract(pi);
                     let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     for req_id in &watching {
@@ -930,6 +932,7 @@ impl EClient {
                 }
                 moves.extend(portfolio.drain_position_changes().into_iter().map(|p| (p.con_id, p)));
                 for pi in moves.values() {
+                    if !self.core.position_is_visible(&self.shared, &account, pi) { continue; }
                     let contract = self.position_contract(pi);
                     let cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                     if account == self.account_id && self.positions_requested.load(Ordering::Acquire) {
@@ -944,7 +947,7 @@ impl EClient {
                 self.core.select_positions_account(req_id, &account, &model_code);
                 // Labelled with the account they are on, not with the one
                 // that was asked about.
-                for pi in portfolio.position_infos().into_iter().filter(|pi| pi.position != 0.0) {
+                for pi in portfolio.position_infos().into_iter().filter(|pi| self.core.position_is_visible(&self.shared, &account, pi)) {
                     let contract = self.position_contract(&pi);
                     wrapper.position_multi(
                         req_id, &account, &model_code, &contract, pi.position.into(),
@@ -1183,6 +1186,7 @@ impl EClient {
             let on_position = self.positions_requested.load(Ordering::Acquire);
             let per_request = self.multi_position_watchers();
             for pi in &positions {
+                if !self.core.position_is_visible(&self.shared, &self.account_id, pi) { continue; }
                 let contract = self.position_contract(pi);
                 let avg_cost = pi.avg_cost as f64 / PRICE_SCALE_F;
                 if on_position {
@@ -1198,6 +1202,7 @@ impl EClient {
         }
 
         for (account, pi) in named_positions {
+            if !self.core.position_is_visible(&self.shared, &account, &pi) { continue; }
             let contract = self.position_contract(&pi);
             for req_id in self.multi_position_watchers() {
                 if self.core.positions_account(&self.shared, req_id) == account {

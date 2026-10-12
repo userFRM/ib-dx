@@ -5714,6 +5714,19 @@ impl ClientCore {
         if ledger_and_nlv { asked.insert(req_id); } else { asked.remove(&req_id); }
     }
 
+    /// Whether a holding reaches the position and portfolio callbacks.
+    pub(crate) fn position_is_visible(&self, shared: &SharedState, account: &str, pi: &PositionInfo) -> bool {
+        let settings = shared.settings();
+        if !settings.include_fx_positions {
+            let sec_type = self.get_contract(pi.con_id, shared)
+                .map(|contract| contract.sec_type).unwrap_or_else(|| pi.sec_type.clone());
+            if sec_type == "CASH" { return false; }
+        }
+        !settings.send_zero_positions_for_todays_opening_only
+            || pi.position != 0.0
+            || shared.portfolio_for(account).opening_position(pi.con_id) != Some(0.0)
+    }
+
     /// Prepare portfolio updates (position entries) for account streaming.
     /// Returns changed/new position infos when account updates are subscribed.
     pub fn prepare_portfolio_updates(&self, shared: &SharedState) -> Vec<PortfolioUpdateEntry> {
@@ -5732,7 +5745,9 @@ impl ClientCore {
             return Vec::new();
         }
 
-        let current = portfolio.position_infos();
+        let account = self.updates_account(shared);
+        let current: Vec<_> = portfolio.position_infos().into_iter()
+            .filter(|pi| self.position_is_visible(shared, &account, pi)).collect();
         let mut prev_guard = self.last_portfolio.lock().unwrap();
         let is_first = prev_guard.is_none();
 

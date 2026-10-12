@@ -744,7 +744,7 @@ def cancel_account_summary(req_id)
 
 #### `req_positions`
 
-Request all positions.  Before a session exists this is reported on the error callback and the call returns, as every other request made before connecting is. A program written against the reference client has no exception handling around a request, because that client does not raise there.
+Request all positions.  Before a session exists this is reported on the error callback and the call returns, as every other request made before connecting is. A program written against the reference client has no exception handling around a request, because that client does not raise there.  `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```python
 def req_positions()
@@ -764,7 +764,7 @@ def cancel_positions()
 
 #### `req_account_updates`
 
-Subscribe to the named account's figures and holdings, or withdraw the subscription. A single-account login ignores the name as a gateway does. Subscribing asks the venue to restate that account now; the engine holds the answer until its download ends or the existing wait expires.
+Subscribe to the named account's figures and holdings, or withdraw the subscription. A single-account login ignores the name as a gateway does. Subscribing asks the venue to restate that account now; the engine holds the answer until its download ends or the existing wait expires.  `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```python
 def req_account_updates(subscribe, acct_code="")
@@ -820,7 +820,7 @@ def cancel_account_updates_multi(req_id)
 
 #### `req_positions_multi`
 
-Subscribe to holdings of the named account under this request number. A model is taken and not applied, with a log notice once per session.
+Subscribe to holdings of the named account under this request number. A model is taken and not applied, with a log notice once per session.  `include_fx_positions` (default true) controls CASH rows. `send_zero_positions_for_todays_opening_only` (default false) omits flat rows only when the venue states a zero opening quantity. A nonzero or unknown opening quantity still passes. Both settings apply to the initial answer and later updates; end callbacks still arrive.
 
 ```python
 def req_positions_multi(req_id, account, model_code)

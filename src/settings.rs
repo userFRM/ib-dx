@@ -90,6 +90,13 @@ pub struct GatewaySettings {
     /// spelling. The gateway does, so a program written against it compares
     /// against that spelling.
     pub island_for_nasdaq: Option<bool>,
+    /// Include CASH holdings in position, positionMulti and updatePortfolio.
+    /// On by default; also read from `IB_DX_INCLUDE_FX_POSITIONS`.
+    pub include_fx_positions: Option<bool>,
+    /// Suppress flat holdings whose opening quantity is known to be zero.
+    /// Unknown or nonzero opening quantities still pass. Off by default;
+    /// also read from `IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY`.
+    pub send_zero_positions_for_todays_opening_only: Option<bool>,
     /// Whether a session recovers on its own when a connection goes away.
     ///
     /// On by default, which is what a process that must keep running wants.
@@ -186,6 +193,10 @@ pub struct SessionSettings {
     /// Whether a US stock on Nasdaq is named by the older spelling. Takes the
     /// venue's grant as well as this setting.
     pub island_for_nasdaq: bool,
+    /// Whether CASH holdings reach the position and portfolio callbacks.
+    pub include_fx_positions: bool,
+    /// Whether flat holdings with a known zero opening quantity are omitted.
+    pub send_zero_positions_for_todays_opening_only: bool,
     /// Whether this session recovers on its own when a connection goes away.
     pub reconnect_on_socket_err: bool,
     /// The API client told of every client's orders, if one is set.
@@ -344,6 +355,16 @@ impl GatewaySettings {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
                 })
             }),
+            include_fx_positions: self.include_fx_positions.unwrap_or_else(|| {
+                !std::env::var("IB_DX_INCLUDE_FX_POSITIONS").is_ok_and(|stated| {
+                    ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
+                })
+            }),
+            send_zero_positions_for_todays_opening_only: self.send_zero_positions_for_todays_opening_only.unwrap_or_else(|| {
+                std::env::var("IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY").is_ok_and(|stated| {
+                    ["1", "true", "yes"].iter().any(|on| stated.eq_ignore_ascii_case(on))
+                })
+            }),
             reconnect_on_socket_err: self.reconnect_on_socket_err.unwrap_or_else(|| {
                 !std::env::var("IB_DX_RECONNECT_ON_SOCKET_ERR").is_ok_and(|stated| {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
@@ -459,6 +480,27 @@ mod tests {
         assert_eq!(neither.build, crate::config::IB_BUILD);
         assert_eq!(neither.port, crate::config::MISC_PORT);
         assert!(neither.island_for_nasdaq, "the documented default");
+        assert!(neither.include_fx_positions);
+        assert!(!neither.send_zero_positions_for_todays_opening_only);
+        for (spelling, on) in [("TRUE", true), ("yes", true), ("1", true), ("False", false), ("NO", false), ("0", false)] {
+            unsafe {
+                std::env::set_var("IB_DX_INCLUDE_FX_POSITIONS", spelling);
+                std::env::set_var("IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY", spelling);
+            }
+            let settings = GatewaySettings::default().resolve();
+            assert_eq!(settings.include_fx_positions, on);
+            assert_eq!(settings.send_zero_positions_for_todays_opening_only, on);
+            let stated = GatewaySettings {
+                include_fx_positions: Some(!on),
+                send_zero_positions_for_todays_opening_only: Some(!on), ..Default::default()
+            }.resolve();
+            assert_eq!(stated.include_fx_positions, !on);
+            assert_eq!(stated.send_zero_positions_for_todays_opening_only, !on);
+        }
+        unsafe {
+            std::env::remove_var("IB_DX_INCLUDE_FX_POSITIONS");
+            std::env::remove_var("IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY");
+        }
 
         // However it is spelled. Compared against the lowercase spelling
         // alone, `Today` resolves to every execution the venue holds and
@@ -582,6 +624,8 @@ mod tests {
             execution_reports: Some(ExecutionReportScope::Today),
             datetime_format: Some(DatetimeFormat::UtcFormat),
             island_for_nasdaq: Some(false),
+            include_fx_positions: Some(false),
+            send_zero_positions_for_todays_opening_only: Some(true),
             reconnect_on_socket_err: Some(false),
             master_client_id: Some(3),
         };
@@ -600,6 +644,8 @@ mod tests {
         assert_eq!(resolved.execution_reports, ExecutionReportScope::Today);
         assert_eq!(resolved.datetime_format, DatetimeFormat::UtcFormat);
         assert!(!resolved.island_for_nasdaq);
+        assert!(!resolved.include_fx_positions);
+        assert!(resolved.send_zero_positions_for_todays_opening_only);
         assert!(!resolved.reconnect_on_socket_err);
         assert_eq!(resolved.master_client_id, Some(3));
         // The three log settings are process-scoped by nature — one logger per
@@ -621,7 +667,8 @@ mod tests {
             log_level: _, log_dir: _, log_queue: _,
             order_id_file: _,
             execution_reports: _, datetime_format: _,
-            island_for_nasdaq: _, reconnect_on_socket_err: _, master_client_id: _,
+            island_for_nasdaq: _, include_fx_positions: _, send_zero_positions_for_todays_opening_only: _,
+            reconnect_on_socket_err: _, master_client_id: _,
         } = all;
     }
 }

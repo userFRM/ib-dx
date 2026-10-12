@@ -405,9 +405,21 @@ impl PortfolioState {
     /// id the body was stamped with.
     #[doc(hidden)] pub fn set_midnight_seeds(&self, request_key: String, seeds: Vec<MidnightSeed>) {
         let mut map = self.midnight_seeds.lock().unwrap();
-        map.clear();
+        let previous = std::mem::take(&mut *map);
         for s in seeds {
             map.insert(s.con_id, s);
+        }
+        // A newly eligible flat row must reach position subscribers even if
+        // its current quantity has not changed.
+        let positions = self.position_infos.lock().unwrap();
+        let mut changed = self.position_changes.lock().unwrap();
+        for (con_id, seed) in previous {
+            if seed.qty_midnight == Some(0.0)
+                && map.get(&con_id).and_then(|s| s.qty_midnight) != Some(0.0)
+                && positions.get(&con_id).is_some_and(|pi| pi.position == 0.0)
+            {
+                changed.insert(con_id);
+            }
         }
         *self.pnl_request_key.lock().unwrap() = request_key;
         self.stamps.note_written();
@@ -416,6 +428,11 @@ impl PortfolioState {
     /// Read midnight seeds for client-side P&L computation.
     pub fn midnight_seeds(&self) -> Vec<MidnightSeed> {
         self.midnight_seeds.lock().unwrap().values().copied().collect()
+    }
+
+    /// The opening quantity stated by the venue, if known.
+    pub(crate) fn opening_position(&self, con_id: i64) -> Option<f64> {
+        self.midnight_seeds.lock().unwrap().get(&con_id).and_then(|seed| seed.qty_midnight)
     }
 
     /// The correlation id carried by the seeds now held.
