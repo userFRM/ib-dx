@@ -960,7 +960,7 @@ impl EClient {
     /// A fill and the status stated on the same report: `order_status`, then
     /// `exec_details`, each with what the report stated.
     fn deliver_fill(&self, py: Python<'_>, shared: &Arc<SharedState>, record: FillRecord) -> PyResult<()> {
-        let FillRecord { fill, report: rich_info, status: with_it } = record;
+        let FillRecord { startup, fill, report: rich_info, status: with_it } = record;
         self.core.take_the_stated_total(fill.order_id, rich_info.as_deref());
         // A fill nobody asked for is numbered -1. The reference wrapper
         // decides a fill is live by the request id not matching one it is
@@ -988,7 +988,7 @@ impl EClient {
         // to the master client where one is set; the execution is filed for
         // `req_executions` whatever order it is on, as a gateway serves that
         // request account-wide.
-        let own = self.core.speaks_for_the_order(shared, fill.order_id, client);
+        let own = !startup && self.core.speaks_for_the_order(shared, fill.order_id, client);
 
         // What the report stated beyond the print, taken before anything
         // consumes the record. The venue's own execution id and time, not
@@ -1083,7 +1083,11 @@ impl EClient {
     /// A status change with no fill on the same report: `open_order` with the
     /// order's state as the report stated it, then `order_status`.
     fn deliver_update(&self, py: Python<'_>, shared: &Arc<SharedState>, record: UpdateRecord) -> PyResult<()> {
-        let UpdateRecord { update, state: stated_state, client_id } = record;
+        let UpdateRecord { startup, update, state: stated_state, client_id } = record;
+        if startup {
+            self.core.learn_order_identity(shared, update.order_id);
+            return Ok(());
+        }
         let status = order_status_str(update.status);
         // The engine reads no parent from the report, but this client placed
         // the order and was told.
@@ -1277,8 +1281,14 @@ impl EClient {
                     self.deliver_account_batch(py, shared, batch, portfolio)?;
                 }
             }
-            Answer::OpenOrders(question) => {
-                let orders = self.core.collect_open_orders(shared, question == crate::types::model::Question::OpenOrders);
+            Answer::OpenOrders(_) | Answer::InitialOpenOrders => {
+                let initial = matches!(answer, Answer::InitialOpenOrders);
+                let orders = if initial {
+                    self.core.initial_open_orders(shared)
+                } else {
+                    self.core.collect_open_orders(shared, matches!(answer, Answer::OpenOrders(crate::types::model::Question::OpenOrders)))
+                };
+                let has_orders = !orders.is_empty();
                 for (order_id, tracked) in &orders {
                     let c_py = Py::new(py, Contract::from_api(py, &tracked.contract)?)?.into_any();
                     let o_py = Py::new(py, Order::from_api(py, &tracked.order)?)?.into_any();
@@ -1303,7 +1313,7 @@ impl EClient {
                 // filled, the whole quantity outstanding, under this
                 // session's client, and no openOrder beside it.
                 let asking = shared.orders.api_client_id();
-                for (_, tracked) in self.core.orders_in_processing() {
+                for (_, tracked) in self.core.orders_in_processing().into_iter().filter(|_| !initial) {
                     owed!(out, py, "order_status",
                         (tracked.order.order_id, "ApiPending",
                          DecimalField::from_whole(0),
@@ -1311,7 +1321,7 @@ impl EClient {
                          0.0f64, 0i64, tracked.order.parent_id, 0.0f64,
                          asking as i64, "", 0.0f64));
                 }
-                owed!(out, py, "open_order_end", ());
+                if !initial || has_orders { owed!(out, py, "open_order_end", ()); }
             }
             Answer::CompletedOrders { api_only } => {
                 self.archive_completed_orders(shared);

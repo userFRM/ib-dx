@@ -12667,9 +12667,18 @@ fn a_replays_watermark_is_the_floor_before_its_order_is_delivered() {
 
     let mut w = RecordingWrapper::default();
     client.process_msgs(&mut w);
+    assert!(!w.events.iter().any(|e| e.starts_with("order_status:88:")),
+        "initial reports wait for the download or an explicit request");
+    {
+        let mut held = rx.engine(); let e = &mut *held;
+        e.ccp.end_what_the_venue_names(&mut e.context, &shared, None);
+    }
+    client.req_all_open_orders();
+    the_engine_answers(&rx, &shared);
+    client.process_msgs(&mut w);
     assert!(
         w.events.iter().any(|e| e.starts_with("order_status:88:")),
-        "the order the floor already cleared is delivered by the read after it: {:?}",
+        "the order the floor already cleared is delivered on request: {:?}",
         w.events,
     );
 }
@@ -14798,4 +14807,168 @@ fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
             }
         }
     }
+}
+
+/// Connecting downloads only eligible API orders, once, with an end only
+/// for a nonempty download. Turning it off still permits an explicit request.
+#[test]
+fn connection_download_obeys_the_setting_and_client_scope() {
+    for (enabled, master, populated, expected) in [
+        (None, None, true, vec![17]), (Some(true), Some(1), true, vec![17, 18]),
+        (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
+    ] {
+        let (client, rx, shared) = test_client();
+        shared.orders.set_api_client_id(1);
+        client.core.set_api_client_id(1);
+        let settings = crate::settings::GatewaySettings {
+            download_open_orders_on_connection: enabled, master_client_id: master,
+            order_id_file: Some(String::new()), ..Default::default()
+        }.resolve();
+        shared.set_settings(Arc::new(settings));
+        if populated {
+            for (wire, placing, api, status, preview) in [
+                (71, 1, Some(17), "Submitted", false), (72, 2, Some(18), "Submitted", false),
+                (73, 0, None, "Submitted", false), (74, 1, Some(20), "Filled", false),
+                (75, 1, Some(21), "Submitted", true),
+                (76, 1, Some(0), "Submitted", false),
+                (77, 1, Some(i64::from(i32::MAX)), "Submitted", false),
+            ] {
+                shared.orders.note_attached_order_metadata(wire, crate::bridge::AttachedOrderMetadata {
+                    api_order_id: api, api_client_id: Some(placing), ..Default::default()
+                });
+                shared.orders.push_order_info(wire, crate::bridge::RichOrderInfo {
+                    contract: Contract::default(),
+                    order: Order { order_id: wire as i64, client_id: placing, what_if: preview, ..Default::default() },
+                    order_state: crate::types::model::OrderState { status: status.into(), ..Default::default() },
+                    last_exec: Default::default(),
+                });
+            }
+        }
+        client.core.track_order(90, Contract::default(), Order { order_id: 90, total_quantity: 2.0, ..Default::default() }, 0);
+        shared.orders.hold_open_orders(true);
+        let (start, _started) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        let mut asks = crate::engine::hot_loop::asks::Asks::new();
+        for command in std::iter::from_fn(|| rx.try_recv().ok()) {
+            if let ControlCommand::Ask(ask) = command { asks.take(ask); }
+        }
+        asks.answer_what_is_ready(&shared, &mut 64);
+        let mut heard = RecordingWrapper::default();
+        client.process_msgs(&mut heard);
+        assert!(!heard.events.iter().any(|e| e.starts_with("open_order")), "the download waits for the venue");
+        shared.orders.hold_open_orders(false);
+        shared.orders.set_replay_done();
+        asks.answer_what_is_ready(&shared, &mut 64);
+        client.process_msgs(&mut heard);
+        let mut ids: Vec<i64> = heard.events.iter().filter_map(|e| e.strip_prefix("open_order:")?.split(':').next()?.parse().ok()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, expected);
+        assert_eq!(heard.events.iter().filter(|e| *e == "open_order_end").count(), usize::from(!expected.is_empty()));
+        let callbacks: Vec<_> = heard.events.iter().filter(|e| e.starts_with("open_order") || e.starts_with("order_status")).collect();
+        if !expected.is_empty() {
+            assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < heard.events.iter().position(|e| e.starts_with("open_order:")).unwrap());
+            assert_eq!(callbacks.last().map(|s| s.as_str()), Some("open_order_end"));
+            for pair in callbacks[..callbacks.len()-1].chunks(2) {
+                assert!(pair[0].starts_with("open_order:") && pair[1].starts_with("order_status:"), "{callbacks:?}");
+            }
+        }
+        assert!(!heard.events.iter().any(|e| e.contains("ApiPending")), "no pending placement tail on startup");
+        heard.events.clear();
+        client.process_msgs(&mut heard);
+        assert!(heard.events.is_empty(), "startup is sent once");
+        client.req_open_orders();
+        the_engine_answers(&rx, &shared);
+        client.process_msgs(&mut heard);
+        assert!(heard.events.contains(&"open_order_end".into()));
+        if populated { assert!(heard.events.iter().any(|e| e.starts_with("open_order:17:"))); }
+    }
+}
+
+
+/// Feed one report through the same parser and engine as the connection.
+pub(crate) fn startup_report(rx: &Engine, shared: &SharedState, extra: &str) {
+    let base = "35=8|11=700.0|6121=17|6119=0|1=DU123|150=0|39=0|20=3|6008=756733|55=SPY|167=STK|54=1|40=2|38=4|44=120|59=0|14=0|151=4|37=0256d0f1.0001417e.6ab5fd25.0002|";
+    let mut fields = std::collections::BTreeMap::new();
+    for field in base.split('|').chain(extra.split('|')) {
+        if let Some((tag, value)) = field.split_once('=') { fields.insert(tag, value); }
+    }
+    let raw: String = fields.into_iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect();
+    let mut held = rx.engine();
+    let e = &mut *held;
+    e.ccp.process_ccp_message(raw.as_bytes(), &mut None, &mut e.context, shared, &None,
+        &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+}
+
+#[test]
+fn connection_download_preserves_report_provenance() {
+    for (enabled, delayed) in [(false, false), (true, false), (false, true), (true, true)] {
+        let (client, rx, shared) = test_client();
+        shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+            download_open_orders_on_connection: Some(enabled), order_id_file: Some(String::new()), ..Default::default()
+        }.resolve()));
+        let (start, _) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        let mut asks = crate::engine::hot_loop::asks::Asks::new();
+        for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+        startup_report(&rx, &shared, "");
+        startup_report(&rx, &shared, "39=1|150=F|20=0|43=Y|17=startup-print|32=1|31=120|14=1|151=3|");
+        let mut heard = RecordingWrapper::default();
+        if delayed {
+            asks.answer_what_is_ready(&shared, &mut 64);
+            std::thread::sleep(crate::bridge::REPLAY_WAIT + std::time::Duration::from_millis(30));
+            asks.answer_what_is_ready(&shared, &mut 64);
+            assert!(!shared.orders.open_orders_named());
+            assert_eq!(asks.len(), usize::from(enabled));
+            startup_report(&rx, &shared, "39=1|14=1|151=3|44=123|");
+            client.process_msgs(&mut heard);
+            assert!(!heard.events.iter().any(|e| e.starts_with("order_status:") || e.starts_with("exec_details:") || e.starts_with("open_order")), "{:?}", heard.events);
+        }
+        startup_report(&rx, &shared, "11=*|55=*|");
+        asks.answer_what_is_ready(&shared, &mut 64);
+        client.process_msgs(&mut heard);
+        for prefix in ["open_order:", "order_status:", "open_order_end"] {
+            assert_eq!(heard.events.iter().filter(|e| e.starts_with(prefix)).count(), usize::from(enabled), "{prefix}: {:?}", heard.events);
+        }
+        assert!(!heard.events.iter().any(|e| e.starts_with("exec_details:")));
+        assert!(client.core.snapshot_executions(&Default::default()).iter().any(|e| e.execution.exec_id == "startup-print"));
+        heard.events.clear();
+        startup_report(&rx, &shared, "39=1|150=F|20=0|17=live-print|32=1|31=121|14=2|151=2|");
+        client.process_msgs(&mut heard);
+        assert!(heard.events.iter().any(|e| e.starts_with("order_status:")), "{:?}", heard.events);
+        assert!(heard.events.iter().any(|e| e.starts_with("exec_details:")), "{:?}", heard.events);
+        heard.events.clear();
+        {
+            let mut held = rx.engine(); let e = &mut *held;
+            e.ccp.handle_disconnect(&mut None, &mut e.context, &shared, &None);
+            let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+            e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
+        }
+        startup_report(&rx, &shared, "39=1|14=2|151=2|44=122|");
+        client.process_msgs(&mut heard);
+        assert!(heard.events.iter().any(|e| e.starts_with("order_status:")), "reconnect: {:?}", heard.events);
+        startup_report(&rx, &shared, "11=*|55=*|");
+        heard.events.clear();
+        client.req_all_open_orders(); the_engine_answers(&rx, &shared); client.process_msgs(&mut heard);
+        assert!(heard.events.iter().any(|e| e.starts_with("open_order:17:")), "{:?}", heard.events);
+        assert!(heard.events.contains(&"open_order_end".into()));
+    }
+    for api in ["", "0", "2147483647"] {
+        let (client, rx, shared) = test_client();
+        let (start, _) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        startup_report(&rx, &shared, &format!("6121={api}|"));
+        startup_report(&rx, &shared, "11=*|55=*|");
+        the_engine_answers(&rx, &shared);
+        let mut heard = RecordingWrapper::default();
+        client.process_msgs(&mut heard);
+        assert!(!heard.events.iter().any(|e| e.starts_with("open_order") || e.starts_with("order_status:")),
+            "unnumbered {api}: {:?}", heard.events);
+    }
+    let (_, _, shared) = test_client();
+    let mut asks = crate::engine::hot_loop::asks::Asks::new();
+    asks.take(crate::types::Ask::InitialOpenOrders);
+    shared.reference.set_session_over("closed");
+    asks.answer_what_is_ready(&shared, &mut 64);
+    assert_eq!(asks.len(), 0);
+    assert!(shared.drain_refused().is_empty());
 }

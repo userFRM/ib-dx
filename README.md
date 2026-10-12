@@ -977,7 +977,7 @@ factor included. Offering the saved session (`EClientConfig::resume`, or
 ## Configuration
 
 The gateway's configuration file is replaced by settings on the client:
-announced build, time zone, execution-report scope, and others — 21 in total,
+announced build, time zone, execution-report scope, and others — 22 in total,
 readable at runtime. Fourteen gateway settings are not settings here, and each says
 why or names what stands in for it (no window geometry, no local listening socket,
 no JVM heap, and no message pacing: a gateway paces requests at the rate its logon
@@ -986,6 +986,19 @@ instead, and nothing here does either).
 
 Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()` or per-session
 `connect(settings={...})`.
+
+`download_open_orders_on_connection` is on by default. After `nextValidId`,
+the initial connection sends `openOrder` and `orderStatus` for numbered working
+orders belonging to this API client, or every client when this is the configured
+master. A nonempty download ends with `openOrderEnd`; an empty one sends no end.
+Unnumbered manual orders and pending placements are excluded. The download waits
+for order naming to finish even if the next-ID wait has timed out.
+
+Set it to false to skip this initial delivery; explicit open-order requests
+still work. Initial reports retain execution history without unsolicited fill
+callbacks. Later reports and transport reconnects retain their existing callback
+behavior. This setting does not add automatic binding, change order IDs or parent
+resolution, or add live `openOrder` callbacks for orders placed elsewhere.
 
 `include_fx_positions` is on by default. Turn it off to omit CASH rows from
 `position`, `positionMulti`, and `updatePortfolio`.
@@ -1191,7 +1204,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,317 | No |
+| Rust, unit and integration | 3,320 | No |
 | Python | 1,481 | No |
 | Rust, live | 10 | Yes |
 | Python, live | 122 | Yes |

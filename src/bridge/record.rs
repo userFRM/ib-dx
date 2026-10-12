@@ -260,6 +260,8 @@ pub(crate) mod hooks {
 /// stated: one execution report is one record.
 #[derive(Clone, Debug)]
 pub struct FillRecord {
+    /// Report received during the initial API-session download.
+    pub startup: bool,
     /// The print.
     pub fill: Fill,
     /// The report it was booked off, shared with the cache until it changes.
@@ -271,6 +273,8 @@ pub struct FillRecord {
 /// An order's status, with the order's state as its report stated it.
 #[derive(Clone, Debug)]
 pub struct UpdateRecord {
+    /// Report received during the initial API-session download.
+    pub startup: bool,
     /// The status.
     pub update: OrderUpdate,
     /// What the venue said about the order beside it: margins, cost and
@@ -425,6 +429,8 @@ pub enum Answer {
     /// `req_open_orders` and `req_all_open_orders`: every working order, then
     /// `open_order_end`.
     OpenOrders(crate::types::model::Question),
+    /// The optional download of existing API orders on a new connection.
+    InitialOpenOrders,
     /// `req_completed_orders`: every finished order, then its end.
     CompletedOrders {
         /// Whether only the orders an API placed were asked for.

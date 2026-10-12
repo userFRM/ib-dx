@@ -120,7 +120,7 @@ impl Asks {
             // answers no connect with an error, and the session's end is
             // already said where the connection is lost.
             if over {
-                if !matches!(held.ask, Ask::NextValidId) {
+                if !matches!(held.ask, Ask::NextValidId | Ask::InitialOpenOrders) {
                     let why = Refusal::not_connected("Not connected");
                     shared.push_refused(held.origin(), i64::from(why.code), why.message);
                 }
@@ -156,7 +156,7 @@ impl Asks {
                 }
                 // Held until the venue has named what is working to its end,
                 // however long that takes, as a gateway holds it.
-                Ask::OpenOrders(_) => {
+                Ask::OpenOrders(_) | Ask::InitialOpenOrders => {
                     let named = shared.orders.open_orders_named();
                     if named {
                         held.answer(named, shared);
@@ -206,7 +206,7 @@ impl Held {
                 ErrorOrigin::Request { id: *req_id, ends: true }
             }
             Ask::OpenOrders(q) => ErrorOrigin::Question { q: *q, ends: true },
-            Ask::NextValidId => ErrorOrigin::Session,
+            Ask::NextValidId | Ask::InitialOpenOrders => ErrorOrigin::Session,
         }
     }
 
@@ -250,6 +250,7 @@ impl Held {
                 }
             }
             Ask::OpenOrders(q) => Answer::OpenOrders(*q),
+            Ask::InitialOpenOrders => Answer::InitialOpenOrders,
             Ask::NextValidId => {
                 // No error travels with an id, so this is said where it can be
                 // said. The floor is whatever had been named by then, which is

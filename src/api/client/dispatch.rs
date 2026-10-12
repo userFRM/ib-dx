@@ -697,7 +697,7 @@ impl EClient {
     /// A fill and the status stated on the same report: `order_status`, then
     /// `exec_details`, each with what the report stated.
     fn deliver_fill(&self, record: FillRecord, wrapper: &mut impl Wrapper) {
-        let FillRecord { fill, report, status } = record;
+        let FillRecord { startup, fill, report, status } = record;
         self.core.take_the_stated_total(fill.order_id, report.as_deref());
         let price_f = fill.price as f64 / PRICE_SCALE_F;
         // Status as the report states it, derived from `remaining` only when
@@ -715,7 +715,7 @@ impl EClient {
         // to the master client where one is set; the execution is filed for
         // `req_executions` whatever order it is on, as a gateway serves that
         // request account-wide.
-        let own = self.core.speaks_for_the_order(&self.shared, fill.order_id, client);
+        let own = !startup && self.core.speaks_for_the_order(&self.shared, fill.order_id, client);
         // After the record is read: a status stating the order filled drops
         // it, and read afterwards the fill that completed an order went out
         // as client zero's, without the parent this client recorded.
@@ -806,8 +806,9 @@ impl EClient {
     /// A status change with no fill on the same report: `open_order` with the
     /// order's state as the report stated it, then `order_status`.
     fn deliver_update(&self, record: UpdateRecord, wrapper: &mut impl Wrapper) {
-        let UpdateRecord { update, state, client_id } = record;
+        let UpdateRecord { startup, update, state, client_id } = record;
         self.core.learn_order_identity(&self.shared, update.order_id);
+        if startup { return; }
         let status = order_status_str(update.status);
         // The engine reads no parent from the report, but this client placed
         // the order and was told. Prefer what it recorded; an order it did not
@@ -992,11 +993,15 @@ impl EClient {
                     self.deliver_account_batch(batch, portfolio, wrapper);
                 }
             }
-            Answer::OpenOrders(question) => {
-                // Each order, then its status, as a gateway answers the
-                // question.
-                let scoped = question == crate::types::model::Question::OpenOrders;
-                for (order_id, tracked) in self.core.collect_open_orders(&self.shared, scoped) {
+            Answer::OpenOrders(_) | Answer::InitialOpenOrders => {
+                let initial = matches!(answer, Answer::InitialOpenOrders);
+                let orders = if initial {
+                    self.core.initial_open_orders(&self.shared)
+                } else {
+                    self.core.collect_open_orders(&self.shared, matches!(answer, Answer::OpenOrders(crate::types::model::Question::OpenOrders)))
+                };
+                let has_orders = !orders.is_empty();
+                for (order_id, tracked) in orders {
                     let api_id = self.core.api_order_id(order_id);
                     let state = OrderState { status: tracked.status.clone(), ..Default::default() };
                     wrapper.open_order(api_id, &tracked.contract, &tracked.order, &state);
@@ -1013,7 +1018,7 @@ impl EClient {
                 // filled, the whole quantity outstanding, under this
                 // session's client, and no openOrder beside it.
                 let asking = self.shared.orders.api_client_id();
-                for (_, tracked) in self.core.orders_in_processing() {
+                for (_, tracked) in self.core.orders_in_processing().into_iter().filter(|_| !initial) {
                     wrapper.order_status(
                         tracked.order.order_id, "ApiPending", crate::types::model::Decimal::from(0.0),
                         crate::types::model::Decimal::from((tracked.order.total_quantity as i64) as f64),
@@ -1021,7 +1026,7 @@ impl EClient {
                         i64::from(asking), "", 0.0,
                     );
                 }
-                wrapper.open_order_end();
+                if !initial || has_orders { wrapper.open_order_end(); }
             }
             Answer::CompletedOrders { api_only } => {
                 self.archive_completed_orders();
@@ -2067,6 +2072,7 @@ mod delivered_size_tests {
         let (client, _rx, shared) = crate::api::client::tests::test_client();
         let mut ccp = CcpState::new();
         let mut context = Context::new();
+        ccp.end_what_the_venue_names(&mut context, &shared, None);
         let instrument = context.register_instrument(756733);
         context.set_symbol(instrument, "SPY".into());
         for order_id in [7, 8] {
@@ -2156,6 +2162,7 @@ mod delivered_size_tests {
         let (client, _rx, shared) = crate::api::client::tests::test_client();
         let mut ccp = CcpState::new();
         let mut context = Context::new();
+        ccp.end_what_the_venue_names(&mut context, &shared, None);
         let instrument = context.register_instrument(756733);
         context.set_symbol(instrument, "SPY".into());
         let contract = || crate::types::model::Contract {

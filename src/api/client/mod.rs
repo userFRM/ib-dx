@@ -898,6 +898,9 @@ impl EClient {
         // in its place in the session's order, after the venue has named what
         // the account is working.
         self.req_ids(1);
+        if self.shared.settings().download_open_orders_on_connection {
+            self.send(ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))?;
+        }
         Ok(self)
     }
 

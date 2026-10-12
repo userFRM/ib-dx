@@ -1837,7 +1837,14 @@ impl EClient {
         // refused as a duplicate, and nothing about the refusal points here.
         self.wait_for_the_replay(py);
         if !self.is_current_session(shared) { return Ok(()); }
-        self.notify(py, "next_valid_id", (self.stated_order_id() as i64,))
+        self.notify(py, "next_valid_id", (self.stated_order_id() as i64,))?;
+        if self.is_current_session(shared) && shared.settings().download_open_orders_on_connection {
+            let tx = self.control_tx.lock().unwrap().clone();
+            if let Some(tx) = tx {
+                self.send_control(&tx, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))?;
+            }
+        }
+        Ok(())
     }
 
     /// A callback can replace the session. Its old pass ends before reading
@@ -4893,9 +4900,139 @@ client.poll()
     /// a session that has been torn down — and a handler that reconnects has
     /// the startup of the session it just opened repeated over it.
     #[test]
+    fn connection_download_preserves_report_provenance() {
+        use crate::api::client::tests::{Engine, startup_report, the_engine_answers};
+        Python::initialize();
+        Python::attach(|py| {
+            for (enabled, delayed) in [(false, false), (true, false), (false, true), (true, true)] {
+                let (client, receiver, shared, w) = wired_client(py);
+                let rx = Engine::new(receiver, &shared);
+                shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                    download_open_orders_on_connection: Some(enabled), order_id_file: Some(String::new()), ..Default::default()
+                }.resolve()));
+                startup_report(&rx, &shared, "");
+                startup_report(&rx, &shared, "39=1|150=F|20=0|43=Y|17=startup-print|32=1|31=120|14=1|151=3|");
+                if !delayed { startup_report(&rx, &shared, "11=*|55=*|"); }
+                client.get().announce_the_new_session(py, &shared).unwrap();
+                let mut asks = crate::engine::hot_loop::asks::Asks::new();
+                for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+                let g = pyo3::types::PyDict::new(py);
+                g.set_item("w", &w).unwrap(); g.set_item("enabled", enabled).unwrap();
+                if delayed {
+                    asks.answer_what_is_ready(&shared, &mut 64);
+                    assert_eq!(asks.len(), usize::from(enabled));
+                    assert!(!shared.orders.open_orders_named());
+                    startup_report(&rx, &shared, "39=1|14=1|151=3|44=123|");
+                    client.get().dispatch_once(py, &shared).unwrap();
+                    py.run(c"assert not any(c[0] in ('openOrder','orderStatus','openOrderEnd','execDetails') for c in w.calls), w.calls", Some(&g), None).unwrap();
+                    startup_report(&rx, &shared, "11=*|55=*|");
+                }
+                asks.answer_what_is_ready(&shared, &mut 64);
+                client.get().dispatch_once(py, &shared).unwrap();
+                py.run(c"
+for name in ('openOrder','orderStatus','openOrderEnd'):
+    assert sum(c[0] == name for c in w.calls) == int(enabled), w.calls
+assert not any(c[0] == 'execDetails' for c in w.calls), w.calls
+w.calls.clear()
+", Some(&g), None).unwrap();
+                assert!(client.get().core.snapshot_executions(&Default::default()).iter().any(|e| e.execution.exec_id == "startup-print"));
+                startup_report(&rx, &shared, "39=1|150=F|20=0|17=live-print|32=1|31=121|14=2|151=2|");
+                client.get().dispatch_once(py, &shared).unwrap();
+                py.run(c"assert any(c[0] == 'orderStatus' for c in w.calls) and any(c[0] == 'execDetails' for c in w.calls), w.calls; w.calls.clear()", Some(&g), None).unwrap();
+                {
+                    let mut held = rx.engine(); let e = &mut *held;
+                    e.ccp.handle_disconnect(&mut None, &mut e.context, &shared, &None);
+                    let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+                    e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
+                }
+                startup_report(&rx, &shared, "39=1|14=2|151=2|44=122|");
+                client.get().dispatch_once(py, &shared).unwrap();
+                py.run(c"assert any(c[0] == 'orderStatus' for c in w.calls), w.calls; w.calls.clear()", Some(&g), None).unwrap();
+                startup_report(&rx, &shared, "11=*|55=*|");
+                client.call_method0(py, "reqAllOpenOrders").unwrap();
+                the_engine_answers(&rx, &shared); client.get().dispatch_once(py, &shared).unwrap();
+                py.run(c"assert any(c[0] == 'openOrder' and c[1] == 17 for c in w.calls) and w.calls[-1][0] == 'openOrderEnd', w.calls", Some(&g), None).unwrap();
+            }
+        });
+    }
+
+    #[test]
     fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
         Python::initialize();
         Python::attach(|py| {
+            for (enabled, master, populated, expected) in [
+                (None, None, true, vec![17i64]), (Some(true), Some(1), true, vec![17, 18]),
+                (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
+            ] {
+                let (client, rx, shared, w) = wired_client(py);
+                shared.orders.set_api_client_id(1);
+                client.get().core.set_api_client_id(1);
+                shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                    download_open_orders_on_connection: enabled, master_client_id: master,
+                    order_id_file: Some(String::new()), ..Default::default()
+                }.resolve()));
+                if populated {
+                    for (wire, api, placing) in [(71, Some(17), 1), (72, Some(18), 2), (73, None, 0)] {
+                        shared.orders.note_attached_order_metadata(wire, crate::bridge::AttachedOrderMetadata {
+                            api_order_id: api, api_client_id: Some(placing), ..Default::default()
+                        });
+                        shared.orders.push_order_info(wire, crate::bridge::RichOrderInfo {
+                            contract: Default::default(),
+                            order: crate::types::model::Order { order_id: wire as i64, client_id: placing, ..Default::default() },
+                            order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+                            last_exec: Default::default(),
+                        });
+                    }
+                }
+                client.get().core.track_order(90, Default::default(), crate::types::model::Order {order_id:90,total_quantity:2.0,..Default::default()},0);
+                shared.orders.set_replay_done();
+                client.get().announce_the_new_session(py, &shared).unwrap();
+                let mut asks = crate::engine::hot_loop::asks::Asks::new();
+                for command in rx.try_iter() {
+                    if let ControlCommand::Ask(ask) = command { asks.take(ask); }
+                }
+                asks.answer_what_is_ready(&shared, &mut 64);
+                client.get().dispatch_once(py, &shared).unwrap();
+                let g = pyo3::types::PyDict::new(py);
+                g.set_item("w", &w).unwrap();
+                let ids: Vec<i64> = py.eval(c"sorted(c[1] for c in w.calls if c[0] == 'openOrder')", Some(&g), None).unwrap().extract().unwrap();
+                assert_eq!(ids, expected);
+                let ends: usize = py.eval(c"sum(c[0] == 'openOrderEnd' for c in w.calls)", Some(&g), None).unwrap().extract().unwrap();
+                assert_eq!(ends, usize::from(!expected.is_empty()));
+                py.run(c"
+rows = [c for c in w.calls if c[0] in ('openOrder','orderStatus','openOrderEnd')]
+assert not any(c[0]=='orderStatus' and c[2]=='ApiPending' for c in rows), rows
+if rows:
+    assert next(i for i,c in enumerate(w.calls) if c[0]=='nextValidId') < next(i for i,c in enumerate(w.calls) if c[0]=='openOrder'), w.calls
+    assert rows[-1][0] == 'openOrderEnd', rows
+    assert [c[0] for c in rows[:-1]] == ['openOrder','orderStatus'] * ((len(rows)-1)//2), rows
+w.calls.clear()
+",Some(&g),None).unwrap();
+                client.get().core.untrack_order(90);
+                client.call_method0(py,"reqAllOpenOrders").unwrap();
+                for command in rx.try_iter() {
+                    if let ControlCommand::Ask(ask) = command { asks.take(ask); }
+                }
+                asks.answer_what_is_ready(&shared,&mut 64);
+                client.get().dispatch_once(py,&shared).unwrap();
+                py.run(c"assert w.calls and w.calls[-1][0] == 'openOrderEnd', w.calls",Some(&g),None).unwrap();
+
+            }
+
+            let (replaced, receiver, original, wrapper) = wired_client(py);
+            original.orders.set_replay_done();
+            let changed = replaced.clone_ref(py);
+            let replacement = Arc::new(SharedState::new());
+            let callback = pyo3::types::PyCFunction::new_closure(py, None, None,
+                move |_args: &Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
+                    *changed.get().shared.lock().unwrap() = Some(replacement.clone());
+                    Ok(())
+                }).unwrap();
+            wrapper.setattr(py, "nextValidId", callback).unwrap();
+            replaced.get().announce_the_new_session(py, &original).unwrap();
+            assert!(!receiver.try_iter().any(|cmd| matches!(cmd, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))),
+                "replacing a session in nextValidId leaves no old startup request on the new connection");
+
             let (client, _rx, shared, w) = wired_client(py);
             let g = pyo3::types::PyDict::new(py);
             g.set_item("w", &w).unwrap();

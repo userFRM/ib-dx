@@ -76,6 +76,10 @@ _SETTINGS: dict[str, tuple[str, str]] = {
         "IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY",
         "omit flat holdings with a known zero opening quantity from position and portfolio callbacks; off by default",
     ),
+    "download_open_orders_on_connection": (
+        "IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION",
+        "send existing API open orders when connecting; on by default",
+    ),
     "master_client_id": (
         "IB_DX_MASTER_CLIENT_ID",
         "Master API client ID: the client also told of every other client's orders, fills and charges; unset by default",

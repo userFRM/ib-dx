@@ -21,7 +21,7 @@ Verification runs against a paper account on IBKR production servers, and the or
 | Requests | 85. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,798 offline, and 182 more that live in the suites run against a broker session |
+| Tests | 4,801 offline, and 182 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,7 +72,7 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,317 | No |
+| Rust unit and integration | 3,320 | No |
 | Rust, live | 10 | Yes |
 | Python | 1,481 | No |
 | Python, live | 122 | Yes |
@@ -102,7 +102,7 @@ ordinary wheels.
 | Surface | Status | Verification |
 | --- | :---: | --- |
 | `EClient` / `EWrapper` (TWS API shape) | ✅ Supported | `tests/ib_paper_compat`, `tests/python/test_compat_tier1..3.py` |
-| Gateway settings | ✅ Supported | 21 settings carried, 14 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
+| Gateway settings | ✅ Supported | 22 settings carried, 14 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
 | Rust/Python equivalence | ✅ Supported | 4 static gates (settings, order fields, surface, error behaviour) plus `scripts/conformance.py --compare`, which compares 10 server responses across both clients |
 
 ## Market data
@@ -366,13 +366,26 @@ Price, Close Price, Dark Ice, PctVol. Conditions: price, volume, percent change,
 and time. Brackets, one-cancels-all, and combinations with a price per leg.
 
 **Settings.** The gateway's configuration file is replaced by settings on the
-client: announced build, time zone, execution-report scope, and others — 21 in
+client: announced build, time zone, execution-report scope, and others — 22 in
 total, readable at runtime. Fourteen gateway settings are not settings here, and
 each says why or names what stands in for it (no window geometry, no local
 listening socket, no JVM heap, and no message pacing: a gateway paces requests
 at the rate its logon states (fifty a second where it states none) unless it is
 set to reject them instead, and nothing here does either).
 Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()`.
+`download_open_orders_on_connection` is on by default. After `nextValidId`,
+the initial connection sends `openOrder` and `orderStatus` for numbered working
+orders belonging to this API client, or every client when this is the configured
+master. A nonempty download ends with `openOrderEnd`; an empty one sends no end.
+Unnumbered manual orders and pending placements are excluded. The download waits
+for order naming to finish even if the next-ID wait has timed out.
+
+Set it to false to skip this initial delivery; explicit open-order requests
+still work. Initial reports retain execution history without unsolicited fill
+callbacks. Later reports and transport reconnects retain their existing callback
+behavior. This setting does not add automatic binding, change order IDs or parent
+resolution, or add live `openOrder` callbacks for orders placed elsewhere.
+
 `order_id_file` retains the next ID per account and API client across restarts;
 reservations share an exclusive file lock. See [order IDs across sessions](book/src/reference/venue-behaviour.md#order-ids-across-sessions)
 for the location, configuration and storage-failure behaviour. Attached children

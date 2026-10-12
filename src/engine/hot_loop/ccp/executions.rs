@@ -3322,23 +3322,16 @@ impl CcpState {
         // states go out together, each with what the report stated, so they
         // reach a caller in the venue's order and are never paired up again
         // by their quantities.
+        shared.orders.push_report(filled, booked_off, announce);
         match (filled, announce) {
             (Some(fill), Some(update)) => {
-                shared.orders.push_fill_and_status(fill, booked_off, update);
                 emit(event_tx, Event::Fill(fill));
                 emit(event_tx, Event::OrderUpdate(update));
             }
             (Some(fill), None) => {
-                match booked_off {
-                    Some(report) => shared.orders.push_fill_reported(fill, report),
-                    None => shared.orders.push_fill(fill),
-                }
                 emit(event_tx, Event::Fill(fill));
             }
             (None, Some(update)) => {
-                // Every report restates, whether or not the book moved: the
-                // restatement is the book's own values either way.
-                shared.orders.push_order_restated(update);
                 emit(event_tx, Event::OrderUpdate(update));
             }
             (None, None) => {}

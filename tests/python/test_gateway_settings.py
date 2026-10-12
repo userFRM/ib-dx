@@ -110,6 +110,7 @@ def test_a_setting_reaches_the_variable_the_client_reads_it_from():
 
     for name, variable, values in (
         ("market_data_host", "IB_DX_FARM_HOST", ["example.invalid"]),
+        ("download_open_orders_on_connection", "IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION", [False, True]),
         ("include_fx_positions", "IB_DX_INCLUDE_FX_POSITIONS", [False, True]),
         ("send_zero_positions_for_todays_opening_only",
          "IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY", [False, True]),

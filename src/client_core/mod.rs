@@ -4609,6 +4609,16 @@ impl ClientCore {
         }
     }
 
+    /// Numbered working orders sent to this client at initial connection.
+    pub(crate) fn initial_open_orders(&self, shared: &SharedState) -> Vec<(u64, TrackedOrder)> {
+        self.collect_open_orders(shared, false).into_iter().filter(|(wire, tracked)| {
+            !tracked.order.what_if
+                && self.tells_client(shared, i64::from(tracked.order.client_id))
+                && shared.orders.attached_order_metadata(*wire)
+                    .is_some_and(|identity| identity.api_order_id.is_some_and(|id| id != 0 && id != i64::from(i32::MAX)))
+        }).collect()
+    }
+
     /// Collect open orders: merge local tracking with shared state.
     /// Returns (order_id, contract, order, status, filled, remaining) for non-terminal
     /// orders.

@@ -54,6 +54,8 @@ struct Replay {
     /// it does unprompted after a connect. Until then "none" and "not yet
     /// told" look the same to a caller.
     done: bool,
+    /// Initial naming completed in this API session; transport reconnects retain it.
+    initial_done: bool,
     /// Whether the venue has named anything on this connection.
     began: bool,
     /// Whether a question of what is working is held past the naming: from a
@@ -701,7 +703,7 @@ impl OrderState {
             self.numbers_changed.store(true, Ordering::Release);
         }
         let report = self.order_cache.lock().unwrap().get(&fill.order_id).cloned();
-        self.fills.push(FillRecord { fill, report, status: None });
+        self.fills.push(FillRecord { startup: false, fill, report, status: None });
     }
 
     /// A fill and the report it was booked off, which is the one that states
@@ -711,7 +713,7 @@ impl OrderState {
             self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
             self.numbers_changed.store(true, Ordering::Release);
         }
-        self.fills.push(FillRecord { fill, report: Some(Arc::new(report)), status: None });
+        self.fills.push(FillRecord { startup: false, fill, report: Some(Arc::new(report)), status: None });
     }
 
     /// A fill and the status the same report stated, as one record.
@@ -732,7 +734,7 @@ impl OrderState {
         // A working status on an order already finished is the echo
         // `push_order_update` drops; the fill beside it still goes.
         let status = self.states_news(&status).then_some(status);
-        self.fills.push(FillRecord { fill, report, status });
+        self.fills.push(FillRecord { startup: false, fill, report, status });
     }
 
     /// Note what a status says about the number it is under: a finish spends
@@ -803,6 +805,26 @@ impl OrderState {
             || !self.recently_completed(update.order_id)
     }
 
+    /// Keep download provenance with the report, even when callbacks are read after naming ends.
+    pub(crate) fn push_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>) {
+        let startup = !self.replay.lock().unwrap().initial_done;
+        if let Some(fill) = fill {
+            let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
+            if let Some(update) = &update { self.note_what_the_status_says(update); }
+            if fill.remaining == 0 {
+                self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
+                self.numbers_changed.store(true, Ordering::Release);
+            }
+            let status = update.filter(|update| self.states_news(update));
+            self.fills.push(FillRecord { startup, fill, report, status });
+        } else if let Some(update) = update {
+            self.note_what_the_status_says(&update);
+            let (state, client_id) = self.order_cache.lock().unwrap().get(&update.order_id)
+                .map(|info| (Some(Arc::clone(info)), info.order.client_id)).unwrap_or_default();
+            self.order_updates.push(UpdateRecord { startup, update, state, client_id });
+        }
+    }
+
     /// A status change, with the order's state as it stands at the push.
     ///
     /// A working status for an order that has already finished is dropped
@@ -821,7 +843,7 @@ impl OrderState {
         let (state, client_id) = self.order_cache.lock().unwrap().get(&update.order_id)
             .map(|info| (Some(Arc::clone(info)), info.order.client_id))
             .unwrap_or_default();
-        self.order_updates.push(UpdateRecord { update, state, client_id });
+        self.order_updates.push(UpdateRecord { startup: false, update, state, client_id });
     }
 
     /// Push an update restating what the book already holds: a report a
@@ -832,7 +854,7 @@ impl OrderState {
         let (state, client_id) = self.order_cache.lock().unwrap().get(&update.order_id)
             .map(|info| (Some(Arc::clone(info)), info.order.client_id))
             .unwrap_or_default();
-        self.order_updates.push(UpdateRecord { update, state, client_id });
+        self.order_updates.push(UpdateRecord { startup: false, update, state, client_id });
     }
 
     #[doc(hidden)] pub fn push_cancel_reject(&self, reject: CancelReject) {
@@ -914,7 +936,9 @@ impl OrderState {
     }
 
     #[doc(hidden)] pub fn set_replay_done(&self) {
-        self.replay.lock().unwrap().done = true;
+        let mut replay = self.replay.lock().unwrap();
+        replay.done = true;
+        replay.initial_done = true;
     }
 
     /// Hold a question of what is working, or let it be answered: held from a

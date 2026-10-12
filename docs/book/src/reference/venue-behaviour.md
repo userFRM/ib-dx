@@ -1065,3 +1065,18 @@ settings apply to initial answers and subsequent updates on every account.
 Their end callbacks are still
 delivered for empty answers. The filters do not remove stored positions or change
 P&L calculations.
+
+## Open orders on initial connection
+
+`download_open_orders_on_connection` is on by default. After `nextValidId`,
+the initial connection sends `openOrder` and `orderStatus` for numbered working
+orders belonging to this API client, or every client when this is the configured
+master. A nonempty download ends with `openOrderEnd`; an empty one sends no end.
+Unnumbered manual orders and pending placements are excluded. The download waits
+for order naming to finish even if the next-ID wait has timed out.
+
+Set it to false to skip this initial delivery; explicit open-order requests
+still work. Initial reports retain execution history without unsolicited fill
+callbacks. Later reports and transport reconnects retain their existing callback
+behavior. This setting does not add automatic binding, change order IDs or parent
+resolution, or add live `openOrder` callbacks for orders placed elsewhere.

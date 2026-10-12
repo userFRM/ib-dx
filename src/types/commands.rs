@@ -136,6 +136,8 @@ pub enum Ask {
     /// `req_open_orders` or `req_all_open_orders`, once the venue has named
     /// what the account is working.
     OpenOrders(crate::types::model::Question),
+    /// The optional download of existing API orders on a new connection.
+    InitialOpenOrders,
     /// `req_ids`, once the venue has named what the account is working: the
     /// id is floored above it.
     NextValidId,
