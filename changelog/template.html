@@ -1,0 +1,84 @@
+<title>ib-dx Net Changelog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f6f7f5; --panel:#ffffff; --ink:#18201c; --muted:#5b665f; --rule:#dfe4df;
+  --accent:#0b6e4f; --accent-soft:#e2f1ea; --link:#0b5f8a; --code:#eef1ee;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111613; --panel:#171e1a; --ink:#e3e9e5; --muted:#9aa69f; --rule:#2a332e;
+    --accent:#4fc39a; --accent-soft:#16332a; --link:#7cc4ea; --code:#1d2622; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111613; --panel:#171e1a; --ink:#e3e9e5; --muted:#9aa69f; --rule:#2a332e;
+  --accent:#4fc39a; --accent-soft:#16332a; --link:#7cc4ea; --code:#1d2622; color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:24px 64px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:40px}
+@media (max-width:860px){.wrap{grid-template-columns:1fr}.toc{position:static!important}}
+header{max-width:1120px;margin:0 auto 28px}
+h1{font-size:30px;line-height:1.2;margin:0 0 6px;font-weight:600;text-wrap:balance}
+.sub{color:var(--muted);margin:0 0 18px;max-width:70ch}
+.stats{display:flex;flex-wrap:wrap;gap:10px 28px;padding:14px 18px;background:var(--panel);border:1px solid var(--rule);border-radius:6px}
+.stat b{display:block;font:500 20px/1.2 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.toc{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding-top:4px}
+.toc ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.toc a{color:var(--ink);text-decoration:none;display:flex;justify-content:space-between;gap:8px;padding:5px 8px;border-radius:4px;font-size:14px}
+.toc a:hover,.toc a:focus-visible{background:var(--accent-soft);outline:none}
+.toc .n{font:12px "IBM Plex Mono",monospace;color:var(--muted)}
+.search{width:100%;box-sizing:border-box;margin:0 0 12px;padding:8px 10px;border:1px solid var(--rule);border-radius:4px;background:var(--panel);color:var(--ink);font:inherit}
+.search:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.area{padding-bottom:22px;margin-bottom:26px;border-bottom:1px solid var(--rule)}
+h2{font-size:21px;margin:0 0 10px;font-weight:600;text-wrap:balance}
+h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:18px 0 8px;font-weight:600}
+ul.feat,ul.fix{margin:0;padding-left:18px;display:grid;gap:6px}
+ul.fix li{color:var(--ink)}
+ul.fix a{font:500 12.5px "IBM Plex Mono",monospace;color:var(--link);margin-right:6px;text-decoration:none}
+ul.fix a:hover{text-decoration:underline}
+code{font:13px "IBM Plex Mono",monospace;background:var(--code);padding:1px 4px;border-radius:3px}
+.note{color:var(--muted);font-size:13px;max-width:72ch}
+li.hide{display:none}
+@media (prefers-reduced-motion:no-preference){.toc a{transition:background .15s}}
+</style>
+
+<header>
+  <h1>ib-dx: everything since ibx 0.7.1</h1>
+  <p class="sub">One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1, 25 July 2026) were a single squash merge. Each line states the end result; work that was redone later appears once, in its final form. Fixes are listed by the issue that tracked them.</p>
+  <div class="stats">
+    <div class="stat"><b>0.7.1 → 0.1.0</b><span>ibx → ib-dx</span></div>
+    <div class="stat"><b>1,968</b><span>commits to 9 Oct 2026</span></div>
+    <div class="stat"><b>%%FIXED%%</b><span>issues fixed on ib-dx</span></div>
+    <div class="stat"><b>146</b><span>fork-era issue and PR references</span></div>
+    <div class="stat"><b>557</b><span>files changed</span></div>
+    <div class="stat"><b>44k → 218k</b><span>lines of Rust</span></div>
+    <div class="stat"><b>4,794 + 181</b><span>tests (offline + live)</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Sections">
+    <label for="q" class="note">Filter</label>
+    <input id="q" class="search" type="search" placeholder="e.g. bracket, 322, Decimal">
+    <ul>%%TOC%%</ul>
+  </nav>
+  <main id="main">
+%%BODY%%
+    <p class="note">Also open at the time of writing: #156 (release setup on PyPI and crates.io) and #26 (advisor percentage allocation for attached orders, needs an advisor account); the gateway settings still to do are listed under Gateway settings. The fork-era work, referenced against the ibx tracker (146 issue and pull-request references across the commit messages), is folded into the feature lines above.</p>
+  </main>
+</div>
+<script>
+(function(){
+  var q=document.getElementById('q');
+  q.addEventListener('input',function(){
+    var t=q.value.trim().toLowerCase();
+    document.querySelectorAll('#main li').forEach(function(li){
+      li.classList.toggle('hide', t!=='' && li.textContent.toLowerCase().indexOf(t)===-1);
+    });
+  });
+})();
+</script>
