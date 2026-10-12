@@ -110,7 +110,7 @@ def _python() -> str:
 def _cargo_count(args: list[str]) -> int:
     """Tests named by one `--list` run, summed across its targets."""
     out = _run(["cargo", "test", *args, "--", "--list"])
-    return sum(int(m) for m in re.findall(r"^(\d+) tests, \d+ benchmarks$", out, re.M))
+    return sum(int(m) for m in re.findall(r"^(\d+) tests?, \d+ benchmarks$", out, re.M))
 
 
 def counted() -> dict[str, int]:
