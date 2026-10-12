@@ -1035,6 +1035,8 @@ The session includes CASH positions by default. Set `include_fx_positions=false`
 in Rust's `EClientConfig.gateway`, or `include_fx_positions=False` in Python's
 `connect(settings={...})` or `ib_dx.configure()`, to omit them from `position`,
 `positionMulti`, and `updatePortfolio`.
+An empty security type in a cached contract does not override the holding's
+known type.
 
 `send_zero_positions_for_todays_opening_only` defaults to false. When enabled,
 a flat holding is omitted only if its opening quantity is known to be zero.
@@ -1044,7 +1046,9 @@ intraday is omitted when its opening quantity is stated as zero. Nonzero holding
 including fractional ones, pass this setting.
 
 The opening quantity comes from the venue's daily position figures, rather than
-from the first quantity seen by this process. Both settings apply to initial
-answers and subsequent updates on every account. Their end callbacks are still
+from the first quantity seen by this process. Each account uses its own opening
+quantity, including when the portfolio subscription switches accounts. Both
+settings apply to initial answers and subsequent updates on every account.
+Their end callbacks are still
 delivered for empty answers. The filters do not remove stored positions or change
 P&L calculations.

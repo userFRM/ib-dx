@@ -993,8 +993,10 @@ Rust: `EClientConfig.gateway`. Python: `ib_dx.configure()` or per-session
 omit flat rows whose opening quantity the venue states as zero. Flat rows with
 nonzero or unknown opening quantities still arrive, as do all nonzero holdings.
 Both settings apply to initial answers and later updates, including other
-accounts; end callbacks still arrive when every row is filtered. Stored holdings
-and P&L calculations are unchanged. The environment names are
+accounts, using each account's own opening quantities. An empty cached security
+type does not override the holding's known type. End callbacks still arrive when
+every row is filtered. Stored holdings and P&L calculations are unchanged.
+The environment names are
 `IB_DX_INCLUDE_FX_POSITIONS` and
 `IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY`.
 

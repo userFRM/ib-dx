@@ -108,9 +108,21 @@ def test_a_setting_reaches_the_variable_the_client_reads_it_from():
     """
     import os
 
-    ib_dx.configure(market_data_host="example.invalid")
-    assert os.environ["IB_DX_FARM_HOST"] == "example.invalid"
-    ib_dx.configure(market_data_host=None)
+    for name, variable, values in (
+        ("market_data_host", "IB_DX_FARM_HOST", ["example.invalid"]),
+        ("include_fx_positions", "IB_DX_INCLUDE_FX_POSITIONS", [False, True]),
+        ("send_zero_positions_for_todays_opening_only",
+         "IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY", [False, True]),
+    ):
+        before = ib_dx.settings()[name]
+        try:
+            for value in values:
+                ib_dx.configure(**{name: value})
+                assert os.environ.get(variable) == str(value), name
+            ib_dx.configure(**{name: None})
+            assert variable not in os.environ, name
+        finally:
+            ib_dx.configure(**{name: before})
 
 
 def test_a_logging_setting_says_it_cannot_be_set_rather_than_storing_one():

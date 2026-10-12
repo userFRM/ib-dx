@@ -14625,7 +14625,7 @@ impl Wrapper for PositionCallbacks {
 #[test]
 fn the_fx_position_setting_filters_every_position_callback() {
     for include in [None, Some(false), Some(true)] {
-        for cached in [false, true] {
+        for (row_type, cached_type) in [(true, None), (false, Some(true)), (true, Some(false))] {
             let (client, rx, shared) = test_client();
             shared.set_settings(Arc::new(crate::settings::GatewaySettings {
                 include_fx_positions: include, ..Default::default()
@@ -14637,11 +14637,11 @@ fn the_fx_position_setting_filters_every_position_callback() {
                 for (con_id, sec_type) in [(1, "CASH"), (2, "STK")] {
                     portfolio.set_position_info(PositionInfo {
                         con_id, position: 1.0, symbol: "held".into(),
-                        sec_type: if cached { String::new() } else { sec_type.into() },
+                        sec_type: if row_type { sec_type.into() } else { String::new() },
                         ..Default::default()
                     });
-                    if cached {
-                        client.core.cache_contract(con_id, Contract { con_id, sec_type: sec_type.into(), ..Default::default() });
+                    if let Some(stated) = cached_type {
+                        client.core.cache_contract(con_id, Contract { con_id, sec_type: if stated { sec_type.into() } else { String::new() }, ..Default::default() });
                     }
                 }
                 portfolio.note_account_value("NetLiquidation", "100", "USD");
@@ -14656,7 +14656,7 @@ fn the_fx_position_setting_filters_every_position_callback() {
             assert_eq!(heard.ends.iter().filter(|&&e| e == "position").count(), 1);
             assert_eq!(heard.ends.iter().filter(|&&e| e == "multi").count(), 2);
             assert_eq!(heard.ends.iter().filter(|&&e| e == "portfolio").count(), 1);
-            for phase in 0..3 {
+            for phase in 0..4 {
                 if phase != 0 {
                     heard.rows.clear();
                     for account in ["DU123", "DU999"] {
@@ -14674,13 +14674,23 @@ fn the_fx_position_setting_filters_every_position_callback() {
                         client.req_positions_multi(2, "DU999", "");
                         the_engine_answers(&rx, &shared);
                     }
+                    if phase == 3 {
+                        client.req_positions_multi(3, "DU123", "");
+                        client.req_positions_multi(4, "DU999", "");
+                        the_engine_answers(&rx, &shared);
+                    }
                     client.process_msgs(&mut heard);
                 }
                 for (callback, account) in [("position", "DU123"), ("multi", "DU123"), ("multi", "DU999"), ("portfolio", "DU123")] {
-                    let ids: std::collections::BTreeSet<_> = heard.rows.iter()
+                    let mut ids: Vec<_> = heard.rows.iter()
                         .filter(|(kind, on, ..)| *kind == callback && on == account).map(|r| r.2).collect();
-                    let expected = if include == Some(false) { vec![2] } else { vec![1, 2] };
-                    assert_eq!(ids.into_iter().collect::<Vec<_>>(), expected, "{include:?} cached={cached} phase={phase} {callback} {account}");
+                    let mut expected = if include == Some(false) { vec![2] } else { vec![1, 2] };
+                    if callback == "multi" && (phase == 3 || (phase == 2 && account == "DU123")) {
+                        expected.extend(expected.clone());
+                    }
+                    ids.sort_unstable();
+                    expected.sort_unstable();
+                    assert_eq!(ids, expected, "{include:?} row={row_type} cached={cached_type:?} phase={phase} {callback} {account}");
                 }
             }
             assert_eq!(shared.portfolio.position_infos().len(), 2, "filtering does not discard holdings");
@@ -14723,7 +14733,9 @@ fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
     }
     for restrict in [None, Some(false), Some(true)] {
         for opening in [None, Some("0"), Some("-0.0"), Some("0.25"), Some("-2"), Some("NaN"), Some("bad")] {
-            let (client, rx, shared) = test_client();
+            let (mut client, rx, shared) = test_client();
+            client.accounts = vec!["DU123".into(), "DU999".into()];
+            shared.reference.set_login(client.accounts.clone(), false);
             shared.set_settings(Arc::new(crate::settings::GatewaySettings {
                 send_zero_positions_for_todays_opening_only: restrict, ..Default::default()
             }.resolve()));
@@ -14731,34 +14743,51 @@ fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
             let mut context = crate::engine::context::Context::new();
             let opening_tag = opening.map(|qty| format!("6064={qty}\x01")).unwrap_or_default();
             handle_pnl_response(format!("35=U\x016040=143\x016008=1\x01{opening_tag}8223=9\x01").as_bytes(), &shared);
-            // Another account's known zero must not suppress this account's opening holding.
-            shared.portfolio_for("DU999").set_midnight_seeds(String::new(), vec![crate::types::MidnightSeed {
-                con_id: 1, qty_midnight: Some(0.0), ..Default::default()
-            }]);
+            // Opposite opening quantities for the same contract must stay on their accounts.
+            let named_opening = if matches!(opening, Some("0" | "-0.0")) { "0.5" } else { "0" };
+            shared.name_account_request("named", "DU999");
+            handle_pnl_response(format!("35=U\x016040=143\x016529=named\x016008=1\x016064={named_opening}\x01").as_bytes(), &shared);
             let mut heard = PositionCallbacks::default();
-            for qty in [0.0, 0.25, 0.0, -0.25, 0.0] {
-                let frame = std::collections::HashMap::from([
-                    (6008, "1".into()), (6064, qty.to_string()), (6068, "held".into()), (167, "STK".into()),
-                ]);
-                handle_position_update(&frame, &mut context, &shared, &None);
-                shared.portfolio.note_account_value("NetLiquidation", "100", "USD");
-                shared.portfolio.account_download_is_settled();
+            for (phase, qty) in [0.0, 0.25, 0.0, -0.25, 0.0].into_iter().enumerate() {
+                for (account, key) in [("DU123", ""), ("DU999", "named")] {
+                    let frame = std::collections::HashMap::from([
+                        (6529, key.into()), (6008, "1".into()), (6064, qty.to_string()),
+                        (6068, "held".into()), (167, "STK".into()),
+                    ]);
+                    handle_position_update(&frame, &mut context, &shared, &None);
+                    let portfolio = shared.portfolio_for(account);
+                    portfolio.note_account_value("NetLiquidation", "100", "USD");
+                    portfolio.account_download_is_settled();
+                }
                 heard.rows.clear();
                 if heard.ends.is_empty() {
                     client.req_account_updates(true, "DU123");
                     client.req_positions();
                     client.req_positions_multi(1, "DU123", "");
+                    client.req_positions_multi(2, "DU999", "");
+                    the_engine_answers(&rx, &shared);
+                }
+                if phase == 3 {
+                    client.req_account_updates(true, "DU999");
                     the_engine_answers(&rx, &shared);
                 }
                 client.process_msgs(&mut heard);
-                let allowed = restrict != Some(true) || qty != 0.0 || !matches!(opening, Some("0" | "-0.0"));
-                for callback in ["position", "multi", "portfolio"] {
-                    let rows: Vec<_> = heard.rows.iter().filter(|r| r.0 == callback).map(|r| r.3).collect();
-                    assert_eq!(rows, if allowed { vec![qty] } else { vec![] }, "{restrict:?} opening={opening:?} qty={qty} {callback}");
+                for (callback, account) in [("position", "DU123"), ("multi", "DU123"), ("multi", "DU999"),
+                    ("portfolio", if phase < 3 { "DU123" } else { "DU999" })] {
+                    let zero_opening = if account == "DU123" { matches!(opening, Some("0" | "-0.0")) } else { named_opening == "0" };
+                    let allowed = restrict != Some(true) || qty != 0.0 || !zero_opening;
+                    let rows: Vec<_> = heard.rows.iter().filter(|r| r.0 == callback && r.1 == account).map(|r| r.3).collect();
+                    assert_eq!(rows, if allowed { vec![qty] } else { vec![] }, "{restrict:?} opening={opening:?} qty={qty} {callback} {account}");
                 }
             }
-            assert_eq!(heard.ends, ["portfolio", "position", "multi"], "ends survive an empty answer");
+            assert_eq!(heard.ends, ["portfolio", "position", "multi", "multi", "portfolio"], "ends survive an empty answer");
+            for account in ["DU123", "DU999"] {
+                assert_eq!(shared.portfolio_for(account).position_info(1).unwrap().position, 0.0);
+            }
             if restrict == Some(true) && matches!(opening, Some("0" | "-0.0")) {
+                client.req_account_updates(true, "DU123");
+                the_engine_answers(&rx, &shared);
+                client.process_msgs(&mut heard);
                 heard.rows.clear();
                 handle_pnl_response(b"35=U\x016040=143\x016008=1\x016064=-0.5\x01", &shared);
                 client.process_msgs(&mut heard);

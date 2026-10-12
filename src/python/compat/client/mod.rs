@@ -3779,55 +3779,127 @@ assert [(c[1], c[2]) for c in w.calls if c[0] in ('tickOptionComputation', 'tick
         });
     }
 
-    /// `reqPositions` subscribes to a real-time feed: a holding that moves
-    /// after the call is reported as it moves. Answering only the set held
-    /// when the call was made left a caller tracking its positions from a
-    /// snapshot that went stale on the next fill.
-    // Drives the client through the methods that push state into it, which
-    // a wheel does not carry: see the `test-helpers` feature.
-    #[cfg(feature = "test-helpers")]
+    /// Position filters cover snapshots, pending answers and streams on both accounts.
     #[test]
-    fn a_holding_that_moves_after_the_request_is_reported() {
+    fn position_filters_cover_python_delivery_and_account_switches() {
+        use crate::engine::hot_loop::ccp::positions::handle_pnl_response;
         Python::initialize();
         Python::attach(|py| {
-            let (client, rx, shared, w) = wired_client(py);
-            let rx = crate::api::client::tests::Engine::new(rx, &shared);
-            shared.portfolio.account_download_is_settled();
-            let held = |qty: f64| PositionInfo {
-                con_id: 756733, position: qty, symbol: "SPY".into(),
-                sec_type: "STK".into(), currency: "USD".into(), ..Default::default()
-            };
-            shared.portfolio.set_position_info(held(1.0));
-            client.call_method0(py, "req_positions").unwrap();
-            crate::api::client::tests::the_engine_answers(&rx, &shared);
-            client.call_method0(py, "_test_dispatch_once").unwrap();
-
-            let g = pyo3::types::PyDict::new(py);
-            g.set_item("w", &w).unwrap();
-            let reported = || -> usize {
-                py.eval(c"len([c for c in w.calls if c[0] == 'position'])", Some(&g), None)
-                    .unwrap().extract().unwrap()
-            };
-            // The answer comes first in the pass: the holding, then the end.
-            // The feed follows it on the same pass with what moved before the
-            // ask, which is the same holding again — see `req_positions` —
-            // so what moves after is counted from here.
-            let opening: Vec<String> = py
-                .eval(c"[c[0] for c in w.calls][:2]", Some(&g), None)
-                .unwrap().extract().unwrap();
-            assert_eq!(opening, ["position", "positionEnd"], "the holding held when it was asked for");
-            let asked = reported();
-
-            shared.portfolio.set_position_info(held(3.0));
-            client.call_method0(py, "_test_dispatch_once").unwrap();
-            assert_eq!(reported(), asked + 1, "and the holding once it moves");
-
-            // Withdrawn, so what moves after is no longer reported.
-            client.call_method0(py, "cancel_positions").unwrap();
-            crate::api::client::tests::the_engine_answers(&rx, &shared);
-            shared.portfolio.set_position_info(held(5.0));
-            client.call_method0(py, "_test_dispatch_once").unwrap();
-            assert_eq!(reported(), asked + 1, "a withdrawn ask is not answered further");
+            for include in [None, Some(false), Some(true)] {
+                for restrict in [None, Some(false), Some(true)] {
+                    let (client, rx, shared, w) = wired_client(py);
+                    let rx = crate::api::client::tests::Engine::new(rx, &shared);
+                    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                        include_fx_positions: include,
+                        send_zero_positions_for_todays_opening_only: restrict,
+                        ..Default::default()
+                    }.resolve()));
+                    let accounts = vec!["DU123".to_string(), "DU999".to_string()];
+                    shared.reference.set_login(accounts.clone(), false);
+                    *client.get().accounts.lock().unwrap() = accounts;
+                    for (account, seeds) in [
+                        ("DU123", "6008=3\x016064=0\x016008=4\x016064=-0.5\x01"),
+                        ("DU999", "6008=3\x016064=0.5\x016008=4\x016064=0\x01"),
+                    ] {
+                        shared.name_account_request(account, account);
+                        handle_pnl_response(format!("35=U\x016040=143\x016529={account}\x01{seeds}").as_bytes(), &shared);
+                        let portfolio = shared.portfolio_for(account);
+                        portfolio.note_account_value("NetLiquidation", "100", "USD");
+                        portfolio.account_download_is_settled();
+                    }
+                    let g = pyo3::types::PyDict::new(py);
+                    g.set_item("w", &w).unwrap();
+                    for (phase, qty) in [0.0, 0.25, 0.0, -0.25, 0.0, 0.0].into_iter().enumerate() {
+                        w.bind(py).getattr("calls").unwrap().call_method0("clear").unwrap();
+                        for account in ["DU123", "DU999"] {
+                            for (con_id, sec_type) in [(1, "CASH"), (2, "STK"), (3, "STK"), (4, "STK")] {
+                                shared.portfolio_for(account).set_position_info(PositionInfo {
+                                    con_id, sec_type: sec_type.into(), position: qty,
+                                    avg_cost: (phase as i64 + 1) * crate::types::PRICE_SCALE,
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        if phase == 0 {
+                            // A normal conId-only request leaves a partial cached contract.
+                            let contract = py.get_type::<Contract>().call0().unwrap();
+                            contract.setattr("con_id", 1).unwrap();
+                            contract.setattr("exchange", "IDEALPRO").unwrap();
+                            client.call_method1(py, "req_mkt_data", (90i64, &contract, "", false, false)).unwrap();
+                            assert!(client.get().core.get_contract(1, &shared).unwrap().sec_type.is_empty());
+                            client.call_method1(py, "req_account_updates", (true, "DU123")).unwrap();
+                            client.call_method0(py, "req_positions").unwrap();
+                            for (id, account) in [(1i64, "DU123"), (2, "DU999")] {
+                                client.call_method1(py, "req_positions_multi", (id, account, "")).unwrap();
+                            }
+                        }
+                        if phase == 2 {
+                            client.call_method0(py, "req_positions").unwrap();
+                        }
+                        if phase == 3 {
+                            client.call_method1(py, "req_account_updates", (true, "DU999")).unwrap();
+                        }
+                        if phase == 3 || phase == 4 {
+                            for (id, account) in [(3i64, "DU123"), (4, "DU999")] {
+                                client.call_method1(py, "req_positions_multi", (id, account, "")).unwrap();
+                            }
+                        }
+                        crate::api::client::tests::the_engine_answers(&rx, &shared);
+                        client.call_method0(py, "poll").unwrap();
+                        let mut rows: Vec<(String, i64, String, i64, f64)> = py.eval(c"[
+    (c[0], 0, c[1], c[2].con_id, float(c[3])) if c[0] == 'position' else
+    (c[0], c[1], c[2], c[4].con_id, float(c[5])) if c[0] == 'positionMulti' else
+    (c[0], 0, c[8], c[1].con_id, float(c[2]))
+    for c in w.calls if c[0] in ('position', 'positionMulti', 'updatePortfolio')
+]", Some(&g), None).unwrap().extract().unwrap();
+                        let mut expected = Vec::new();
+                        let mut watchers = vec![("position", 0, "DU123"), ("positionMulti", 1, "DU123"),
+                            ("positionMulti", 2, "DU999"), ("updatePortfolio", 0, if phase < 3 { "DU123" } else { "DU999" })];
+                        if phase >= 3 { watchers.extend([("positionMulti", 3, "DU123"), ("positionMulti", 4, "DU999")]); }
+                        for (callback, id, account) in watchers {
+                            for con_id in 1..=4 {
+                                if con_id == 1 && include == Some(false) { continue; }
+                                let zero_opening = (account == "DU123" && con_id == 3) || (account == "DU999" && con_id == 4);
+                                if restrict == Some(true) && qty == 0.0 && zero_opening { continue; }
+                                expected.push((callback.to_string(), id, account.to_string(), con_id, qty));
+                            }
+                        }
+                        rows.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        expected.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        assert_eq!(rows, expected, "include={include:?} restrict={restrict:?} phase={phase}");
+                        let ends: Vec<String> = py.eval(c"[c[0] for c in w.calls if c[0] in ('positionEnd', 'positionMultiEnd', 'accountDownloadEnd')]", Some(&g), None).unwrap().extract().unwrap();
+                        let expected_ends: &[&str] = match phase {
+                            0 => &["accountDownloadEnd", "positionEnd", "positionMultiEnd", "positionMultiEnd"],
+                            2 => &["positionEnd"],
+                            3 => &["accountDownloadEnd", "positionMultiEnd", "positionMultiEnd"],
+                            4 => &["positionMultiEnd", "positionMultiEnd"],
+                            _ => &[],
+                        };
+                        assert_eq!(ends, expected_ends, "ends survive filtering, phase={phase}");
+                        if phase == 0 {
+                            let names: Vec<String> = py.eval(c"[c[0] for c in w.calls if c[0] in ('position', 'positionEnd')]", Some(&g), None).unwrap().extract().unwrap();
+                            let mut expected_names = vec!["position"; expected.iter().filter(|r| r.0 == "position").count()];
+                            expected_names.push("positionEnd");
+                            assert_eq!(names, expected_names, "the snapshot precedes its end");
+                        }
+                        for account in ["DU123", "DU999"] {
+                            assert_eq!(shared.portfolio_for(account).position_infos().len(), 4);
+                        }
+                    }
+                    client.call_method0(py, "cancel_positions").unwrap();
+                    for id in 1i64..=4 { client.call_method1(py, "cancel_positions_multi", (id,)).unwrap(); }
+                    client.call_method1(py, "req_account_updates", (false, "DU999")).unwrap();
+                    crate::api::client::tests::the_engine_answers(&rx, &shared);
+                    client.call_method0(py, "poll").unwrap();
+                    w.bind(py).getattr("calls").unwrap().call_method0("clear").unwrap();
+                    for account in ["DU123", "DU999"] {
+                        shared.portfolio_for(account).set_position_info(PositionInfo { con_id: 2, position: 5.0, ..Default::default() });
+                    }
+                    client.call_method0(py, "poll").unwrap();
+                    let rows: usize = py.eval(c"len([c for c in w.calls if c[0] in ('position', 'positionMulti', 'updatePortfolio')])", Some(&g), None).unwrap().extract().unwrap();
+                    assert_eq!(rows, 0, "withdrawn subscriptions receive no later holdings");
+                }
+            }
         });
     }
 

@@ -5719,7 +5719,8 @@ impl ClientCore {
         let settings = shared.settings();
         if !settings.include_fx_positions {
             let sec_type = self.get_contract(pi.con_id, shared)
-                .map(|contract| contract.sec_type).unwrap_or_else(|| pi.sec_type.clone());
+                .map(|contract| contract.sec_type).filter(|kind| !kind.is_empty())
+                .unwrap_or_else(|| pi.sec_type.clone());
             if sec_type == "CASH" { return false; }
         }
         !settings.send_zero_positions_for_todays_opening_only
