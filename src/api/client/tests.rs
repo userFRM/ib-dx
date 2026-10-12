@@ -14899,6 +14899,33 @@ pub(crate) fn startup_report(rx: &Engine, shared: &SharedState, extra: &str) {
         &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
 }
 
+// Initial option reports and later sparse reports of the same order.
+pub(crate) const STARTUP_OPTION_CASES: &[(&[&str], bool)] = &[
+    (&[""], true),
+    (&["6809=-1|"], true),
+    (&["6809=1|"], false),
+    (&["6809=2|"], false),
+    (&["6809=3|"], false),
+    (&["6809=100|"], false),
+    (&["6809=101|"], false),
+    (&["6809=102|"], false),
+    (&["6809=103|"], false),
+    (&["6809=200|"], false),
+    (&["6809=-2|"], true),
+    (&["6809=0|"], true),
+    (&["6809=999|"], true),
+    (&["6809=01|"], true),
+    (&["6576=1|"], false),
+    (&["6576=2|"], false),
+    (&["6809=-1|6576=1|"], true),
+    (&["6809=999|6576=1|"], true),
+    (&["6809=2|6576=-1|"], false),
+    (&["6809=1|", ""], false),
+    (&["6809=2|", "6809=-1|"], false),
+    (&["6809=1|", "6809=999|"], false),
+    (&["6809=-1|", "6809=2|"], false),
+];
+
 #[test]
 fn connection_download_preserves_report_provenance() {
     for (enabled, delayed) in [(false, false), (true, false), (false, true), (true, true)] {
@@ -14951,6 +14978,29 @@ fn connection_download_preserves_report_provenance() {
         client.req_all_open_orders(); the_engine_answers(&rx, &shared); client.process_msgs(&mut heard);
         assert!(heard.events.iter().any(|e| e.starts_with("open_order:17:")), "{:?}", heard.events);
         assert!(heard.events.contains(&"open_order_end".into()));
+    }
+    for &(reports, eligible) in STARTUP_OPTION_CASES {
+        for ordinary in [false, true] {
+            let (client, rx, shared) = test_client();
+            let (start, _) = std::sync::mpsc::channel();
+            let client = client.finish_connect(start).unwrap();
+            for report in reports {
+                startup_report(&rx, &shared, &format!("167=OPT|200=202612|202=120|201=1|{report}"));
+            }
+            if ordinary {
+                startup_report(&rx, &shared, "11=701.0|6121=18|167=OPT|200=202612|202=120|201=1|6809=-1|37=ordinary-option|");
+            }
+            startup_report(&rx, &shared, "11=*|55=*|");
+            the_engine_answers(&rx, &shared);
+            let mut heard = RecordingWrapper::default();
+            client.process_msgs(&mut heard);
+            let mut ids: Vec<i64> = heard.events.iter().filter_map(|e| e.strip_prefix("open_order:")?.split(':').next()?.parse().ok()).collect();
+            ids.sort_unstable();
+            let expected: Vec<i64> = [eligible.then_some(17), ordinary.then_some(18)].into_iter().flatten().collect();
+            assert_eq!(ids, expected, "{reports:?}, ordinary={ordinary}: {:?}", heard.events);
+            assert_eq!(heard.events.iter().filter(|e| e.starts_with("order_status:")).count(), expected.len());
+            assert_eq!(heard.events.iter().filter(|e| *e == "open_order_end").count(), usize::from(!expected.is_empty()));
+        }
     }
     for api in ["", "0", "2147483647"] {
         let (client, rx, shared) = test_client();

@@ -5314,6 +5314,7 @@ fn recovered_attachment_metadata_retains_unstated_fields_and_explicit_zeroes() {
         family_key: Some("group.2".into()), parent: Some("10.7".into()),
         use_parent_price: Some(true), profit_offset: Some(2.5),
         api_order_id: Some(0), api_client_id: Some(7),
+        ..Default::default()
     }));
     let update = exec_report_frame(&[
         (11, "42.1"), (39, "0"), (150, "5"), (6704, "0"), (6446, "0"),
@@ -5323,6 +5324,7 @@ fn recovered_attachment_metadata_retains_unstated_fields_and_explicit_zeroes() {
         family_key: Some("group.2".into()), parent: Some("10.7".into()),
         use_parent_price: Some(false), profit_offset: Some(0.0),
         api_order_id: Some(0), api_client_id: Some(7),
+        ..Default::default()
     };
     assert_eq!(shared.orders.attached_order_metadata(42), Some(expected.clone()));
     let sparse = exec_report_frame(&[(11, "42.1"), (39, "0"), (150, "0")]);

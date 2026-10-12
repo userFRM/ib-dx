@@ -270,6 +270,7 @@ fn a_recovered_child_keeps_attachment_metadata_on_its_next_replace() {
             profit_offset: Some(2.5),
             api_order_id: Some(0),
             api_client_id: Some(23),
+            ..Default::default()
         },
     );
     context.pending_orders.push(OrderRequest::Modify {

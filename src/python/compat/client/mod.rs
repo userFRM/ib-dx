@@ -4953,6 +4953,31 @@ w.calls.clear()
                 the_engine_answers(&rx, &shared); client.get().dispatch_once(py, &shared).unwrap();
                 py.run(c"assert any(c[0] == 'openOrder' and c[1] == 17 for c in w.calls) and w.calls[-1][0] == 'openOrderEnd', w.calls", Some(&g), None).unwrap();
             }
+            for &(reports, eligible) in crate::api::client::tests::STARTUP_OPTION_CASES {
+                for ordinary in [false, true] {
+                    let (client, receiver, shared, w) = wired_client(py);
+                    let rx = Engine::new(receiver, &shared);
+                    for report in reports {
+                        startup_report(&rx, &shared, &format!("167=OPT|200=202612|202=120|201=1|{report}"));
+                    }
+                    if ordinary {
+                        startup_report(&rx, &shared, "11=701.0|6121=18|167=OPT|200=202612|202=120|201=1|6809=-1|37=ordinary-option|");
+                    }
+                    startup_report(&rx, &shared, "11=*|55=*|");
+                    client.get().announce_the_new_session(py, &shared).unwrap();
+                    the_engine_answers(&rx, &shared);
+                    client.get().dispatch_once(py, &shared).unwrap();
+                    let g = pyo3::types::PyDict::new(py);
+                    g.set_item("w", &w).unwrap();
+                    g.set_item("reports", reports.to_vec()).unwrap();
+                    g.set_item("expected", [eligible.then_some(17), ordinary.then_some(18)].into_iter().flatten().collect::<Vec<i64>>()).unwrap();
+                    py.run(c"
+assert sorted(c[1] for c in w.calls if c[0] == 'openOrder') == expected, (reports, w.calls)
+assert sum(c[0] == 'orderStatus' for c in w.calls) == len(expected), (reports, w.calls)
+assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (reports, w.calls)
+", Some(&g), None).unwrap();
+                }
+            }
         });
     }
 

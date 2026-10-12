@@ -1072,8 +1072,9 @@ P&L calculations.
 the initial connection sends `openOrder` and `orderStatus` for numbered working
 orders belonging to this API client, or every client when this is the configured
 master. A nonempty download ends with `openOrderEnd`; an empty one sends no end.
-Unnumbered manual orders and pending placements are excluded. The download waits
-for order naming to finish even if the next-ID wait has timed out.
+Unnumbered manual orders, pending placements, previews, and option exercise or
+lapse instructions are excluded; ordinary option orders remain eligible. The
+download waits for order naming to finish even if the next-ID wait has timed out.
 
 Set it to false to skip this initial delivery; explicit open-order requests
 still work. Initial reports retain execution history without unsolicited fill

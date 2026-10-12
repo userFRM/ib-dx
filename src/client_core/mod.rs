@@ -4615,7 +4615,8 @@ impl ClientCore {
             !tracked.order.what_if
                 && self.tells_client(shared, i64::from(tracked.order.client_id))
                 && shared.orders.attached_order_metadata(*wire)
-                    .is_some_and(|identity| identity.api_order_id.is_some_and(|id| id != 0 && id != i64::from(i32::MAX)))
+                    .is_some_and(|identity| !identity.option_exercise
+                        && identity.api_order_id.is_some_and(|id| id != 0 && id != i64::from(i32::MAX)))
         }).collect()
     }
 

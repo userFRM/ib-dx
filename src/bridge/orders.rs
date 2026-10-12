@@ -39,6 +39,7 @@ pub(crate) struct AttachedOrderMetadata {
     pub profit_offset: Option<f64>,
     pub api_order_id: Option<i64>,
     pub api_client_id: Option<i32>,
+    pub option_exercise: bool,
 }
 
 /// What a connection has said about the orders it already had working.
@@ -381,6 +382,7 @@ impl OrderState {
         if update.profit_offset.is_some() { held.profit_offset = update.profit_offset; }
         if update.api_order_id.is_some() { held.api_order_id = update.api_order_id; }
         if update.api_client_id.is_some() { held.api_client_id = update.api_client_id; }
+        held.option_exercise |= update.option_exercise;
         if let (Some(client), Some(api)) = (held.api_client_id, held.api_order_id) {
             self.api_order_ids.lock().unwrap().entry((client, api)).or_insert(wire);
         }

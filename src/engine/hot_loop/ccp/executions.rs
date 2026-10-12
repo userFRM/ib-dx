@@ -2095,6 +2095,9 @@ impl CcpState {
                 profit_offset: parsed.get(&6446).and_then(|value| value.parse().ok()),
                 api_order_id: parsed.get(&6121).and_then(|value| value.parse().ok()),
                 api_client_id: parsed.get(&6119).and_then(|value| value.parse().ok()),
+                // Unset and unknown exercise values state no new classification.
+                option_exercise: parsed.get(&6809).or_else(|| parsed.get(&6576))
+                    .is_some_and(|value| matches!(value.as_str(), "1" | "2" | "3" | "100" | "101" | "102" | "103" | "200")),
             });
         }
 
