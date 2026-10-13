@@ -4985,7 +4985,8 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
     fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
         Python::initialize();
         Python::attach(|py| {
-            for (enabled, master, populated, expected) in [
+            for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released"] {
+            for (enabled, master, populated, mut expected) in [
                 (None, None, true, vec![17i64]), (Some(true), Some(1), true, vec![17, 18]),
                 (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
             ] {
@@ -5004,12 +5005,46 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                         shared.orders.push_order_info(wire, crate::bridge::RichOrderInfo {
                             contract: Default::default(),
                             order: crate::types::model::Order { order_id: wire as i64, client_id: placing, ..Default::default() },
-                            order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+                            order_state: crate::types::model::OrderState { status: "PendingSubmit".into(), ..Default::default() },
                             last_exec: Default::default(),
                         });
                     }
                 }
-                client.get().core.track_order(90, Default::default(), crate::types::model::Order {order_id:90,total_quantity:2.0,..Default::default()},0);
+                let contract = Contract::from_api(py, &ApiContract { con_id: 756733, symbol: "SPY".into(), sec_type: "STK".into(), exchange: "SMART".into(), currency: "USD".into(), ..Default::default() }).unwrap();
+                let mut order = ApiOrder { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
+                    transmit: !matches!(local, "kept" | "released"), ..Default::default() };
+                let place = |order: &ApiOrder| {
+                    let order = crate::python::compat::contract::Order::from_api(py, order).unwrap();
+                    client.get().place_order(py, 90, &contract, &order).unwrap();
+                };
+                place(&order);
+                let rx = crate::api::client::tests::Engine::new(rx, &shared);
+                assert_eq!(rx.keeps(90), !order.transmit, "{local}");
+                let identity = shared.orders.attached_order_metadata(90).unwrap();
+                assert_eq!((identity.api_order_id, identity.api_client_id), (Some(90), Some(1)));
+                assert!(!shared.orders.the_order_went_out(90));
+                assert!(shared.orders.get_order_info(90).is_none());
+                if local == "released" {
+                    order.transmit = true;
+                    place(&order);
+                    assert!(!rx.keeps(90));
+                }
+                if local != "kept" {
+                    crate::api::client::tests::startup_send(&rx, &shared, 90);
+                    if matches!(local, "acknowledged" | "submitted" | "modified") {
+                        crate::api::client::tests::startup_report(&rx, &shared, &format!("11=90.0|6121=90|6119=1|38=2|151=2|{}", if local == "submitted" { "100=SMART|" } else { "" }));
+                        assert!(shared.orders.venue_is_working(90));
+                assert_eq!(shared.orders.get_order_info(90).unwrap().order_state.status,
+                    if local == "submitted" { "Submitted" } else { "PreSubmitted" });
+                    }
+                    if matches!(local, "modified" | "modified_pending") {
+                        order.transmit = false;
+                        order.lmt_price = 101.0;
+                        place(&order);
+                        assert!(rx.keeps(90), "the modification is kept while the order stays working");
+                    }
+                    if enabled != Some(false) { expected.push(90); }
+                }
                 shared.orders.set_replay_done();
                 client.get().announce_the_new_session(py, &shared).unwrap();
                 let mut asks = crate::engine::hot_loop::asks::Asks::new();
@@ -5021,7 +5056,20 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                 let g = pyo3::types::PyDict::new(py);
                 g.set_item("w", &w).unwrap();
                 let ids: Vec<i64> = py.eval(c"sorted(c[1] for c in w.calls if c[0] == 'openOrder')", Some(&g), None).unwrap().extract().unwrap();
-                assert_eq!(ids, expected);
+                assert_eq!(ids, expected, "{local}, populated={populated}");
+                let tracked = client.get().core.tracked_order(90).unwrap();
+                assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, 2.0, order.transmit));
+                g.set_item("unacknowledged", matches!(local, "sent" | "modified_pending" | "released")).unwrap();
+                g.set_item("transmit", order.transmit).unwrap();
+                g.set_item("expected", &expected).unwrap();
+                py.run(c"
+assert sum(c[0] == 'orderStatus' for c in w.calls) == len(expected), w.calls
+if 90 in expected:
+    assert any(c[0] == 'orderStatus' and c[1] == 90 and float(c[3]) == 0 and float(c[4]) == 2 for c in w.calls), w.calls
+    if unacknowledged:
+        assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == 'PendingSubmit' for c in w.calls), w.calls
+    assert any(c[0] == 'openOrder' and c[1] == 90 and c[3].orderId == 90 and c[3].transmit == transmit for c in w.calls), w.calls
+", Some(&g), None).unwrap();
                 let ends: usize = py.eval(c"sum(c[0] == 'openOrderEnd' for c in w.calls)", Some(&g), None).unwrap().extract().unwrap();
                 assert_eq!(ends, usize::from(!expected.is_empty()));
                 py.run(c"
@@ -5033,14 +5081,15 @@ if rows:
     assert [c[0] for c in rows[:-1]] == ['openOrder','orderStatus'] * ((len(rows)-1)//2), rows
 w.calls.clear()
 ",Some(&g),None).unwrap();
-                client.get().core.untrack_order(90);
                 client.call_method0(py,"reqAllOpenOrders").unwrap();
                 for command in rx.try_iter() {
                     if let ControlCommand::Ask(ask) = command { asks.take(ask); }
                 }
                 asks.answer_what_is_ready(&shared,&mut 64);
                 client.get().dispatch_once(py,&shared).unwrap();
-                py.run(c"assert w.calls and w.calls[-1][0] == 'openOrderEnd', w.calls",Some(&g),None).unwrap();
+                py.run(c"assert any(c[0] == 'openOrder' and c[1] == 90 for c in w.calls) and w.calls[-1][0] == 'openOrderEnd', w.calls",Some(&g),None).unwrap();
+
+            }
 
             }
 

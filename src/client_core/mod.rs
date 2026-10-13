@@ -4613,6 +4613,8 @@ impl ClientCore {
     pub(crate) fn initial_open_orders(&self, shared: &SharedState) -> Vec<(u64, TrackedOrder)> {
         self.collect_open_orders(shared, false).into_iter().filter(|(wire, tracked)| {
             !tracked.order.what_if
+                && (shared.orders.the_order_went_out(*wire)
+                    || shared.orders.venue_is_working(*wire))
                 && self.tells_client(shared, i64::from(tracked.order.client_id))
                 && shared.orders.attached_order_metadata(*wire)
                     .is_some_and(|identity| !identity.option_exercise

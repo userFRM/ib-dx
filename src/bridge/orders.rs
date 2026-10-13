@@ -109,8 +109,8 @@ pub struct OrderState {
     /// Every order whose message this client put on the wire.
     ///
     /// What the venue then said about it is a separate question, and the two
-    /// are indistinguishable from outside without this. Only tests keep this
-    /// record; ordinary sessions have no reader that needs it.
+    /// are indistinguishable from outside without this. The initial download
+    /// uses it to distinguish submitted orders from local placements still held.
     orders_sent: Mutex<std::collections::HashSet<u64>>,
     reusable_order_ids: Mutex<std::collections::HashSet<u64>>,
     attached_metadata: Mutex<HashMap<u64, AttachedOrderMetadata>>,

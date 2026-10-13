@@ -14813,7 +14813,8 @@ fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
 /// for a nonempty download. Turning it off still permits an explicit request.
 #[test]
 fn connection_download_obeys_the_setting_and_client_scope() {
-    for (enabled, master, populated, expected) in [
+    for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released"] {
+    for (enabled, master, populated, mut expected) in [
         (None, None, true, vec![17]), (Some(true), Some(1), true, vec![17, 18]),
         (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
     ] {
@@ -14827,7 +14828,7 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         shared.set_settings(Arc::new(settings));
         if populated {
             for (wire, placing, api, status, preview) in [
-                (71, 1, Some(17), "Submitted", false), (72, 2, Some(18), "Submitted", false),
+                (71, 1, Some(17), "PendingSubmit", false), (72, 2, Some(18), "Submitted", false),
                 (73, 0, None, "Submitted", false), (74, 1, Some(20), "Filled", false),
                 (75, 1, Some(21), "Submitted", true),
                 (76, 1, Some(0), "Submitted", false),
@@ -14844,10 +14845,39 @@ fn connection_download_obeys_the_setting_and_client_scope() {
                 });
             }
         }
-        client.core.track_order(90, Contract::default(), Order { order_id: 90, total_quantity: 2.0, ..Default::default() }, 0);
+
         shared.orders.hold_open_orders(true);
         let (start, _started) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
+        let mut order = Order { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
+            transmit: !matches!(local, "kept" | "released"), ..Default::default() };
+        client.try_place_order(90, &spy(), &order).unwrap();
+        assert_eq!(rx.keeps(90), !order.transmit, "{local}");
+        let identity = shared.orders.attached_order_metadata(90).unwrap();
+        assert_eq!((identity.api_order_id, identity.api_client_id), (Some(90), Some(1)));
+        assert!(!shared.orders.the_order_went_out(90));
+        assert!(shared.orders.get_order_info(90).is_none());
+        if local == "released" {
+            order.transmit = true;
+            client.try_place_order(90, &spy(), &order).unwrap();
+            assert!(!rx.keeps(90));
+        }
+        if local != "kept" {
+            startup_send(&rx, &shared, 90);
+            if matches!(local, "acknowledged" | "submitted" | "modified") {
+                startup_report(&rx, &shared, &format!("11=90.0|6121=90|6119=1|38=2|151=2|{}", if local == "submitted" { "100=SMART|" } else { "" }));
+                assert!(shared.orders.venue_is_working(90));
+                assert_eq!(shared.orders.get_order_info(90).unwrap().order_state.status,
+                    if local == "submitted" { "Submitted" } else { "PreSubmitted" });
+            }
+            if matches!(local, "modified" | "modified_pending") {
+                order.transmit = false;
+                order.lmt_price = 101.0;
+                client.try_place_order(90, &spy(), &order).unwrap();
+                assert!(rx.keeps(90), "the modification is kept while the order stays working");
+            }
+            if enabled != Some(false) { expected.push(90); }
+        }
         let mut asks = crate::engine::hot_loop::asks::Asks::new();
         for command in std::iter::from_fn(|| rx.try_recv().ok()) {
             if let ControlCommand::Ask(ask) = command { asks.take(ask); }
@@ -14862,7 +14892,13 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         client.process_msgs(&mut heard);
         let mut ids: Vec<i64> = heard.events.iter().filter_map(|e| e.strip_prefix("open_order:")?.split(':').next()?.parse().ok()).collect();
         ids.sort_unstable();
-        assert_eq!(ids, expected);
+        assert_eq!(ids, expected, "{local}, populated={populated}");
+        let tracked = client.core.tracked_order(90).unwrap();
+        assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, 2.0, order.transmit));
+        if expected.contains(&90) && matches!(local, "sent" | "modified_pending" | "released") {
+            assert!(heard.events.iter().any(|e| e.starts_with("order_status:90:PendingSubmit:0:2:")), "{local}: {:?}", heard.events);
+        }
+        assert_eq!(heard.events.iter().filter(|e| e.starts_with("order_status:")).count(), expected.len());
         assert_eq!(heard.events.iter().filter(|e| *e == "open_order_end").count(), usize::from(!expected.is_empty()));
         let callbacks: Vec<_> = heard.events.iter().filter(|e| e.starts_with("open_order") || e.starts_with("order_status")).collect();
         if !expected.is_empty() {
@@ -14880,10 +14916,41 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         the_engine_answers(&rx, &shared);
         client.process_msgs(&mut heard);
         assert!(heard.events.contains(&"open_order_end".into()));
+        assert!(heard.events.iter().any(|e| e.starts_with("open_order:90:")), "explicit requests retain the local placement: {:?}", heard.events);
         if populated { assert!(heard.events.iter().any(|e| e.starts_with("open_order:17:"))); }
+    }
     }
 }
 
+
+/// Send the actual intake command and inspect the local socket before any report.
+pub(crate) fn startup_send(rx: &Engine, shared: &Arc<SharedState>, order_id: u64) {
+    use std::io::Read;
+    let commands: Vec<_> = rx.try_iter().collect();
+    let mut submits = 0;
+    let mut held = rx.engine();
+    for command in commands {
+        if let ControlCommand::Order(request) = command {
+            assert!(matches!(&request, OrderRequest::SubmitEx { order_id: id, .. } if *id == order_id));
+            submits += 1;
+            held.context.pending_orders.push(request);
+        } else {
+            rx.out.borrow_mut().push_back(command);
+        }
+    }
+    assert_eq!(submits, 1);
+    let (conn, mut peer) = crate::protocol::connection::Connection::for_test();
+    let mut conn = Some(conn);
+    crate::engine::hot_loop::order_builder::drain_and_send_orders(
+        &mut conn, &mut held.context, "DU123", &mut crate::engine::hot_loop::HeartbeatState::new(),
+        false, shared, false, &None, &mut 64);
+    drop(conn);
+    let mut wire = String::new();
+    peer.read_to_string(&mut wire).unwrap();
+    assert!(wire.contains("35=D\x01") && wire.contains(&format!("6121={order_id}\x01")), "{wire}");
+    assert!(shared.orders.the_order_went_out(order_id));
+    assert!(shared.orders.get_order_info(order_id).is_none(), "eligible before acknowledgement");
+}
 
 /// Feed one report through the same parser and engine as the connection.
 pub(crate) fn startup_report(rx: &Engine, shared: &SharedState, extra: &str) {
