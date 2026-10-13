@@ -4911,6 +4911,14 @@ client.poll()
                     download_open_orders_on_connection: Some(enabled), order_id_file: Some(String::new()), ..Default::default()
                 }.resolve()));
                 startup_report(&rx, &shared, "");
+                if !delayed {
+                    client.get().dispatch_once(py, &shared).unwrap();
+                    assert!(shared.orders.get_order_info(17).is_some());
+                    assert!(client.get().core.tracked_order(17).is_none());
+                    let initial = pyo3::types::PyDict::new(py);
+                    initial.set_item("w", &w).unwrap();
+                    py.run(c"assert not any(c[0] in ('openOrder','orderStatus') for c in w.calls), w.calls", Some(&initial), None).unwrap();
+                }
                 startup_report(&rx, &shared, "39=1|150=F|20=0|43=Y|17=startup-print|32=1|31=120|14=1|151=3|");
                 if !delayed { startup_report(&rx, &shared, "11=*|55=*|"); }
                 client.get().announce_the_new_session(py, &shared).unwrap();
@@ -4985,7 +4993,8 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
     fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
         Python::initialize();
         Python::attach(|py| {
-            for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released"] {
+            for delayed in [false, true] {
+            for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
             for (enabled, master, populated, mut expected) in [
                 (None, None, true, vec![17i64]), (Some(true), Some(1), true, vec![17, 18]),
                 (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
@@ -5034,8 +5043,8 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                     if matches!(local, "acknowledged" | "submitted" | "modified") {
                         crate::api::client::tests::startup_report(&rx, &shared, &format!("11=90.0|6121=90|6119=1|38=2|151=2|{}", if local == "submitted" { "100=SMART|" } else { "" }));
                         assert!(shared.orders.venue_is_working(90));
-                assert_eq!(shared.orders.get_order_info(90).unwrap().order_state.status,
-                    if local == "submitted" { "Submitted" } else { "PreSubmitted" });
+                        assert_eq!(shared.orders.get_order_info(90).unwrap().order_state.status,
+                            if local == "submitted" { "Submitted" } else { "PreSubmitted" });
                     }
                     if matches!(local, "modified" | "modified_pending") {
                         order.transmit = false;
@@ -5043,31 +5052,71 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                         place(&order);
                         assert!(rx.keeps(90), "the modification is kept while the order stays working");
                     }
-                    if enabled != Some(false) { expected.push(90); }
+                    if matches!(local, "partial" | "cancelled" | "completed") {
+                        crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=1|150=1|20=0|17=local-print|32=0.5|31=100|6=100|14=0.5|151=1.5|60=20261012-12:34:56|");
+                        crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=1|14=0.5|151=1.5|");
+                    }
+                    if local == "resized" {
+                        crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=3|44=100|39=5|150=5|20=0|14=0|151=3|");
+                    }
+                    if local == "cancelled" {
+                        crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=4|150=4|20=0|14=0.5|151=0|60=20261012-12:35:00|");
+                    }
+                    if local == "completed" {
+                        crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=2|150=2|20=0|17=local-final|32=1.5|31=101|6=100.75|14=2|151=0|60=20261012-12:35:00|");
+                    }
+                    if enabled != Some(false) && !matches!(local, "cancelled" | "completed") { expected.push(90); }
                 }
-                shared.orders.set_replay_done();
-                client.get().announce_the_new_session(py, &shared).unwrap();
                 let mut asks = crate::engine::hot_loop::asks::Asks::new();
                 for command in rx.try_iter() {
                     if let ControlCommand::Ask(ask) = command { asks.take(ask); }
                 }
+                asks.answer_what_is_ready(&shared, &mut 64);
+                if !delayed { client.get().dispatch_once(py, &shared).unwrap(); }
+                let before = pyo3::types::PyDict::new(py);
+                before.set_item("w", &w).unwrap();
+                py.run(c"assert not any(c[0] in ('openOrder','orderStatus','openOrderEnd','execDetails') for c in w.calls), w.calls", Some(&before), None).unwrap();
+                crate::api::client::tests::startup_report(&rx, &shared, "11=*|55=*|");
+                client.get().announce_the_new_session(py, &shared).unwrap();
+                for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
                 asks.answer_what_is_ready(&shared, &mut 64);
                 client.get().dispatch_once(py, &shared).unwrap();
                 let g = pyo3::types::PyDict::new(py);
                 g.set_item("w", &w).unwrap();
                 let ids: Vec<i64> = py.eval(c"sorted(c[1] for c in w.calls if c[0] == 'openOrder')", Some(&g), None).unwrap().extract().unwrap();
                 assert_eq!(ids, expected, "{local}, populated={populated}");
-                let tracked = client.get().core.tracked_order(90).unwrap();
-                assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, 2.0, order.transmit));
-                g.set_item("unacknowledged", matches!(local, "sent" | "modified_pending" | "released")).unwrap();
+                let total = if local == "resized" { 3.0 } else { 2.0 };
+                let filled = if local == "partial" { 0.5 } else { 0.0 };
+                let status = match local { "acknowledged" | "modified" => "PreSubmitted", "submitted" | "partial" | "resized" => "Submitted", _ => "PendingSubmit" };
+                let finished = matches!(local, "cancelled" | "completed");
+                if finished {
+                    assert!(client.get().core.tracked_order(90).is_none());
+                    assert!(client.get().core.the_number_is_spent(90));
+                } else {
+                    let tracked = client.get().core.tracked_order(90).unwrap();
+                    assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, total, order.transmit));
+                }
+                if matches!(local, "partial" | "cancelled" | "completed") {
+                    let executions = client.get().core.snapshot_executions(&Default::default());
+                    let print = executions.iter().find(|e| e.execution.exec_id == "local-print").unwrap();
+                    assert_eq!((print.execution.shares, print.execution.price, print.execution.time.as_str()), (0.5, 100.0, "20261012-12:34:56"));
+                }
+                g.set_item("status", status).unwrap();
+                g.set_item("total", total).unwrap();
+                g.set_item("filled", filled).unwrap();
+                g.set_item("limit", order.lmt_price).unwrap();
+                g.set_item("finished", finished).unwrap();
                 g.set_item("transmit", order.transmit).unwrap();
                 g.set_item("expected", &expected).unwrap();
                 py.run(c"
+assert not any(c[0] == 'execDetails' for c in w.calls), w.calls
 assert sum(c[0] == 'orderStatus' for c in w.calls) == len(expected), w.calls
 if 90 in expected:
-    assert any(c[0] == 'orderStatus' and c[1] == 90 and float(c[3]) == 0 and float(c[4]) == 2 for c in w.calls), w.calls
-    if unacknowledged:
-        assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == 'PendingSubmit' for c in w.calls), w.calls
+    published = next(c[3] for c in w.calls if c[0] == 'openOrder' and c[1] == 90)
+    assert (float(published.totalQuantity), float(published.filledQuantity), published.lmtPrice) == (total, filled, limit), (total, filled, limit, published)
+    assert any(c[0] == 'orderStatus' and c[1] == 90 and float(c[3]) == filled and float(c[4]) == total - filled for c in w.calls), w.calls
+    assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == status for c in w.calls), w.calls
+    assert any(c[0] == 'openOrder' and c[1] == 90 and c[4].status == status for c in w.calls), w.calls
     assert any(c[0] == 'openOrder' and c[1] == 90 and c[3].orderId == 90 and c[3].transmit == transmit for c in w.calls), w.calls
 ", Some(&g), None).unwrap();
                 let ends: usize = py.eval(c"sum(c[0] == 'openOrderEnd' for c in w.calls)", Some(&g), None).unwrap().extract().unwrap();
@@ -5087,10 +5136,9 @@ w.calls.clear()
                 }
                 asks.answer_what_is_ready(&shared,&mut 64);
                 client.get().dispatch_once(py,&shared).unwrap();
-                py.run(c"assert any(c[0] == 'openOrder' and c[1] == 90 for c in w.calls) and w.calls[-1][0] == 'openOrderEnd', w.calls",Some(&g),None).unwrap();
-
+                py.run(c"assert any(c[0] == 'openOrder' and c[1] == 90 for c in w.calls) == (not finished) and w.calls[-1][0] == 'openOrderEnd', w.calls",Some(&g),None).unwrap();
             }
-
+            }
             }
 
             let (replaced, receiver, original, wrapper) = wired_client(py);

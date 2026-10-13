@@ -1086,6 +1086,12 @@ impl EClient {
         let UpdateRecord { startup, update, state: stated_state, client_id } = record;
         if startup {
             self.core.learn_order_identity(shared, update.order_id);
+            // Initial reports still advance tracked orders before the snapshot.
+            if self.core.open_orders.lock().unwrap().contains_key(&update.order_id) {
+                self.core.take_the_stated_total(update.order_id, stated_state.as_deref());
+                self.core.update_order_status(shared, update.order_id, update.status,
+                    update.filled_qty, update.remaining_qty, update.instrument);
+            }
             return Ok(());
         }
         let status = order_status_str(update.status);

@@ -994,8 +994,10 @@ master. A nonempty download ends with `openOrderEnd`; an empty one sends no end.
 Unnumbered manual orders, local placements not yet submitted, previews, and option
 exercise or lapse instructions are excluded; ordinary option orders remain
 eligible. Working orders named `PendingSubmit` and working orders with a held
-`transmit=false` modification remain eligible. The download waits for order
-naming to finish even if the next-ID wait has timed out.
+`transmit=false` modification remain eligible. Initial reports update local
+status and quantities before the snapshot; both callbacks state the current
+filled quantity. The download waits for order naming to finish even if the
+next-ID wait has timed out.
 
 Set it to false to skip this initial delivery; explicit open-order requests
 still work. Initial reports retain execution history without unsolicited fill

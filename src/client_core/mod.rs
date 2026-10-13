@@ -4619,6 +4619,9 @@ impl ClientCore {
                 && shared.orders.attached_order_metadata(*wire)
                     .is_some_and(|identity| !identity.option_exercise
                         && identity.api_order_id.is_some_and(|id| id != 0 && id != i64::from(i32::MAX)))
+        }).map(|(wire, mut tracked)| {
+            tracked.order.filled_quantity = tracked.filled;
+            (wire, tracked)
         }).collect()
     }
 

@@ -14813,7 +14813,23 @@ fn zero_position_callbacks_use_the_opening_quantity_from_the_wire() {
 /// for a nonempty download. Turning it off still permits an explicit request.
 #[test]
 fn connection_download_obeys_the_setting_and_client_scope() {
-    for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released"] {
+    #[derive(Default)]
+    struct Download { events: Vec<String>, orders: Vec<Order> }
+    impl Wrapper for Download {
+        fn next_valid_id(&mut self, id: i64) { self.events.push(format!("next_valid_id:{id}")); }
+        fn open_order(&mut self, id: i64, _: &Contract, order: &Order, state: &crate::types::model::OrderState) {
+            self.events.push(format!("open_order:{id}:{}:", state.status));
+            self.orders.push(order.clone());
+        }
+        fn order_status(&mut self, id: i64, status: &str, filled: crate::types::model::Decimal, remaining: crate::types::model::Decimal,
+            avg: f64, _: i64, _: i64, _: f64, _: i64, _: &str, _: f64) {
+            self.events.push(format!("order_status:{id}:{status}:{filled}:{remaining}:{avg}"));
+        }
+        fn open_order_end(&mut self) { self.events.push("open_order_end".into()); }
+        fn exec_details(&mut self, _: i64, _: &Contract, _: &crate::types::model::Execution) { self.events.push("exec_details".into()); }
+    }
+    for delayed in [false, true] {
+    for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
     for (enabled, master, populated, mut expected) in [
         (None, None, true, vec![17]), (Some(true), Some(1), true, vec![17, 18]),
         (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
@@ -14876,27 +14892,58 @@ fn connection_download_obeys_the_setting_and_client_scope() {
                 client.try_place_order(90, &spy(), &order).unwrap();
                 assert!(rx.keeps(90), "the modification is kept while the order stays working");
             }
-            if enabled != Some(false) { expected.push(90); }
+            if matches!(local, "partial" | "cancelled" | "completed") {
+                startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=1|150=1|20=0|17=local-print|32=0.5|31=100|6=100|14=0.5|151=1.5|60=20261012-12:34:56|");
+                startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=1|14=0.5|151=1.5|");
+            }
+            if local == "resized" {
+                startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=3|44=100|39=5|150=5|20=0|14=0|151=3|");
+            }
+            if local == "cancelled" {
+                startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=4|150=4|20=0|14=0.5|151=0|60=20261012-12:35:00|");
+            }
+            if local == "completed" {
+                startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=2|150=2|20=0|17=local-final|32=1.5|31=101|6=100.75|14=2|151=0|60=20261012-12:35:00|");
+            }
+            if enabled != Some(false) && !matches!(local, "cancelled" | "completed") { expected.push(90); }
         }
         let mut asks = crate::engine::hot_loop::asks::Asks::new();
         for command in std::iter::from_fn(|| rx.try_recv().ok()) {
             if let ControlCommand::Ask(ask) = command { asks.take(ask); }
         }
         asks.answer_what_is_ready(&shared, &mut 64);
-        let mut heard = RecordingWrapper::default();
-        client.process_msgs(&mut heard);
+        let mut heard = Download::default();
+        if !delayed { client.process_msgs(&mut heard); }
         assert!(!heard.events.iter().any(|e| e.starts_with("open_order")), "the download waits for the venue");
         shared.orders.hold_open_orders(false);
-        shared.orders.set_replay_done();
+        startup_report(&rx, &shared, "11=*|55=*|");
         asks.answer_what_is_ready(&shared, &mut 64);
         client.process_msgs(&mut heard);
         let mut ids: Vec<i64> = heard.events.iter().filter_map(|e| e.strip_prefix("open_order:")?.split(':').next()?.parse().ok()).collect();
         ids.sort_unstable();
         assert_eq!(ids, expected, "{local}, populated={populated}");
-        let tracked = client.core.tracked_order(90).unwrap();
-        assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, 2.0, order.transmit));
-        if expected.contains(&90) && matches!(local, "sent" | "modified_pending" | "released") {
-            assert!(heard.events.iter().any(|e| e.starts_with("order_status:90:PendingSubmit:0:2:")), "{local}: {:?}", heard.events);
+        let total = if local == "resized" { 3.0 } else { 2.0 };
+        let filled = if local == "partial" { 0.5 } else { 0.0 };
+        let status = match local { "acknowledged" | "modified" => "PreSubmitted", "submitted" | "partial" | "resized" => "Submitted", _ => "PendingSubmit" };
+        let finished = matches!(local, "cancelled" | "completed");
+        if finished {
+            assert!(client.core.tracked_order(90).is_none());
+            assert!(client.core.the_number_is_spent(90));
+        } else {
+            let tracked = client.core.tracked_order(90).unwrap();
+            assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, total, order.transmit));
+        }
+        assert!(!heard.events.iter().any(|e| e.starts_with("exec_details")));
+        if matches!(local, "partial" | "cancelled" | "completed") {
+            let executions = client.core.snapshot_executions(&Default::default());
+            let print = executions.iter().find(|e| e.execution.exec_id == "local-print").unwrap();
+            assert_eq!((print.execution.shares, print.execution.price, print.execution.time.as_str()), (0.5, 100.0, "20261012-12:34:56"));
+        }
+        if expected.contains(&90) {
+            let published = heard.orders.iter().find(|o| o.order_id == 90).unwrap();
+            assert_eq!((published.total_quantity, published.filled_quantity, published.lmt_price, published.transmit), (total, filled, order.lmt_price, order.transmit), "{local}");
+            assert!(heard.events.iter().any(|e| e.starts_with(&format!("order_status:90:{status}:{filled}:{}:", total - filled))), "{local}: {:?}", heard.events);
+            assert!(heard.events.iter().any(|e| e.starts_with(&format!("open_order:90:{status}:"))), "{local}: {:?}", heard.events);
         }
         assert_eq!(heard.events.iter().filter(|e| e.starts_with("order_status:")).count(), expected.len());
         assert_eq!(heard.events.iter().filter(|e| *e == "open_order_end").count(), usize::from(!expected.is_empty()));
@@ -14916,8 +14963,9 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         the_engine_answers(&rx, &shared);
         client.process_msgs(&mut heard);
         assert!(heard.events.contains(&"open_order_end".into()));
-        assert!(heard.events.iter().any(|e| e.starts_with("open_order:90:")), "explicit requests retain the local placement: {:?}", heard.events);
+        assert_eq!(heard.events.iter().any(|e| e.starts_with("open_order:90:")), !finished, "explicit orders: {:?}", heard.events);
         if populated { assert!(heard.events.iter().any(|e| e.starts_with("open_order:17:"))); }
+    }
     }
     }
 }
@@ -15005,6 +15053,13 @@ fn connection_download_preserves_report_provenance() {
         let mut asks = crate::engine::hot_loop::asks::Asks::new();
         for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
         startup_report(&rx, &shared, "");
+        if !delayed {
+            let mut initial = RecordingWrapper::default();
+            client.process_msgs(&mut initial);
+            assert!(shared.orders.get_order_info(17).is_some());
+            assert!(client.core.tracked_order(17).is_none());
+            assert!(!initial.events.iter().any(|e| e.starts_with("open_order") || e.starts_with("order_status:")));
+        }
         startup_report(&rx, &shared, "39=1|150=F|20=0|43=Y|17=startup-print|32=1|31=120|14=1|151=3|");
         let mut heard = RecordingWrapper::default();
         if delayed {

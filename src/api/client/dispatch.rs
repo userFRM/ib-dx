@@ -808,7 +808,15 @@ impl EClient {
     fn deliver_update(&self, record: UpdateRecord, wrapper: &mut impl Wrapper) {
         let UpdateRecord { startup, update, state, client_id } = record;
         self.core.learn_order_identity(&self.shared, update.order_id);
-        if startup { return; }
+        if startup {
+            // Initial reports still advance tracked orders before the snapshot.
+            if self.core.open_orders.lock().unwrap().contains_key(&update.order_id) {
+                self.core.take_the_stated_total(update.order_id, state.as_deref());
+                self.core.update_order_status(&self.shared, update.order_id, update.status,
+                    update.filled_qty, update.remaining_qty, update.instrument);
+            }
+            return;
+        }
         let status = order_status_str(update.status);
         // The engine reads no parent from the report, but this client placed
         // the order and was told. Prefer what it recorded; an order it did not
