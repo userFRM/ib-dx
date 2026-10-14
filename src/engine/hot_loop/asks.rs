@@ -55,6 +55,16 @@ impl Asks {
         Self::default()
     }
 
+    /// Whether a connection answer — the next id, or the download — can be
+    /// given now and is only waiting for a lap with room for it.
+    pub(crate) fn a_connection_answer_is_ready(&self, shared: &SharedState) -> bool {
+        self.held.iter().any(|held| match held.ask {
+            Ask::NextValidId => shared.orders.replay_settled().is_some(),
+            Ask::InitialOpenOrders => shared.orders.open_orders_named(),
+            _ => false,
+        })
+    }
+
     /// How many are held.
     pub(crate) fn len(&self) -> usize {
         self.held.len()

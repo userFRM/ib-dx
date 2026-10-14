@@ -926,13 +926,19 @@ impl OrderState {
     #[doc(hidden)] pub fn set_replay_done(&self) {
         let mut replay = self.replay.lock().unwrap();
         replay.done = true;
-        replay.initial_done = true;
+        // A recovery holding the answer holds the start of the session with
+        // it: what is said until it ends belongs to the download, not after it.
+        replay.initial_done |= !replay.held;
     }
 
     /// Hold a question of what is working, or let it be answered: held from a
     /// drop until the recovery behind the next naming is over.
     #[doc(hidden)] pub fn hold_open_orders(&self, held: bool) {
-        self.replay.lock().unwrap().held = held;
+        let mut replay = self.replay.lock().unwrap();
+        replay.held = held;
+        if !held && replay.done {
+            replay.initial_done = true;
+        }
     }
 
     /// Whether a question of what is working can be answered: the venue has

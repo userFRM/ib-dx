@@ -928,10 +928,7 @@ impl HotLoop {
             self.disconnect_write_dead_transports();
 
             // 3. Busy-poll auth socket for execution reports
-            self.ccp.poll_executions(
-                &mut self.ccp_conn, &mut self.context, &self.shared,
-                &self.event_tx, &mut self.hb, &self.account_id,
-            );
+            self.read_reports();
 
             // A holding that has since been closed releases the slot the
             // caller already asked to free.
@@ -1338,6 +1335,20 @@ impl HotLoop {
             req_id,
             crate::control::calendar::NEWS_FEED_NOT_ALLOWED,
             "News feed is not allowed.".to_string(),
+        );
+    }
+
+    /// Read the order connection's reports. Reports held after the naming
+    /// wait while the connection's own answers are ready and only queued
+    /// behind a busy lap: those answers come first, as a gateway states them
+    /// at connection.
+    pub(crate) fn read_reports(&mut self) {
+        if !self.ccp.after_the_naming.is_empty() && self.asks.a_connection_answer_is_ready(&self.shared) {
+            return;
+        }
+        self.ccp.poll_executions(
+            &mut self.ccp_conn, &mut self.context, &self.shared,
+            &self.event_tx, &mut self.hb, &self.account_id,
         );
     }
 

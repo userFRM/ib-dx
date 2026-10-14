@@ -15083,6 +15083,112 @@ fn a_report_read_with_the_end_of_the_naming_follows_the_download() {
     assert!(heard.events[end..].iter().any(|e| e.starts_with("open_order:17:")), "{:?}", heard.events);
 }
 
+/// The connection's own answers are not held behind a lap whose budget the
+/// program's requests have spent: the download still comes before a report
+/// read after the end of the naming.
+#[test]
+fn the_connections_answers_are_not_held_behind_a_busy_lap() {
+    let (client, rx, shared) = test_client();
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    for command in rx.try_iter() { let _ = rx.into.send(command); }
+    startup_report(&rx, &shared, "");
+    // A socket set up as the engine's own are, so a read with nothing on it
+    // returns rather than waits.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let _peer = listener.accept().unwrap();
+    let conn = crate::protocol::connection::Connection::new_raw(stream).unwrap();
+    {
+        let mut held = rx.engine();
+        let e = &mut *held;
+        e.ccp_conn = Some(conn);
+        e.poll_once();
+        // Requests the program sent while the venue was naming, and the read
+        // that ends the naming with a live report behind it.
+        for id in 0..64 {
+            e.context.pending_orders.push(OrderRequest::Cancel { order_id: 5000 + id, stated: Default::default() });
+        }
+        e.ccp.process_until_named(vec![startup_frame("11=*|55=*|"), startup_frame("39=1|14=1|151=3|44=124|")],
+            &mut None, &mut e.context, &shared, &None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+        for _ in 0..4 { e.read_reports(); e.poll_once(); }
+    }
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
+    let live = heard.events.iter().rposition(|e| e.starts_with("order_status:17:")).unwrap();
+    assert!(end < live, "the live status follows the download: {:?}", heard.events);
+    assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < end, "{:?}", heard.events);
+}
+
+/// A drop before the first naming ended holds the start of the session with
+/// the recovery behind it: what is said about an order working at connection
+/// until the recovery ends belongs to the download, not before it.
+#[test]
+fn a_report_during_a_recovery_before_the_first_naming_belongs_to_the_download() {
+    let (client, rx, shared) = test_client();
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    let mut asks = crate::engine::hot_loop::asks::Asks::new();
+    for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+    startup_report(&rx, &shared, "");
+    let order = Order { action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(), lmt_price: 100.0, ..Default::default() };
+    client.try_place_order(90, &spy(), &order).unwrap();
+    startup_send(&rx, &shared, 90);
+    {
+        let mut held = rx.engine();
+        let e = &mut *held;
+        e.ccp.handle_disconnect(&mut None, &mut e.context, &shared, &None);
+        let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+        e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
+    }
+    startup_report(&rx, &shared, "");
+    startup_report(&rx, &shared, "11=*|55=*|");
+    asks.answer_what_is_ready(&shared, &mut 64);
+    startup_report(&rx, &shared, "39=1|14=1|151=3|44=124|");
+    asks.answer_what_is_ready(&shared, &mut 64);
+    shared.orders.hold_open_orders(false);
+    asks.answer_what_is_ready(&shared, &mut 64);
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
+    assert_eq!(heard.events[..end].iter().filter(|e| e.starts_with("order_status:17:")).count(), 1,
+        "nothing about 17 precedes its download: {:?}", heard.events);
+}
+
+/// A working status the venue echoes beside a fill of an order already
+/// finished is dropped, as the status alone would be.
+#[test]
+fn an_echoed_working_status_beside_a_fill_of_a_finished_order_is_dropped() {
+    let (client, _rx, shared) = test_client();
+    shared.orders.push_completed_order(crate::types::CompletedOrder {
+        venue_order: String::new(), stated: None, held: None,
+        order_id: 79, instrument: 0, status: OrderStatus::Filled,
+        filled_qty: 2 * crate::types::QTY_SCALE, timestamp_ns: 0,
+    });
+    shared.orders.push_fill_and_status(
+        Fill {
+            instrument: 0, order_id: 79, side: Side::Buy,
+            price: 100 * PRICE_SCALE, qty: 2 * crate::types::QTY_SCALE, remaining: 0, timestamp_ns: 0,
+            cum_qty: 2 * crate::types::QTY_SCALE, avg_price: 100 * PRICE_SCALE,
+        },
+        None,
+        crate::types::OrderUpdate {
+            order_id: 79, instrument: 0, status: OrderStatus::Submitted,
+            filled_qty: 2.0, remaining_qty: 0.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0,
+        },
+    );
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    assert!(!heard.events.iter().any(|e| e.starts_with("order_status:79:Submitted")), "{:?}", heard.events);
+}
+
 // Initial option reports and later sparse reports of the same order.
 pub(crate) const STARTUP_OPTION_CASES: &[(&[&str], bool)] = &[
     (&[""], true),
