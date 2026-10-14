@@ -1000,10 +1000,12 @@ filled quantity. The download waits for order naming to finish even if the
 next-ID wait has timed out.
 
 Set it to false to skip this initial delivery; explicit open-order requests
-still work. Initial reports retain execution history without unsolicited fill
-callbacks. Later reports and transport reconnects retain their existing callback
-behavior. This setting does not add automatic binding, change order IDs or parent
-resolution, or add live `openOrder` callbacks for orders placed elsewhere.
+still work. Reports of orders working at connection keep their execution
+history without fill callbacks; the program's own orders, placed while the
+download waits, are told as they happen. Later reports and transport reconnects
+retain their existing callback behavior. This setting does not add automatic
+binding, change order IDs or parent resolution, or add live `openOrder`
+callbacks for orders placed elsewhere.
 
 `include_fx_positions` is on by default. Turn it off to omit CASH rows from
 `position`, `positionMulti`, and `updatePortfolio`.

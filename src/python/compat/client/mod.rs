@@ -4998,7 +4998,7 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
         Python::attach(|py| {
             for delayed in [false, true] {
             for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
-            for (enabled, master, populated, mut expected) in [
+            for (enabled, master, populated, expected) in [
                 (None, None, true, vec![17i64]), (Some(true), Some(1), true, vec![17, 18]),
                 (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
             ] {
@@ -5068,7 +5068,6 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                     if local == "completed" {
                         crate::api::client::tests::startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=2|150=2|20=0|17=local-final|32=1.5|31=101|6=100.75|14=2|151=0|60=20261012-12:35:00|");
                     }
-                    if enabled != Some(false) && !matches!(local, "cancelled" | "completed") { expected.push(90); }
                 }
                 let mut asks = crate::engine::hot_loop::asks::Asks::new();
                 for command in rx.try_iter() {
@@ -5078,7 +5077,8 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                 if !delayed { client.get().dispatch_once(py, &shared).unwrap(); }
                 let before = pyo3::types::PyDict::new(py);
                 before.set_item("w", &w).unwrap();
-                py.run(c"assert not any(c[0] in ('openOrder','orderStatus','openOrderEnd','execDetails') for c in w.calls), w.calls", Some(&before), None).unwrap();
+                // The program's own order is told as it happens; only the download waits.
+                py.run(c"assert not any(c[0] == 'openOrderEnd' or (c[0] in ('openOrder','orderStatus') and c[1] != 90) for c in w.calls), w.calls", Some(&before), None).unwrap();
                 crate::api::client::tests::startup_report(&rx, &shared, "11=*|55=*|");
                 client.get().announce_the_new_session(py, &shared).unwrap();
                 for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
@@ -5086,7 +5086,7 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                 client.get().dispatch_once(py, &shared).unwrap();
                 let g = pyo3::types::PyDict::new(py);
                 g.set_item("w", &w).unwrap();
-                let ids: Vec<i64> = py.eval(c"sorted(c[1] for c in w.calls if c[0] == 'openOrder')", Some(&g), None).unwrap().extract().unwrap();
+                let ids: Vec<i64> = py.eval(c"sorted(c[1] for c in w.calls if c[0] == 'openOrder' and c[1] != 90)", Some(&g), None).unwrap().extract().unwrap();
                 assert_eq!(ids, expected, "{local}, populated={populated}");
                 let total = if local == "resized" { 3.0 } else { 2.0 };
                 let filled = if local == "partial" { 0.5 } else { 0.0 };
@@ -5107,28 +5107,27 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
                 g.set_item("status", status).unwrap();
                 g.set_item("total", total).unwrap();
                 g.set_item("filled", filled).unwrap();
-                g.set_item("limit", order.lmt_price).unwrap();
                 g.set_item("finished", finished).unwrap();
-                g.set_item("transmit", order.transmit).unwrap();
                 g.set_item("expected", &expected).unwrap();
+                g.set_item("local", local).unwrap();
                 py.run(c"
-assert not any(c[0] == 'execDetails' for c in w.calls), w.calls
-assert sum(c[0] == 'orderStatus' for c in w.calls) == len(expected), w.calls
-if 90 in expected:
-    published = next(c[3] for c in w.calls if c[0] == 'openOrder' and c[1] == 90)
-    assert (float(published.totalQuantity), float(published.filledQuantity), published.lmtPrice) == (total, filled, limit), (total, filled, limit, published)
-    assert any(c[0] == 'orderStatus' and c[1] == 90 and float(c[3]) == filled and float(c[4]) == total - filled for c in w.calls), w.calls
-    assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == status for c in w.calls), w.calls
-    assert any(c[0] == 'openOrder' and c[1] == 90 and c[4].status == status for c in w.calls), w.calls
-    assert any(c[0] == 'openOrder' and c[1] == 90 and c[3].orderId == 90 and c[3].transmit == transmit for c in w.calls), w.calls
+# The program's own order is told as it happens, never downloaded.
+assert any(c[0] == 'execDetails' for c in w.calls) == (local in ('partial', 'cancelled', 'completed')), (local, w.calls)
+assert sum(c[0] == 'orderStatus' and c[1] != 90 for c in w.calls) == len(expected), w.calls
+told = {'cancelled': 'Cancelled', 'completed': 'Filled'}.get(local, status if local in ('acknowledged', 'submitted', 'modified', 'partial', 'resized') else None)
+assert any(c[0] == 'orderStatus' and c[1] == 90 for c in w.calls) == (told is not None), (local, w.calls)
+if told in (status,) and not finished:
+    assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == status and float(c[3]) == filled and float(c[4]) == total - filled for c in w.calls), (local, w.calls)
+elif told is not None:
+    assert any(c[0] == 'orderStatus' and c[1] == 90 and c[2] == told for c in w.calls), (local, w.calls)
 ", Some(&g), None).unwrap();
                 let ends: usize = py.eval(c"sum(c[0] == 'openOrderEnd' for c in w.calls)", Some(&g), None).unwrap().extract().unwrap();
                 assert_eq!(ends, usize::from(!expected.is_empty()));
                 py.run(c"
-rows = [c for c in w.calls if c[0] in ('openOrder','orderStatus','openOrderEnd')]
+rows = [c for c in w.calls if c[0] in ('openOrder','orderStatus','openOrderEnd') and not (c[0] != 'openOrderEnd' and c[1] == 90)]
 assert not any(c[0]=='orderStatus' and c[2]=='ApiPending' for c in rows), rows
 if rows:
-    assert next(i for i,c in enumerate(w.calls) if c[0]=='nextValidId') < next(i for i,c in enumerate(w.calls) if c[0]=='openOrder'), w.calls
+    assert next(i for i,c in enumerate(w.calls) if c[0]=='nextValidId') < next(i for i,c in enumerate(w.calls) if c[0]=='openOrder' and c[1] != 90), w.calls
     assert rows[-1][0] == 'openOrderEnd', rows
     assert [c[0] for c in rows[:-1]] == ['openOrder','orderStatus'] * ((len(rows)-1)//2), rows
 w.calls.clear()

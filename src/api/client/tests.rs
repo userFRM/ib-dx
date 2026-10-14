@@ -14829,8 +14829,8 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         fn exec_details(&mut self, _: i64, _: &Contract, _: &crate::types::model::Execution) { self.events.push("exec_details".into()); }
     }
     for delayed in [false, true] {
-    for local in ["kept", "previewed", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
-    for (enabled, master, populated, mut expected) in [
+    for local in ["kept", "previewed", "refused", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
+    for (enabled, master, populated, expected) in [
         (None, None, true, vec![17]), (Some(true), Some(1), true, vec![17, 18]),
         (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
     ] {
@@ -14865,19 +14865,23 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         shared.orders.hold_open_orders(true);
         let (start, _started) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
-        if local == "previewed" {
-            // A preview answered under the number a held placement reuses.
+        if matches!(local, "previewed" | "refused") {
+            // A preview answered, or refused, under the number a held placement reuses.
             let preview = Order { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
                 what_if: true, ..Default::default() };
             client.try_place_order(90, &spy(), &preview).unwrap();
             startup_send(&rx, &shared, 90);
-            startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|6091=1|6826=1000|6827=900|6828=50000|6092=1100|6093=990|6094=49000|");
+            startup_report(&rx, &shared, if local == "previewed" {
+                "11=90.0|6121=90|6119=1|38=2|6091=1|6826=1000|6827=900|6828=50000|6092=1100|6093=990|6094=49000|"
+            } else {
+                "11=90.0|6121=90|6119=1|38=2|6091=1|39=8|150=8|58=The preview is refused|"
+            });
             let mut answered = Download::default();
             client.process_msgs(&mut answered);
-            assert!(answered.events.iter().any(|e| e.starts_with("open_order:90:")), "the preview is answered: {:?}", answered.events);
+            assert_eq!(answered.events.iter().any(|e| e.starts_with("open_order:90:")), local == "previewed", "the preview is answered: {:?}", answered.events);
         }
         let mut order = Order { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
-            transmit: !matches!(local, "kept" | "previewed" | "released"), ..Default::default() };
+            transmit: !matches!(local, "kept" | "previewed" | "refused" | "released"), ..Default::default() };
         client.try_place_order(90, &spy(), &order).unwrap();
         assert_eq!(rx.keeps(90), !order.transmit, "{local}");
         let identity = shared.orders.attached_order_metadata(90).unwrap();
@@ -14889,7 +14893,7 @@ fn connection_download_obeys_the_setting_and_client_scope() {
             client.try_place_order(90, &spy(), &order).unwrap();
             assert!(!rx.keeps(90));
         }
-        if !matches!(local, "kept" | "previewed") {
+        if !matches!(local, "kept" | "previewed" | "refused") {
             startup_send(&rx, &shared, 90);
             if matches!(local, "acknowledged" | "submitted" | "modified") {
                 startup_report(&rx, &shared, &format!("11=90.0|6121=90|6119=1|38=2|151=2|{}", if local == "submitted" { "100=SMART|" } else { "" }));
@@ -14916,7 +14920,6 @@ fn connection_download_obeys_the_setting_and_client_scope() {
             if local == "completed" {
                 startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|44=100|39=2|150=2|20=0|17=local-final|32=1.5|31=101|6=100.75|14=2|151=0|60=20261012-12:35:00|");
             }
-            if enabled != Some(false) && !matches!(local, "cancelled" | "completed") { expected.push(90); }
         }
         let mut asks = crate::engine::hot_loop::asks::Asks::new();
         for command in std::iter::from_fn(|| rx.try_recv().ok()) {
@@ -14925,12 +14928,14 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         asks.answer_what_is_ready(&shared, &mut 64);
         let mut heard = Download::default();
         if !delayed { client.process_msgs(&mut heard); }
-        assert!(!heard.events.iter().any(|e| e.starts_with("open_order")), "the download waits for the venue");
+        let own = |e: &String| e.starts_with("open_order:90:") || e.starts_with("order_status:90:");
+        assert!(!heard.events.iter().any(|e| e.starts_with("open_order") && !own(e)), "the download waits for the venue");
         shared.orders.hold_open_orders(false);
         startup_report(&rx, &shared, "11=*|55=*|");
         asks.answer_what_is_ready(&shared, &mut 64);
         client.process_msgs(&mut heard);
         let mut ids: Vec<i64> = heard.events.iter().filter_map(|e| e.strip_prefix("open_order:")?.split(':').next()?.parse().ok()).collect();
+        ids.retain(|id| *id != 90);
         ids.sort_unstable();
         assert_eq!(ids, expected, "{local}, populated={populated}");
         let total = if local == "resized" { 3.0 } else { 2.0 };
@@ -14944,23 +14949,29 @@ fn connection_download_obeys_the_setting_and_client_scope() {
             let tracked = client.core.tracked_order(90).unwrap();
             assert_eq!((tracked.order_id, tracked.client_id, tracked.total_quantity, tracked.transmit), (90, 1, total, order.transmit));
         }
-        assert!(!heard.events.iter().any(|e| e.starts_with("exec_details")));
+        assert_eq!(heard.events.iter().any(|e| e.starts_with("exec_details")), matches!(local, "partial" | "cancelled" | "completed"),
+            "the program's own fills are told as they happen: {local}");
         if matches!(local, "partial" | "cancelled" | "completed") {
             let executions = client.core.snapshot_executions(&Default::default());
             let print = executions.iter().find(|e| e.execution.exec_id == "local-print").unwrap();
             assert_eq!((print.execution.shares, print.execution.price, print.execution.time.as_str()), (0.5, 100.0, "20261012-12:34:56"));
         }
-        if expected.contains(&90) {
-            let published = heard.orders.iter().find(|o| o.order_id == 90).unwrap();
-            assert_eq!((published.total_quantity, published.filled_quantity, published.lmt_price, published.transmit), (total, filled, order.lmt_price, order.transmit), "{local}");
-            assert!(heard.events.iter().any(|e| e.starts_with(&format!("order_status:90:{status}:{filled}:{}:", total - filled))), "{local}: {:?}", heard.events);
-            assert!(heard.events.iter().any(|e| e.starts_with(&format!("open_order:90:{status}:"))), "{local}: {:?}", heard.events);
+        // The program's own order is told as it happens, never downloaded.
+        let told = match local {
+            "acknowledged" | "submitted" | "modified" | "partial" | "resized" => Some(format!("order_status:90:{status}:{filled}:{}:", total - filled)),
+            "cancelled" => Some("order_status:90:Cancelled:".into()),
+            "completed" => Some("order_status:90:Filled:".into()),
+            _ => None,
+        };
+        assert_eq!(heard.events.iter().any(|e| e.starts_with("order_status:90:")), told.is_some(), "{local}: {:?}", heard.events);
+        if let Some(told) = told {
+            assert!(heard.events.iter().any(|e| e.starts_with(&told)), "{local}: {told} in {:?}", heard.events);
         }
-        assert_eq!(heard.events.iter().filter(|e| e.starts_with("order_status:")).count(), expected.len());
+        assert_eq!(heard.events.iter().filter(|e| e.starts_with("order_status:") && !own(e)).count(), expected.len());
         assert_eq!(heard.events.iter().filter(|e| *e == "open_order_end").count(), usize::from(!expected.is_empty()));
-        let callbacks: Vec<_> = heard.events.iter().filter(|e| e.starts_with("open_order") || e.starts_with("order_status")).collect();
+        let callbacks: Vec<_> = heard.events.iter().filter(|e| (e.starts_with("open_order") || e.starts_with("order_status")) && !own(e)).collect();
         if !expected.is_empty() {
-            assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < heard.events.iter().position(|e| e.starts_with("open_order:")).unwrap());
+            assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < heard.events.iter().position(|e| e.starts_with("open_order:") && !own(e)).unwrap());
             assert_eq!(callbacks.last().map(|s| s.as_str()), Some("open_order_end"));
             for pair in callbacks[..callbacks.len()-1].chunks(2) {
                 assert!(pair[0].starts_with("open_order:") && pair[1].starts_with("order_status:"), "{callbacks:?}");

@@ -808,8 +808,14 @@ impl OrderState {
     }
 
     /// Keep download provenance with the report, even when callbacks are read after naming ends.
+    ///
+    /// A report on an order this session sent is never the download's: a
+    /// gateway downloads what was working when the program connected, and
+    /// tells the program's own orders as they happen.
     pub(crate) fn push_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>) {
-        let startup = !self.replay.lock().unwrap().initial_done;
+        let order_id = fill.as_ref().map(|fill| fill.order_id).or(update.as_ref().map(|update| update.order_id));
+        let startup = !self.replay.lock().unwrap().initial_done
+            && !order_id.is_some_and(|id| self.the_order_went_out(id));
         if let Some(fill) = fill {
             let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
             if let Some(update) = &update { self.note_what_the_status_says(update); }
