@@ -1192,6 +1192,13 @@ impl OrderState {
         self.orders_sent.lock().unwrap().insert(order_id);
     }
 
+    /// A preview under this number is answered: it placed nothing, so the
+    /// number holds no order that went out, and a placement reusing it is a
+    /// new one.
+    pub(crate) fn forget_the_preview_went_out(&self, order_id: u64) {
+        self.orders_sent.lock().unwrap().remove(&order_id);
+    }
+
     /// Whether this client put this order's message on the wire.
     pub fn the_order_went_out(&self, order_id: u64) -> bool {
         self.orders_sent.lock().unwrap().contains(&order_id)

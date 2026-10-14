@@ -769,6 +769,7 @@ fn take_what_if(
                 clord_id, crate::types::model::OrderOp::Place, ORDER_REJECTED_ERROR_CODE, reason, sent(parsed),
             );
             context.retire_order(clord_id);
+            shared.orders.forget_the_preview_went_out(clord_id);
             return true;
         }
         // The venue prices a preview once per impact group, names each group
@@ -813,6 +814,7 @@ fn take_what_if(
                     response.init_margin_after as f64 / PRICE_SCALE as f64,
                     response.commission.map_or(f64::NAN, |c| c as f64 / PRICE_SCALE as f64));
                 context.retire_order(clord_id);
+                shared.orders.forget_the_preview_went_out(clord_id);
                 shared.orders.push_what_if(response.clone());
                 emit(event_tx, Event::WhatIf(response));
             }

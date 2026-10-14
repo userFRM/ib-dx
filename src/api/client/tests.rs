@@ -14829,7 +14829,7 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         fn exec_details(&mut self, _: i64, _: &Contract, _: &crate::types::model::Execution) { self.events.push("exec_details".into()); }
     }
     for delayed in [false, true] {
-    for local in ["kept", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
+    for local in ["kept", "previewed", "sent", "acknowledged", "submitted", "modified", "modified_pending", "released", "partial", "resized", "cancelled", "completed"] {
     for (enabled, master, populated, mut expected) in [
         (None, None, true, vec![17]), (Some(true), Some(1), true, vec![17, 18]),
         (Some(false), Some(1), true, vec![]), (None, None, false, vec![]),
@@ -14865,8 +14865,19 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         shared.orders.hold_open_orders(true);
         let (start, _started) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
+        if local == "previewed" {
+            // A preview answered under the number a held placement reuses.
+            let preview = Order { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
+                what_if: true, ..Default::default() };
+            client.try_place_order(90, &spy(), &preview).unwrap();
+            startup_send(&rx, &shared, 90);
+            startup_report(&rx, &shared, "11=90.0|6121=90|6119=1|38=2|6091=1|6826=1000|6827=900|6828=50000|6092=1100|6093=990|6094=49000|");
+            let mut answered = Download::default();
+            client.process_msgs(&mut answered);
+            assert!(answered.events.iter().any(|e| e.starts_with("open_order:90:")), "the preview is answered: {:?}", answered.events);
+        }
         let mut order = Order { action: "BUY".into(), total_quantity: 2.0, order_type: "LMT".into(), lmt_price: 100.0,
-            transmit: !matches!(local, "kept" | "released"), ..Default::default() };
+            transmit: !matches!(local, "kept" | "previewed" | "released"), ..Default::default() };
         client.try_place_order(90, &spy(), &order).unwrap();
         assert_eq!(rx.keeps(90), !order.transmit, "{local}");
         let identity = shared.orders.attached_order_metadata(90).unwrap();
@@ -14878,7 +14889,7 @@ fn connection_download_obeys_the_setting_and_client_scope() {
             client.try_place_order(90, &spy(), &order).unwrap();
             assert!(!rx.keeps(90));
         }
-        if local != "kept" {
+        if !matches!(local, "kept" | "previewed") {
             startup_send(&rx, &shared, 90);
             if matches!(local, "acknowledged" | "submitted" | "modified") {
                 startup_report(&rx, &shared, &format!("11=90.0|6121=90|6119=1|38=2|151=2|{}", if local == "submitted" { "100=SMART|" } else { "" }));
