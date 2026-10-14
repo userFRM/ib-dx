@@ -15287,6 +15287,65 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
         assert!(heard.0.contains(&format!("open_order:{id}:{id}:{parent}")), "{id}: {:?}", heard.0);
         assert!(heard.0.contains(&format!("order_status:{id}:{parent}")), "{id}: {:?}", heard.0);
     }
+    // Asked for, the child is answered with the same parent.
+    heard.0.clear();
+    client.req_all_open_orders();
+    the_engine_answers(&rx, &shared);
+    client.process_msgs(&mut heard);
+    assert!(heard.0.contains(&"open_order:92:92:91".to_string()), "answered: {:?}", heard.0);
+    assert!(heard.0.contains(&"order_status:92:91".to_string()), "answered: {:?}", heard.0);
+    // Once the parent's record is gone, the child keeps it.
+    shared.orders.remove_order_info(91);
+    heard.0.clear();
+    startup_report(&rx, &shared, "11=701.0|6121=92|6119=7|6107=700.0|37=child|39=1|14=1|151=3|");
+    client.process_msgs(&mut heard);
+    assert!(heard.0.contains(&"open_order:92:92:91".to_string()), "after the parent: {:?}", heard.0);
+    assert!(heard.0.contains(&"order_status:92:91".to_string()), "after the parent: {:?}", heard.0);
+}
+
+/// A child the venue names under a parent, placed by this client before this
+/// session and modified in it, keeps its parent: the modify states the parent
+/// by its API number, and every later report is told with it.
+#[test]
+fn a_modified_child_placed_before_this_session_keeps_its_parent() {
+    #[derive(Default)]
+    struct Heard(Vec<String>);
+    impl Wrapper for Heard {
+        fn open_order(&mut self, id: i64, _: &Contract, order: &Order, _: &crate::types::model::OrderState) {
+            self.0.push(format!("open_order:{id}:{}", order.parent_id));
+        }
+        fn order_status(&mut self, id: i64, _: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal,
+            _: f64, _: i64, parent: i64, _: f64, _: i64, _: &str, _: f64) {
+            self.0.push(format!("order_status:{id}:{parent}"));
+        }
+    }
+    let (client, rx, shared) = test_client();
+    shared.orders.set_api_client_id(1);
+    client.core.set_api_client_id(1);
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        download_open_orders_on_connection: Some(false), order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    startup_report(&rx, &shared, "11=*|55=*|");
+    startup_report(&rx, &shared, "11=700.0|6121=91|6119=1|37=parent|");
+    startup_report(&rx, &shared, "11=701.0|6121=92|6119=1|6107=700.0|37=child|");
+    let mut heard = Heard::default();
+    client.process_msgs(&mut heard);
+    let order = Order { action: "BUY".into(), total_quantity: 4.0, order_type: "LMT".into(), lmt_price: 121.0,
+        parent_id: 91, ..Default::default() };
+    client.try_place_order(92, &spy(), &order).unwrap();
+    settled(&client, &rx);
+    heard.0.clear();
+    startup_report(&rx, &shared, "11=701.0|6121=92|6119=1|6107=700.0|37=child|100=SMART|");
+    client.process_msgs(&mut heard);
+    assert!(heard.0.contains(&"open_order:92:91".to_string()), "{:?}", heard.0);
+    assert!(heard.0.contains(&"order_status:92:91".to_string()), "{:?}", heard.0);
+    heard.0.clear();
+    client.req_all_open_orders();
+    the_engine_answers(&rx, &shared);
+    client.process_msgs(&mut heard);
+    assert!(heard.0.contains(&"open_order:92:91".to_string()), "answered: {:?}", heard.0);
 }
 
 // Initial option reports and later sparse reports of the same order.

@@ -1096,6 +1096,7 @@ impl EClient {
                 self.core.take_the_stated_total(update.order_id, stated_state.as_deref());
                 self.core.update_order_status(shared, update.order_id, update.status,
                     update.filled_qty, update.remaining_qty, update.instrument);
+                self.core.note_stated_parent(shared, update.order_id, update.parent_id);
             }
             return Ok(());
         }
@@ -1164,6 +1165,7 @@ impl EClient {
                  i64::from(client), why_held.as_str(), 0.0f64));
         }
         self.core.update_order_status(shared, update.order_id, update.status, update.filled_qty, update.remaining_qty, update.instrument);
+        self.core.note_stated_parent(shared, update.order_id, update.parent_id);
         Ok(())
     }
 

@@ -3962,21 +3962,34 @@ impl ClientCore {
     // ── Open order tracking ──
 
     /// The parent an order is published with, under the parent's API
-    /// number: the one this client recorded where it placed the order, by the
-    /// number it holds the parent under; otherwise the one the report states,
-    /// which names the parent by the number it went to the venue under.
+    /// number: the one recorded for the order here, by the number the parent
+    /// is held under; otherwise the one its report states, which names the
+    /// parent by the number it went to the venue under.
     pub(crate) fn published_parent(&self, shared: &SharedState, order_id: u64, stated: i64) -> i64 {
         let recorded = self.open_orders.lock().unwrap()
             .get(&order_id)
-            .map(|t| (t.placed_here, t.order.parent_id))
-            .filter(|(_, parent)| *parent > 0);
+            .map(|t| t.order.parent_id)
+            .filter(|parent| *parent > 0);
         match recorded {
-            Some((true, held_under)) => {
+            Some(held_under) => {
                 self.learn_order_identity(shared, held_under as u64);
                 self.api_order_id(held_under as u64)
             }
-            Some((false, named)) => self.api_parent_id(shared, named),
             None => self.api_parent_id(shared, stated),
+        }
+    }
+
+    /// Record the parent a report states on an order held here that records
+    /// none, by the number the parent is held under, while the parent can still
+    /// be found: what the venue names it by is read once, and the order keeps
+    /// its parent after the parent's own record is gone.
+    pub(crate) fn note_stated_parent(&self, shared: &SharedState, order_id: u64, stated: i64) {
+        if stated <= 0 { return; }
+        let Some(parent) = shared.orders.order_named(stated) else { return };
+        if let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&order_id)
+            && tracked.order.parent_id <= 0
+        {
+            tracked.order.parent_id = parent as i64;
         }
     }
 
@@ -4800,11 +4813,10 @@ impl ClientCore {
 
         for (wire, tracked) in &mut result {
             tracked.order.order_id = self.api_order_id(*wire);
-            tracked.order.parent_id = if tracked.placed_here {
-                if tracked.order.parent_id > 0 { self.api_order_id(tracked.order.parent_id as u64) } else { tracked.order.parent_id }
-            } else {
-                self.api_parent_id(shared, tracked.order.parent_id)
-            };
+            if tracked.order.parent_id > 0 {
+                self.learn_order_identity(shared, tracked.order.parent_id as u64);
+                tracked.order.parent_id = self.api_order_id(tracked.order.parent_id as u64);
+            }
         }
         result
     }

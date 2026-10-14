@@ -818,6 +818,7 @@ impl EClient {
                 self.core.take_the_stated_total(update.order_id, state.as_deref());
                 self.core.update_order_status(&self.shared, update.order_id, update.status,
                     update.filled_qty, update.remaining_qty, update.instrument);
+                self.core.note_stated_parent(&self.shared, update.order_id, update.parent_id);
             }
             return;
         }
@@ -900,6 +901,7 @@ impl EClient {
             &self.shared, update.order_id, update.status, update.filled_qty,
             update.remaining_qty, update.instrument,
         );
+        self.core.note_stated_parent(&self.shared, update.order_id, update.parent_id);
     }
 
     // ── Answers composed where they stand ──
