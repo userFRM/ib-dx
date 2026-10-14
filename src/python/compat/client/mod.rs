@@ -4892,13 +4892,9 @@ client.poll()
         });
     }
 
-    /// A handler that closes the session stops the rest of the startup.
-    ///
-    /// The announcements are a caller's own code, and giving up on a
-    /// connection from inside `connect_ack` is the ordinary way to write one.
-    /// Read on the session they were announced for, the rest go on describing
-    /// a session that has been torn down — and a handler that reconnects has
-    /// the startup of the session it just opened repeated over it.
+    /// The download at connection keeps each report's provenance on this
+    /// surface too: an order reported at connection is downloaded, not told
+    /// as live.
     #[test]
     fn connection_download_preserves_report_provenance() {
         use crate::api::client::tests::{Engine, startup_report, the_engine_answers};
@@ -4989,6 +4985,13 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
         });
     }
 
+    /// A handler that closes the session stops the rest of the startup.
+    ///
+    /// The announcements are a caller's own code, and giving up on a
+    /// connection from inside `connect_ack` is the ordinary way to write one.
+    /// Read on the session they were announced for, the rest go on describing
+    /// a session that has been torn down — and a handler that reconnects has
+    /// the startup of the session it just opened repeated over it.
     #[test]
     fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
         Python::initialize();
