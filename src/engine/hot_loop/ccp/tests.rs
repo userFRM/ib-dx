@@ -1694,7 +1694,7 @@ fn the_whole_order_the_venue_states_comes_back() {
     let raw_report = |frame: &std::collections::HashMap<u32, String>| {
         let mut fields = vec![(35, "8")];
         fields.extend(frame.iter().map(|(tag, value)| (*tag, value.as_str())));
-        fix::fix_build(&fields, 1)
+        fields.iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect::<String>().into_bytes()
     };
     for (stated, sweep, continuous, hidden) in [
         (Some("2"), false, true, false), (Some("1"), true, true, true),
