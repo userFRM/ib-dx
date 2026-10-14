@@ -15125,41 +15125,64 @@ fn the_connections_answers_are_not_held_behind_a_busy_lap() {
 }
 
 /// A drop before the first naming ended holds the start of the session with
-/// the recovery behind it: what is said about an order working at connection
-/// until the recovery ends belongs to the download, not before it.
+/// the recovery behind it: a working status said about an order working at
+/// connection until the recovery ends belongs to the download, not before it,
+/// while a fill or a finish said then is news, told as it happens. Once the
+/// recovery is over, what follows is told as it happens.
 #[test]
 fn a_report_during_a_recovery_before_the_first_naming_belongs_to_the_download() {
-    let (client, rx, shared) = test_client();
-    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
-        download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
-    }.resolve()));
-    let (start, _) = std::sync::mpsc::channel();
-    let client = client.finish_connect(start).unwrap();
-    let mut asks = crate::engine::hot_loop::asks::Asks::new();
-    for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
-    startup_report(&rx, &shared, "");
-    let order = Order { action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(), lmt_price: 100.0, ..Default::default() };
-    client.try_place_order(90, &spy(), &order).unwrap();
-    startup_send(&rx, &shared, 90);
-    {
-        let mut held = rx.engine();
-        let e = &mut *held;
-        e.ccp.handle_disconnect(&mut None, &mut e.context, &shared, &None);
-        let (conn, _peer) = crate::protocol::connection::Connection::for_test();
-        e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
+    for (during, told) in [
+        ("39=1|14=1|151=3|44=124|", None),
+        ("39=2|150=F|20=0|17=live-print|32=4|31=120|14=4|151=0|", Some("Filled")),
+        ("39=4|150=4|20=0|14=0|151=0|", Some("Cancelled")),
+    ] {
+        let (client, rx, shared) = test_client();
+        shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+            download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+        }.resolve()));
+        let (start, _) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        let mut asks = crate::engine::hot_loop::asks::Asks::new();
+        for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+        startup_report(&rx, &shared, "");
+        let order = Order { action: "BUY".into(), total_quantity: 1.0, order_type: "LMT".into(), lmt_price: 100.0, ..Default::default() };
+        client.try_place_order(90, &spy(), &order).unwrap();
+        startup_send(&rx, &shared, 90);
+        {
+            let mut held = rx.engine();
+            let e = &mut *held;
+            e.ccp.handle_disconnect(&mut None, &mut e.context, &shared, &None);
+            let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+            e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
+        }
+        startup_report(&rx, &shared, "");
+        startup_report(&rx, &shared, "11=*|55=*|");
+        asks.answer_what_is_ready(&shared, &mut 64);
+        startup_report(&rx, &shared, during);
+        asks.answer_what_is_ready(&shared, &mut 64);
+        shared.orders.hold_open_orders(false);
+        asks.answer_what_is_ready(&shared, &mut 64);
+        let mut heard = RecordingWrapper::default();
+        client.process_msgs(&mut heard);
+        match told {
+            None => {
+                let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
+                assert_eq!(heard.events[..end].iter().filter(|e| e.starts_with("order_status:17:")).count(), 1,
+                    "nothing about 17 precedes its download: {:?}", heard.events);
+                heard.events.clear();
+                startup_report(&rx, &shared, "39=1|14=2|151=2|44=125|");
+                client.process_msgs(&mut heard);
+                assert!(heard.events.iter().any(|e| e.starts_with("order_status:17:")),
+                    "after the recovery, 17 is told as it changes: {:?}", heard.events);
+            }
+            Some(status) => {
+                assert!(heard.events.iter().any(|e| e.starts_with(&format!("order_status:17:{status}"))),
+                    "{status} during the recovery is told: {:?}", heard.events);
+                assert_eq!(heard.events.iter().any(|e| e.starts_with("exec_details:")), status == "Filled",
+                    "{:?}", heard.events);
+            }
+        }
     }
-    startup_report(&rx, &shared, "");
-    startup_report(&rx, &shared, "11=*|55=*|");
-    asks.answer_what_is_ready(&shared, &mut 64);
-    startup_report(&rx, &shared, "39=1|14=1|151=3|44=124|");
-    asks.answer_what_is_ready(&shared, &mut 64);
-    shared.orders.hold_open_orders(false);
-    asks.answer_what_is_ready(&shared, &mut 64);
-    let mut heard = RecordingWrapper::default();
-    client.process_msgs(&mut heard);
-    let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
-    assert_eq!(heard.events[..end].iter().filter(|e| e.starts_with("order_status:17:")).count(), 1,
-        "nothing about 17 precedes its download: {:?}", heard.events);
 }
 
 /// A working status the venue echoes beside a fill of an order already
