@@ -15293,6 +15293,9 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
     client.process_msgs(&mut heard);
     assert!(heard.0.contains(&"order_status:93:91".to_string()), "fill: {:?}", heard.0);
     // A child told of before its parent is answered with it once the parent is known.
+    // A bare number on 6107 is not a parent, nor is the order itself.
+    startup_report(&rx, &shared, "11=730.0|6121=98|6119=7|6107=700|37=bare|");
+    startup_report(&rx, &shared, "11=720.0|6121=97|6119=7|6107=720.0|37=itself|");
     startup_report(&rx, &shared, "11=705.0|6121=96|6119=7|6107=710.0|37=early-child|");
     client.process_msgs(&mut heard);
     startup_report(&rx, &shared, "11=710.0|6121=95|6119=7|37=late-parent|");
@@ -15305,6 +15308,8 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
     assert!(heard.0.contains(&"open_order:92:92:91".to_string()), "answered: {:?}", heard.0);
     assert!(heard.0.contains(&"order_status:92:91".to_string()), "answered: {:?}", heard.0);
     assert!(heard.0.contains(&"open_order:96:96:95".to_string()), "answered: {:?}", heard.0);
+    assert!(heard.0.contains(&"open_order:98:98:0".to_string()), "answered: {:?}", heard.0);
+    assert!(heard.0.contains(&"open_order:97:97:0".to_string()), "answered: {:?}", heard.0);
     // Once the parent's record is gone, the child keeps it.
     shared.orders.remove_order_info(91);
     heard.0.clear();
@@ -15312,6 +15317,33 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
     client.process_msgs(&mut heard);
     assert!(heard.0.contains(&"open_order:92:92:91".to_string()), "after the parent: {:?}", heard.0);
     assert!(heard.0.contains(&"order_status:92:91".to_string()), "after the parent: {:?}", heard.0);
+}
+
+/// An order the venue names at connection with no client, modified on this
+/// session, is this session's from then on: what the venue says of it answers
+/// the modify.
+#[test]
+fn a_recovered_order_naming_no_client_is_told_once_modified_here() {
+    let (client, rx, shared) = test_client();
+    shared.orders.set_api_client_id(1);
+    client.core.set_api_client_id(1);
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        download_open_orders_on_connection: Some(false), order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    startup_report(&rx, &shared, "11=42.0|6121=|6119=|37=mine|");
+    startup_report(&rx, &shared, "11=*|55=*|");
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    let order = Order { action: "BUY".into(), total_quantity: 4.0, order_type: "LMT".into(), lmt_price: 121.0, ..Default::default() };
+    client.try_place_order(42, &spy(), &order).unwrap();
+    settled(&client, &rx);
+    heard.events.clear();
+    startup_report(&rx, &shared, "11=42.0|6121=|6119=|37=mine|44=121|100=SMART|");
+    client.process_msgs(&mut heard);
+    assert!(heard.events.iter().any(|e| e.starts_with("order_status:42:")), "{:?}", heard.events);
+    assert!(heard.events.iter().any(|e| e.starts_with("open_order:42:")), "{:?}", heard.events);
 }
 
 /// A child the venue names under a parent, placed by this client before this

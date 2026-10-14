@@ -2071,9 +2071,16 @@ mod ownership_tests {
                     .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("penOrder"))
                     .map(|c| c.get_item(1).unwrap().get_item(0).unwrap().extract::<i64>().unwrap())
                     .collect();
-                (statuses, count("xecDetails"), commissions, opened)
+                // A later change to the other client's order: what this
+                // session recorded of it does not make it this session's.
+                list.call_method0("clear").unwrap();
+                shared.orders.push_order_update(crate::types::OrderUpdate { remaining_qty: 90.0, ..update(71) });
+                client.dispatch_once(py, &shared).unwrap();
+                let later = list.iter().filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("penOrder")).count();
+                (statuses, count("xecDetails"), commissions, opened, later)
             };
-            let (statuses, execs, commissions, opened) = told(None);
+            let (statuses, execs, commissions, opened, later) = told(None);
+            assert_eq!(later, 0, "another client's order is not this session's on a later report");
             assert_eq!(
                 statuses, vec![72, 72],
                 "the own order's status alone, from the fill and from the report",
@@ -2081,7 +2088,8 @@ mod ownership_tests {
             assert_eq!(execs, 1, "the own fill alone");
             assert_eq!(commissions, ["own"], "the own fill's charge alone");
             assert_eq!(opened, vec![72], "the own order is stated beside its status");
-            let (statuses, execs, commissions, opened) = told(Some(1));
+            let (statuses, execs, commissions, opened, later) = told(Some(1));
+            assert_eq!(later, 1, "a master hears it again");
             assert_eq!(statuses, vec![71, 72, 71, 72], "a master hears every client's status");
             assert_eq!(execs, 2, "and every client's fill");
             assert_eq!(commissions, ["other", "own", "unknown"], "and every client's charge");

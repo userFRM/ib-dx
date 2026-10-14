@@ -1366,6 +1366,10 @@ pub struct TrackedOrder {
     /// A replace of an order placed here restates the engine's own record;
     /// a replace of any other goes behind the caller's statement of it.
     pub placed_here: bool,
+    /// Whether a caller on this session has restated the order though it did
+    /// not place it: what the venue then says of it answers this session,
+    /// whatever client its reports name.
+    pub answered_here: bool,
 }
 
 // ── ClientCore ──
@@ -1401,7 +1405,7 @@ fn tracked_as_placed(
         // Nothing has filled, so there is no price the venue has stated for
         // one, which is what nought means on the callback that carries them.
         avg_fill_price: 0.0, last_fill_price: 0.0,
-        rejected: false, before_the_replace: None, placed_here: true,
+        rejected: false, before_the_replace: None, placed_here: true, answered_here: false,
     }
 }
 
@@ -3975,7 +3979,7 @@ impl ClientCore {
                 self.learn_order_identity(shared, held_under as u64);
                 self.api_order_id(held_under as u64)
             }
-            None => self.api_parent_id(shared, stated),
+            None => self.api_parent_id(shared, order_id, stated),
         }
     }
 
@@ -3985,7 +3989,7 @@ impl ClientCore {
     /// its parent after the parent's own record is gone.
     pub(crate) fn note_stated_parent(&self, shared: &SharedState, order_id: u64, stated: i64) {
         if stated <= 0 { return; }
-        let Some(parent) = shared.orders.order_named(stated) else { return };
+        let Some(parent) = shared.orders.order_named(stated).filter(|parent| *parent != order_id) else { return };
         if let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&order_id)
             && tracked.order.parent_id <= 0
         {
@@ -3998,9 +4002,9 @@ impl ClientCore {
     /// where they overlap one names another order: read as an order held here
     /// it stated an unrelated order as the parent. A parent not yet known here
     /// is stated as none rather than as a number that may name another.
-    pub(crate) fn api_parent_id(&self, shared: &SharedState, named: i64) -> i64 {
+    pub(crate) fn api_parent_id(&self, shared: &SharedState, order_id: u64, named: i64) -> i64 {
         if named <= 0 { return named; }
-        let Some(parent) = shared.orders.order_named(named) else { return 0 };
+        let Some(parent) = shared.orders.order_named(named).filter(|parent| *parent != order_id) else { return 0 };
         self.learn_order_identity(shared, parent);
         self.api_order_id(parent)
     }
@@ -4312,6 +4316,7 @@ impl ClientCore {
                 // place wherever the client is reported.
                 let kept = (tracked.order.client_id, tracked.order.parent_id, tracked.order.oca_group.clone(), tracked.order.oca_type);
                 let placed_here = tracked.placed_here;
+                tracked.answered_here = true;
                 tracked.order = order;
                 tracked.order.client_id = kept.0;
                 if placed_here {
@@ -4346,7 +4351,7 @@ impl ClientCore {
                     contract, order, status, filled, remaining,
                     avg_fill_price: 0.0, last_fill_price: 0.0,
                     instrument, rejected: false, before_the_replace,
-                    placed_here: false,
+                    placed_here: false, answered_here: true,
                 });
             }
         }
@@ -4479,7 +4484,7 @@ impl ClientCore {
     pub(crate) fn speaks_for_the_order(
         &self, shared: &SharedState, order_id: u64, stated: i32,
     ) -> bool {
-        self.open_orders.lock().unwrap().get(&order_id).is_some_and(|t| t.placed_here)
+        self.open_orders.lock().unwrap().get(&order_id).is_some_and(|t| t.placed_here || t.answered_here)
             || self.tells_client(shared, i64::from(stated))
     }
 
@@ -4618,7 +4623,7 @@ impl ClientCore {
             TrackedOrder {
                 contract, order, status: String::new(), rejected: false, filled: 0.0, remaining: 0.0,
                 avg_fill_price: 0.0, last_fill_price: 0.0,
-                instrument, before_the_replace: None, placed_here: false,
+                instrument, before_the_replace: None, placed_here: false, answered_here: false,
             }
         });
         o.status = order_status_str(status).into();
@@ -4770,7 +4775,7 @@ impl ClientCore {
                         avg_fill_price,
                         last_fill_price,
                         instrument: o.instrument,
-                        rejected: o.rejected, before_the_replace: None, placed_here: o.placed_here,
+                        rejected: o.rejected, before_the_replace: None, placed_here: o.placed_here, answered_here: o.answered_here,
                     }));
                 }
             }
@@ -4808,7 +4813,7 @@ impl ClientCore {
                     avg_fill_price: info.last_exec.avg_price,
                     last_fill_price: info.last_exec.price,
                     instrument: 0,
-                    rejected: false, before_the_replace: None, placed_here: false,
+                    rejected: false, before_the_replace: None, placed_here: false, answered_here: false,
                 }));
             }
         }
@@ -4820,8 +4825,9 @@ impl ClientCore {
             if tracked.order.parent_id <= 0
                 && let Some(named) = shared.orders.attached_order_metadata(*wire)
                     .and_then(|stated| stated.parent)
-                    .and_then(|named| named.split('.').next()?.parse::<i64>().ok())
-                && let Some(parent) = shared.orders.order_named(named)
+                    .and_then(|named| named.split_once('.')?.0.parse::<i64>().ok())
+                    .filter(|named| *named != 0)
+                && let Some(parent) = shared.orders.order_named(named).filter(|parent| parent != wire)
             {
                 tracked.order.parent_id = parent as i64;
             }
