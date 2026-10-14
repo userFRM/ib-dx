@@ -114,7 +114,7 @@ pub(crate) fn read_stated_attributes(
     if let Some(v) = parsed.get(&6261) { order.adjusted_order_type = v.clone(); }
     if let Some(v) = parsed.get(&6262).and_then(|v| v.parse::<f64>().ok()) { order.adjusted_stop_limit_price = v; }
     if let Some(v) = parsed.get(&6269).and_then(|v| v.parse::<i32>().ok()) { order.adjustable_trailing_unit = v; }
-    if let Some(v) = parsed.get(&6275) { order.continuous_update = flag(v); }
+    if let Some(v) = parsed.get(&6275) { order.continuous_update = v.starts_with(['1', '2']); }
     if let Some(v) = parsed.get(&6279).and_then(|v| v.parse::<i32>().ok()) { order.reference_price_type = v; }
     if let Some(v) = parsed.get(&6280).and_then(|v| v.parse::<i32>().ok()) { order.volatility_type = v; }
     if let Some(v) = parsed.get(&6287) { order.not_held = flag(v); }

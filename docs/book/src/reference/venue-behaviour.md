@@ -717,6 +717,13 @@ working again on any of them. A status report stating the order working at
 its own revision, after a withdrawal this session did not send, states it
 working again.
 
+Returned orders read Continuous Update (`continuous_update` in Rust and Python,
+also `continuousUpdate` in Python) from tag 6275. A value starting with `1` or
+`2` enables it, including values with a suffix. Other stated values, including
+empty, `true` and `y`, disable it. An ordinary report that omits the field leaves
+it at the order's default, false. A completed-order report that omits it keeps
+what an earlier report of that order stated.
+
 ## Orders across a lost connection
 
 The venue ends what it names after a logon, and each answer to what it has

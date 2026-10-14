@@ -1178,7 +1178,9 @@ cancel-reject message reaches no callback, and neither does a report's reason
 for restating an order. `open_order` states an order's total as a gateway
 does: what has filled, and what is left of the order's own size, which only
 the reports a gateway takes a size from restate. Hedge pricing instructions are
-retained on replacement.
+retained on replacement. Returned orders read Continuous Update as enabled
+when its reported value starts with `1` or `2`; other stated values, including
+empty, `true` and `y`, disable it.
 See [order behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html#orders).
 
 ## Testing

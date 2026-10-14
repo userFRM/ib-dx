@@ -1688,6 +1688,50 @@ fn the_whole_order_the_venue_states_comes_back() {
     let held = shared.orders.get_order_info(42).expect("held").order;
     assert_eq!(held.display_size, 0, "unstated stays unstated");
     assert!(!held.hidden);
+
+    // Continuous Update reads the first character; other flags keep their
+    // own spellings. Absence leaves the order the reader was given alone.
+    for (stated, continuous, hidden) in [
+        (Some("2"), true, false), (Some("1"), true, true),
+        (Some("3"), false, false), (Some("0"), false, false),
+        (Some(""), false, false), (None, false, false),
+        (Some("1suffix"), true, false), (Some("2suffix"), true, false),
+        (Some("3suffix"), false, false), (Some("01"), false, false),
+        (Some(" 2"), false, false), (Some("true"), false, true),
+        (Some("TrUe"), false, true), (Some("y"), false, true),
+        (Some("Y"), false, true), (Some("false"), false, false),
+    ] {
+        let (mut ccp, mut context, shared) = tracked_order_state();
+        let mut frame = fill_frame(&[]);
+        if let Some(value) = stated {
+            frame.insert(6275, value.to_string());
+            frame.insert(6135, value.to_string());
+        }
+        ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
+        let order = shared.orders.get_order_info(42).expect("the reported order").order;
+        assert_eq!(order.continuous_update, continuous, "Continuous Update {stated:?}");
+        assert_eq!(order.hidden, hidden, "the unrelated flag {stated:?}");
+
+        let (mut ccp, mut context, shared) = ord_status_test_state();
+        ccp.completed_orders_open = true;
+        let first = exec_report_frame(&[
+            (11, "9000"), (39, "0"), (150, "0"), (14, "0"), (151, "0"), (6275, "1"),
+        ]);
+        ccp.handle_exec_report(&first, b"", &mut context, &shared, &None, "");
+        let mut last = exec_report_frame(&[
+            (11, "9000"), (39, "2"), (150, "0"), (14, "100"), (151, "0"),
+        ]);
+        if let Some(value) = stated {
+            last.insert(6275, value.to_string());
+        }
+        ccp.handle_exec_report(&last, b"", &mut context, &shared, &None, "");
+        ccp.deliver_finished_orders(&shared);
+        let finished = shared.orders.drain_completed_orders();
+        assert_eq!(finished.len(), 1, "one finished order for {stated:?}");
+        let (_, order, _) = finished[0].stated.as_deref().expect("the finished order's terms");
+        let expected = if stated.is_none() { true } else { continuous };
+        assert_eq!(order.continuous_update, expected, "finished Continuous Update {stated:?}");
+    }
 }
 
 /// The per-currency figures are read off the bucket the venue states them in.
