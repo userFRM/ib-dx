@@ -1341,6 +1341,18 @@ impl HotLoop {
         );
     }
 
+    /// Give up the order connection. Reports already read and held for the
+    /// lap after the naming are read first, in the order they arrived: they
+    /// were said on the connection being given up, before the drop.
+    fn drop_ccp(&mut self) {
+        let held = std::mem::take(&mut self.ccp.after_the_naming);
+        for msg in &held {
+            self.ccp.process_ccp_message(msg, &mut self.ccp_conn, &mut self.context, &self.shared,
+                &self.event_tx, &mut self.hb, &self.account_id);
+        }
+        self.ccp.handle_disconnect(&mut self.ccp_conn, &mut self.context, &self.shared, &self.event_tx);
+    }
+
     fn poll_control_commands(&mut self) {
         let mut left = COMMANDS_PER_LAP;
         order_builder::drain_and_send_orders(
@@ -2244,9 +2256,7 @@ impl HotLoop {
                     // and the lookups waiting on the connection waited out
                     // their deadlines rather than ending with it.
                     log::warn!("both transports taken away on request");
-                    self.ccp.handle_disconnect(
-                        &mut self.ccp_conn, &mut self.context, &self.shared, &self.event_tx,
-                    );
+                    self.drop_ccp();
                     self.farm.handle_disconnect(
                         &mut self.farm_conn, &mut self.context, &self.event_tx, &self.shared,
                     );
@@ -2573,9 +2583,7 @@ impl HotLoop {
             if since_recv > self.hb.ccp_test_after() {
                 if since_recv > self.hb.ccp_dead_after() {
                     log::error!("CCP liveness timeout ({since_recv}s silent) — connection lost");
-                    self.ccp.handle_disconnect(
-                        &mut self.ccp_conn, &mut self.context, &self.shared, &self.event_tx,
-                    );
+                    self.drop_ccp();
                 } else if self.hb.pending_ccp_test.is_none() {
                     let test_id = self.hb.next_test_id();
                     let _ = conn.send_fix(&[
@@ -2852,9 +2860,7 @@ impl HotLoop {
             && self.ccp_conn.as_ref().is_some_and(|c| c.write_failed() || c.read_failed())
         {
             log::error!("CCP transport can no longer carry traffic — giving it up");
-            self.ccp.handle_disconnect(
-                &mut self.ccp_conn, &mut self.context, &self.shared, &self.event_tx,
-            );
+            self.drop_ccp();
         }
         if !self.farm.disconnected
             && self.farm_conn.as_ref().is_some_and(|c| c.write_failed() || c.read_failed())
@@ -6476,6 +6482,21 @@ mod tests {
             "the venue is left holding a session it has to time out, and this account \
              permits one at a time: {sent}",
         );
+    }
+
+    /// Reports held for the lap after the naming are read before the order
+    /// connection is given up: they were said on it, before the drop.
+    #[test]
+    fn reports_held_after_the_naming_are_read_before_a_drop() {
+        let shared = Arc::new(SharedState::new());
+        let mut hl = HotLoop::new(shared.clone(), None, None);
+        let (mut ccp, _peer) = crate::protocol::connection::Connection::for_test();
+        ccp.fail_writes();
+        hl.ccp_conn = Some(ccp);
+        hl.ccp.after_the_naming = vec![crate::api::client::tests::startup_frame("39=1|14=1|151=3|44=124|")];
+        hl.disconnect_write_dead_transports();
+        assert!(hl.ccp_conn.is_none(), "the transport is given up");
+        assert!(shared.orders.get_order_info(700).is_some(), "the held report is read before the drop");
     }
 
     /// A transport the engine has given up does not go on owning the socket it

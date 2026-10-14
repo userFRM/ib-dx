@@ -1835,17 +1835,18 @@ impl EClient {
         // is one a fill spent long ago. A program that trusts the announcement
         // — which is the ordinary way to write one — then has its first order
         // refused as a duplicate, and nothing about the refusal points here.
-        self.wait_for_the_replay(py);
-        if !self.is_current_session(shared) { return Ok(()); }
-        // Asked before the id is announced, as the other surface asks it: an
-        // order the program places from `nextValidId` is its own, told as it
-        // happens, and the download is answered in its place before it.
+        // Asked before the wait for the naming, as the other surface asks it:
+        // held by the engine until the naming ends, the download is answered
+        // before anything read after it, and an order the program places from
+        // `nextValidId` is its own, told as it happens.
         if shared.settings().download_open_orders_on_connection {
             let tx = self.control_tx.lock().unwrap().clone();
             if let Some(tx) = tx {
                 self.send_control(&tx, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))?;
             }
         }
+        self.wait_for_the_replay(py);
+        if !self.is_current_session(shared) { return Ok(()); }
         self.notify(py, "next_valid_id", (self.stated_order_id() as i64,))?;
         Ok(())
     }
@@ -4987,15 +4988,10 @@ assert sum(c[0] == 'openOrderEnd' for c in w.calls) == int(bool(expected)), (rep
         });
     }
 
-    /// A handler that closes the session stops the rest of the startup.
-    ///
-    /// The announcements are a caller's own code, and giving up on a
-    /// connection from inside `connect_ack` is the ordinary way to write one.
-    /// Read on the session they were announced for, the rest go on describing
-    /// a session that has been torn down — and a handler that reconnects has
-    /// the startup of the session it just opened repeated over it.
+    /// The download at connection obeys its setting and the client's scope on
+    /// this surface too, and the program's own orders are told as they happen.
     #[test]
-    fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
+    fn connection_download_obeys_the_setting_and_client_scope() {
         Python::initialize();
         Python::attach(|py| {
             for delayed in [false, true] {
@@ -5144,7 +5140,61 @@ w.calls.clear()
             }
             }
             }
+        });
+    }
 
+    /// The download is answered before a report read with the end of the
+    /// naming on this surface too, and the first live status of an order the
+    /// download stated carries the order beside it.
+    #[test]
+    fn a_report_read_with_the_end_of_the_naming_follows_the_download() {
+        use crate::api::client::tests::{Engine, startup_frame, startup_report};
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, receiver, shared, w) = wired_client(py);
+            let rx = Engine::new(receiver, &shared);
+            shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+            }.resolve()));
+            startup_report(&rx, &shared, "");
+            client.get().announce_the_new_session(py, &shared).unwrap();
+            let mut asks = crate::engine::hot_loop::asks::Asks::new();
+            for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+            {
+                let mut held = rx.engine();
+                let e = &mut *held;
+                e.ccp.process_until_named(vec![startup_frame("11=*|55=*|"), startup_frame("39=1|14=1|151=3|44=124|")],
+                    &mut None, &mut e.context, &shared, &None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+            }
+            asks.answer_what_is_ready(&shared, &mut 64);
+            {
+                let mut held = rx.engine();
+                let e = &mut *held;
+                e.ccp.poll_executions(&mut None, &mut e.context, &shared, &None,
+                    &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+            }
+            client.get().dispatch_once(py, &shared).unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            py.run(c"
+seq = [c[0] + (':%d' % c[1] if c[0] != 'openOrderEnd' else '') for c in w.calls if c[0] in ('openOrder', 'orderStatus', 'openOrderEnd')]
+end = seq.index('openOrderEnd')
+assert seq[end + 1:] == ['openOrder:17', 'orderStatus:17'], seq
+", Some(&g), None).unwrap();
+        });
+    }
+
+    /// A handler that closes the session stops the rest of the startup.
+    ///
+    /// The announcements are a caller's own code, and giving up on a
+    /// connection from inside `connect_ack` is the ordinary way to write one.
+    /// Read on the session they were announced for, the rest go on describing
+    /// a session that has been torn down — and a handler that reconnects has
+    /// the startup of the session it just opened repeated over it.
+    #[test]
+    fn a_handler_that_ends_the_session_stops_the_rest_of_the_startup() {
+        Python::initialize();
+        Python::attach(|py| {
             let (replaced, receiver, original, wrapper) = wired_client(py);
             original.orders.set_replay_done();
             let changed = replaced.clone_ref(py);

@@ -700,22 +700,13 @@ impl OrderState {
     /// read again at the read, a second print of the same order in the
     /// meantime left both reading the later one.
     #[doc(hidden)] pub fn push_fill(&self, fill: Fill) {
-        if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
-            self.numbers_changed.store(true, Ordering::Release);
-        }
-        let report = self.order_cache.lock().unwrap().get(&fill.order_id).cloned();
-        self.fills.push(FillRecord { startup: false, fill, report, status: None });
+        self.record_report(Some(fill), None, None, false);
     }
 
     /// A fill and the report it was booked off, which is the one that states
     /// its execution.
     #[doc(hidden)] pub fn push_fill_reported(&self, fill: Fill, report: RichOrderInfo) {
-        if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
-            self.numbers_changed.store(true, Ordering::Release);
-        }
-        self.fills.push(FillRecord { startup: false, fill, report: Some(Arc::new(report)), status: None });
+        self.record_report(Some(fill), Some(report), None, false);
     }
 
     /// A fill and the status the same report stated, as one record.
@@ -727,16 +718,7 @@ impl OrderState {
     #[doc(hidden)] pub fn push_fill_and_status(
         &self, fill: Fill, report: Option<RichOrderInfo>, status: OrderUpdate,
     ) {
-        let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
-        self.note_what_the_status_says(&status);
-        if fill.remaining == 0 {
-            self.numbers.lock().unwrap().finished.entry(fill.order_id).or_insert_with(|| "Filled".to_string());
-            self.numbers_changed.store(true, Ordering::Release);
-        }
-        // A working status on an order already finished is the echo
-        // `push_order_update` drops; the fill beside it still goes.
-        let status = self.states_news(&status).then_some(status);
-        self.fills.push(FillRecord { startup: false, fill, report, status });
+        self.record_report(Some(fill), report, Some(status), false);
     }
 
     /// Note what a status says about the number it is under: a finish spends
@@ -816,6 +798,14 @@ impl OrderState {
         let order_id = fill.as_ref().map(|fill| fill.order_id).or(update.as_ref().map(|update| update.order_id));
         let naming = !self.replay.lock().unwrap().initial_done;
         let startup = naming && !order_id.is_some_and(|id| self.the_order_went_out(id));
+        self.record_report(fill, report, update, startup);
+    }
+
+    /// One report's records: the fill and the status it states as one, the
+    /// status alone where it states no fill. A working status beside a fill
+    /// of an order already finished is the echo `push_order_update` drops;
+    /// the fill still goes.
+    fn record_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>, startup: bool) {
         if let Some(fill) = fill {
             let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
             if let Some(update) = &update { self.note_what_the_status_says(update); }
@@ -854,16 +844,6 @@ impl OrderState {
         self.order_updates.push(UpdateRecord { startup: false, update, state, client_id });
     }
 
-    /// Push an update restating what the book already holds: a report a
-    /// gateway skips still restates the order to the program, whatever it
-    /// last heard of it.
-    #[doc(hidden)] pub fn push_order_restated(&self, update: OrderUpdate) {
-        self.note_what_the_status_says(&update);
-        let (state, client_id) = self.order_cache.lock().unwrap().get(&update.order_id)
-            .map(|info| (Some(Arc::clone(info)), info.order.client_id))
-            .unwrap_or_default();
-        self.order_updates.push(UpdateRecord { startup: false, update, state, client_id });
-    }
 
     #[doc(hidden)] pub fn push_cancel_reject(&self, reject: CancelReject) {
         self.cancel_rejects.push(reject);

@@ -813,7 +813,7 @@ fn take_what_if(
                     response.init_margin_after as f64 / PRICE_SCALE as f64,
                     response.commission.map_or(f64::NAN, |c| c as f64 / PRICE_SCALE as f64));
                 context.retire_order(clord_id);
-                    shared.orders.push_what_if(response.clone());
+                shared.orders.push_what_if(response.clone());
                 emit(event_tx, Event::WhatIf(response));
             }
     parsed.get(&39).map(|s| s.as_str()) != Some("8")
