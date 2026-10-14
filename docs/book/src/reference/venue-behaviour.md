@@ -717,12 +717,15 @@ working again on any of them. A status report stating the order working at
 its own revision, after a withdrawal this session did not send, states it
 working again.
 
-Returned orders read Continuous Update (`continuous_update` in Rust and Python,
-also `continuousUpdate` in Python) from tag 6275. A value starting with `1` or
-`2` enables it, including values with a suffix. Other stated values, including
-empty, `true` and `y`, disable it. An ordinary report that omits the field leaves
-it at the order's default, false. A completed-order report that omits it keeps
-what an earlier report of that order stated.
+Returned orders read Sweep to Fill (`sweep_to_fill` in Rust and Python, also
+`sweepToFill` in Python) from tag 6102, and Continuous Update (`continuous_update`,
+also `continuousUpdate` in Python) from tag 6275. Sweep to Fill is enabled only
+when the stated value starts with ASCII `1`; Continuous Update accepts ASCII
+`1` or `2`. Suffixes are allowed. Other stated values, including empty, `Y`,
+`y`, `true`, leading whitespace and non-ASCII digits, disable the respective
+field. In the report reader, an omitted field leaves the supplied order alone:
+ordinary snapshots start with false, while completed orders can keep earlier
+terms.
 
 ## Orders across a lost connection
 

@@ -98,7 +98,7 @@ pub(crate) fn read_stated_attributes(
         order.trailing_percent = order.aux_price;
         order.aux_price = f64::MAX;
     }
-    if let Some(v) = parsed.get(&6102) { order.sweep_to_fill = flag(v); }
+    if let Some(v) = parsed.get(&6102) { order.sweep_to_fill = v.starts_with('1'); }
     if let Some(v) = parsed.get(&6115).and_then(|v| v.parse::<i32>().ok()) { order.trigger_method = v; }
     if let Some(v) = parsed.get(&6135) { order.hidden = flag(v); }
     if let Some(v) = parsed.get(&6152).and_then(|v| v.parse::<f64>().ok()) { order.stock_range_lower = v; }
