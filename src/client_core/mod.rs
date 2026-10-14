@@ -4677,13 +4677,21 @@ impl ClientCore {
     /// answers `reqOpenOrders` with the orders whose client is the client
     /// asking, and `reqAllOpenOrders` with every client's. An order this
     /// client placed is its own whatever the venue has echoed of it yet.
+    ///
+    /// Asked by client 0 for its own, each working order placed elsewhere
+    /// that has no API number is bound to it first, as a gateway binds them.
     pub fn collect_open_orders(&self, shared: &SharedState, scoped: bool) -> Vec<(u64, TrackedOrder)> {
         let asking = shared.orders.api_client_id();
         let mut result: Vec<(u64, TrackedOrder)> = Vec::new();
 
         // Drain shared order cache first to enrich local tracking
         let shared_orders = shared.orders.drain_open_orders();
-        for (wire, _) in &shared_orders { self.learn_order_identity(shared, *wire); }
+        for (wire, info) in &shared_orders {
+            if scoped && is_open_status(&info.order_state.status) && !self.placed_here(*wire) {
+                shared.orders.bind_order_id(*wire, shared.settings().use_negative_auto_range);
+            }
+            self.learn_order_identity(shared, *wire);
+        }
         {
             let mut orders = self.open_orders.lock().unwrap();
             for (oid, info) in &shared_orders {

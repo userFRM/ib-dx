@@ -21,7 +21,7 @@ Verification runs against a paper account on IBKR production servers, and the or
 | Requests | 85. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,814 offline, and 182 more that live in the suites run against a broker session |
+| Tests | 4,818 offline, and 182 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,7 +72,7 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,333 | No |
+| Rust unit and integration | 3,337 | No |
 | Rust, live | 10 | Yes |
 | Python | 1,481 | No |
 | Python, live | 122 | Yes |
@@ -102,7 +102,7 @@ ordinary wheels.
 | Surface | Status | Verification |
 | --- | :---: | --- |
 | `EClient` / `EWrapper` (TWS API shape) | ✅ Supported | `tests/ib_paper_compat`, `tests/python/test_compat_tier1..3.py` |
-| Gateway settings | ✅ Supported | 22 settings carried, 14 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
+| Gateway settings | ✅ Supported | 23 settings carried, 14 recorded as not settings here, both lists the same on either client; `tests/python/test_gateway_settings.py`, `tests/python/test_settings_parity.py`; session opened under a stated build and time zone |
 | Rust/Python equivalence | ✅ Supported | 4 static gates (settings, order fields, surface, error behaviour) plus `scripts/conformance.py --compare`, which compares 10 server responses across both clients |
 
 ## Market data
@@ -366,7 +366,7 @@ Price, Close Price, Dark Ice, PctVol. Conditions: price, volume, percent change,
 and time. Brackets, one-cancels-all, and combinations with a price per leg.
 
 **Settings.** The gateway's configuration file is replaced by settings on the
-client: announced build, time zone, execution-report scope, and others — 22 in
+client: announced build, time zone, execution-report scope, and others — 23 in
 total, readable at runtime. Fourteen gateway settings are not settings here, and
 each says why or names what stands in for it (no window geometry, no local
 listening socket, no JVM heap, and no message pacing: a gateway paces requests
@@ -394,6 +394,21 @@ retain their existing callback behavior. This setting does not add automatic
 binding or change order IDs. Whatever it is set to, an order this session is
 told of but did not place is stated with `openOrder` beside its status, under
 its API number and with its parent under the parent's.
+
+Client 0 binds an order placed elsewhere, one with no API number of its own,
+as a gateway does. `reqOpenOrders` binds each such order working when it is
+asked; after `reqAutoOpenOrders(True)` each new one is bound as the venue first
+reports it, once the venue has named what was already working, and
+`reqAutoOpenOrders(False)` stops that and keeps the numbers already given.
+`reqAllOpenOrders` binds nothing. `use_negative_auto_range` is on by default: a
+bound order takes the next number from -2 down, counted apart from the order IDs
+and kept beside them in the order-ID file. Turned off, it takes the next order
+ID. The order's callbacks carry that number, and a cancel reaches the order
+under it. The venue is then asked to bind it: `orderBound` follows the venue's
+acceptance, and a refusal is error 10198. Naming an order at connection is not
+a binding and says no `orderBound`. An OMS container or a child of one is bound
+here without the venue being asked. The setting is also read from
+`IB_DX_USE_NEGATIVE_AUTO_RANGE`.
 
 `order_id_file` retains the next ID per account and API client across restarts;
 reservations share an exclusive file lock. See [order IDs across sessions](book/src/reference/venue-behaviour.md#order-ids-across-sessions)

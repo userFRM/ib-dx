@@ -189,14 +189,10 @@ pub struct ReferenceState {
     pub(super) contract_details: Queue<(u32, ContractDefinition)>,
     pub(super) contract_details_end: Queue<u32>,
     pub(super) matching_symbols: Queue<(u32, Vec<SymbolMatch>)>,
-    /// Orders this session did not place, paired with the number it reaches
-    /// them under. Drained to `order_bound` on each surface.
+    /// Orders placed elsewhere whose binding the venue accepted, with the
+    /// client and number they are bound to. Drained to `order_bound` on each
+    /// surface.
     pub(super) orders_bound: Queue<(i64, i64, i64)>,
-    /// Which of those pairings have been stated, for as long as the session
-    /// lasts. Kept apart from the queue above because the queue is emptied
-    /// every time a caller reads it, and a set that forgets on being read
-    /// cannot say whether something was said before.
-    orders_bound_said: Mutex<std::collections::HashSet<i64>>,
     /// The calendar's answers, as the venue wrote them. Two shapes on one
     /// envelope — what event types exist, and the events themselves — kept
     /// apart so a caller waiting on one is not handed the other.
@@ -403,7 +399,6 @@ impl ReferenceState {
             contract_details_end: Queue::with_capacity(stamps, 8),
             matching_symbols: Queue::with_capacity(stamps, 8),
             orders_bound: Queue::new(stamps),
-            orders_bound_said: Mutex::new(std::collections::HashSet::new()),
             calendar_meta_data: Queue::new(stamps),
             calendar_events: Queue::new(stamps),
             option_params: Queue::with_capacity(stamps, 4),
@@ -1182,24 +1177,10 @@ impl ReferenceState {
         self.calendar_events.push((req_id, json));
     }
 
-    /// Say that an order this session did not place is reachable here.
-    ///
-    /// The venue replays what the account is working when a session opens, and
-    /// this client gives each of those a number of its own. That pairing —
-    /// the permanent id the venue keeps and the number a caller uses here — is
-    /// what `order_bound` carries, and it was worked out and never said.
+    /// Say that the venue accepted the binding of an order placed elsewhere:
+    /// its permanent id, and the client and number it is bound to.
     #[doc(hidden)] pub fn push_order_bound(&self, perm_id: i64, client_id: i64, order_id: i64) {
         if perm_id == 0 || order_id == 0 {
-            return;
-        }
-        // Once per pairing, for the life of the session. Checked against what
-        // has been said rather than against what is waiting to be said: the
-        // queue is emptied every time a caller reads it, so a check against it
-        // only covers pairings nobody has read yet — and the venue replays
-        // these orders on every reconnect, and on a drop each is marked
-        // uncertain and recovered again. A caller counting them would have
-        // been counting reconnects.
-        if !self.orders_bound_said.lock().unwrap().insert(perm_id) {
             return;
         }
         self.orders_bound.push((perm_id, client_id, order_id));

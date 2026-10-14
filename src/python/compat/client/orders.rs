@@ -535,25 +535,17 @@ impl EClient {
 
     /// Binding orders entered elsewhere to this client.
     ///
-    /// Served for client 0. Any other client is refused, as a gateway refuses a
-    /// client other than 0: asked to bind, with 321, as a request that fails
-    /// validation; asked not to, with 327. On a gateway, client 0's flag turns
-    /// binding on or off; here an order's callbacks follow the gateway's
-    /// routing whichever way it is set — a session is told about the orders
-    /// its own client placed, and client 0 about the orders placed away from
-    /// the API as well. So `b_auto_bind` changes nothing whichever way it is
-    /// set, and nothing goes to the venue.
-    ///
-    /// `order_bound` does not follow from this call. It is fired once for each
-    /// order the venue restates when the session opens that this session did
-    /// not place, pairing its permanent id, the number the session that placed
-    /// it sent it under, with the order id it is reached under here.
+    /// For client 0, `b_auto_bind` turns binding on or off, as on a gateway:
+    /// while it is on, each order placed elsewhere that the venue states after
+    /// it has named what was already working is bound to client 0, under the
+    /// next negative number, or the next order id where
+    /// `use_negative_auto_range` is off. Turning it off keeps the numbers
+    /// already given. The venue is asked to bind each one, and `order_bound`
+    /// follows when it accepts. Any other client is refused, as a gateway
+    /// refuses a client other than 0: asked to bind, with 321, as a request
+    /// that fails validation; asked not to, with 327.
     #[pyo3(signature = (b_auto_bind))]
     fn req_auto_open_orders(&self, b_auto_bind: bool) -> PyResult<()> {
-        // Nothing goes to the wire. The request is refused for any client id
-        // but 0, and otherwise sets state that does not apply here: an
-        // order's callbacks follow the gateway's routing whatever the flag
-        // says. The refusal is the only observable part.
         let Some(_tx) = self.tx_or_report(-1)? else { return Ok(()) };
         if self.client_id.load(std::sync::atomic::Ordering::Acquire) != 0 {
             let (code, reason) = if b_auto_bind {
@@ -564,6 +556,8 @@ impl EClient {
                  "orders entered elsewhere are bound to the client numbered zero")
             };
             crate::python::compat::client::stubs::report_unserviceable_with(self, -1, code, reason);
+        } else {
+            self.shared_state()?.orders.auto_bind_orders.store(b_auto_bind, Ordering::Release);
         }
         Ok(())
     }
@@ -996,6 +990,29 @@ w = W()",
                 }),
                 "the caller is told on the error callback what was and was not covered: {heard:?}",
             );
+        });
+    }
+
+    /// Client 0 asking for orders placed elsewhere to be bound has the next
+    /// one bound as the venue states it, and told under the bound number;
+    /// asking for them not to be leaves it under 0.
+    #[test]
+    fn client_zero_asking_to_bind_has_a_new_order_placed_elsewhere_bound() {
+        Python::initialize();
+        Python::attach(|py| {
+            for (bind, expected) in [(true, -2i64), (false, 0)] {
+                let (client, rx, shared, wrapper) = wired_client(py);
+                shared.orders.set_replay_done();
+                client.req_auto_open_orders(true).unwrap();
+                client.req_auto_open_orders(bind).unwrap();
+                crate::api::client::tests::startup_report(&rx, &shared, "6121=0|");
+                client.dispatch_once(py, &shared).unwrap();
+                let g = pyo3::types::PyDict::new(py);
+                g.set_item("w", &wrapper).unwrap();
+                g.set_item("expected", expected).unwrap();
+                py.run(c"assert [c[1] for c in w.calls if c[0] in ('openOrder', 'orderStatus')] == [expected, expected], w.calls",
+                    Some(&g), None).unwrap();
+            }
         });
     }
 

@@ -32,7 +32,10 @@ fn key(account: &str) -> String {
 /// whether there was any.
 fn migrate(counters: &mut Counters) -> bool {
     let named: Vec<String> = counters.keys()
-        .filter(|held| !(held.len() == 64 && held.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))))
+        .filter(|held| {
+            let digest = held.strip_prefix("bound:").unwrap_or(held);
+            !(digest.len() == 64 && digest.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        })
         .cloned().collect();
     for account in &named {
         let ids = counters.remove(account).unwrap_or_default();
@@ -208,6 +211,44 @@ impl OrderState {
                 Err(why) => (saved, Err(why)),
             }
         })
+    }
+
+    /// The next negative number to bind an order placed elsewhere to, from
+    /// -2 down. Counted apart from the order ids, which it never raises, and
+    /// kept beside them in the file under `bound:` and the account's digest,
+    /// so a later session does not give a number again.
+    pub(crate) fn next_negative_bound_id(&self) -> Option<i64> {
+        let reserve = |floor: u64| {
+            let mut reserved = None;
+            self.next_bound_id.fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+                let magnitude = held.unsigned_abs().max(floor).max(2);
+                let id = i64::try_from(magnitude).ok()?.checked_neg()?;
+                reserved = Some(id);
+                id.checked_sub(1)
+            }).ok()?;
+            reserved
+        };
+        let mut saved = self.saved_ids.lock().unwrap();
+        if let Some(store) = saved.as_ref() {
+            let mut counter = SavedIds {
+                path: store.path.clone(), key: format!("bound:{}", store.key),
+                client: store.client, next: 2,
+            };
+            let mut result = None;
+            let written = counter.update(|next| {
+                result = reserve(next);
+                result.map_or(next, |id| id.unsigned_abs() + 1)
+            });
+            match written {
+                Ok(()) => return result,
+                Err(error) => {
+                    fall_back(&counter.path, &error);
+                    *saved = None;
+                    if result.is_some() { return result; }
+                }
+            }
+        }
+        reserve(2)
     }
 
     /// Number an order the engine places on its own, in memory: the engine's

@@ -80,6 +80,10 @@ _SETTINGS: dict[str, tuple[str, str]] = {
         "IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION",
         "send existing API open orders when connecting; on by default",
     ),
+    "use_negative_auto_range": (
+        "IB_DX_USE_NEGATIVE_AUTO_RANGE",
+        "give bound non-API orders negative IDs; on by default",
+    ),
     "master_client_id": (
         "IB_DX_MASTER_CLIENT_ID",
         "Master API client ID: the client also told of every other client's orders, fills and charges; unset by default",

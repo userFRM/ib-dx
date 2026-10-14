@@ -9507,8 +9507,8 @@ fn every_order_the_venue_has_finished_comes_back_though_numbers_repeat() {
         order(1787685160171371, "SPY", "20260925 15:01:02 UTC", "Filled"),
     ], "each order the venue finished, once");
     assert_eq!(
-        heard.working, [(1787685160171371, "Submitted".to_string())],
-        "and the order working under one of those numbers is still working",
+        heard.working, [(-2, "Submitted".to_string())],
+        "and the order working under one of those numbers is still working, bound to client 0 by the request",
     );
     assert!(
         heard.statuses.iter().all(|(_, status)| status == "Submitted"),
@@ -15584,4 +15584,158 @@ fn connection_download_preserves_report_provenance() {
     asks.answer_what_is_ready(&shared, &mut 64);
     assert_eq!(asks.len(), 0);
     assert!(shared.drain_refused().is_empty());
+}
+
+/// An order placed elsewhere is bound under the next negative number from -2,
+/// or the next order id where `use_negative_auto_range` is off, and the bound
+/// number then reaches it. An order with an API number of its own keeps it, a
+/// later report stating none keeps the binding, a bound number the venue
+/// states is not given again, and the count goes on in the next session.
+#[test]
+fn an_order_placed_elsewhere_is_bound_in_the_range_the_setting_names() {
+    for (negative, expected) in [(None, [-2, -21, -22]), (Some(true), [-2, -21, -22]), (Some(false), [81, 82, 83])] {
+        let (client, _rx, shared) = test_client();
+        let scratch = Scratch::new("bound-ids");
+        let path = scratch.0.join("ids.json");
+        shared.orders.open_order_ids(Some(&path), "DU123");
+        shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+            use_negative_auto_range: negative, order_id_file: Some(String::new()), ..Default::default()
+        }.resolve()));
+        shared.orders.note_used(80);
+        let seed = |shared: &SharedState, wire: u64, api: i64| {
+            shared.orders.note_attached_order_metadata(wire, crate::bridge::AttachedOrderMetadata {
+                api_order_id: Some(api), api_client_id: Some(0), fix_order_id: Some(format!("{wire}.0")), ..Default::default()
+            });
+            shared.orders.push_order_info(wire, crate::bridge::RichOrderInfo {
+                contract: spy(),
+                order: Order { order_id: wire as i64, ..Default::default() },
+                order_state: crate::types::model::OrderState { status: "Submitted".into(), ..Default::default() },
+                last_exec: Default::default(),
+            });
+        };
+        seed(&shared, 70, 0);
+        seed(&shared, 71, 44);
+        client.core.collect_open_orders(&shared, true);
+        assert_eq!(client.core.api_order_id(70), expected[0], "{negative:?}");
+        assert_eq!(client.core.api_order_id(71), 44, "an API number stands");
+        assert_eq!(client.core.wire_order_id(expected[0]), Some(70));
+        assert_eq!(shared.orders.wire_order_id(expected[0]), Some(70));
+        seed(&shared, 70, 0);
+        client.core.learn_order_identity(&shared, 70);
+        assert_eq!(client.core.api_order_id(70), expected[0], "a later report stating none keeps the binding");
+        if expected[0] > 0 { assert!(client.stated_next_id() > 81, "an order id given to a binding is not given again"); }
+        seed(&shared, 72, -20);
+        seed(&shared, 73, 0);
+        client.core.collect_open_orders(&shared, true);
+        assert_eq!(client.core.api_order_id(73), expected[1], "{negative:?}");
+        let reopened = SharedState::new();
+        reopened.orders.open_order_ids(Some(&path), "DU123");
+        seed(&reopened, 74, 0);
+        reopened.orders.bind_order_id(74, negative != Some(false));
+        assert_eq!(reopened.orders.attached_order_metadata(74).unwrap().api_order_id, Some(expected[2]),
+            "the count goes on in the next session: {negative:?}");
+    }
+}
+
+/// An order placed elsewhere is bound to client 0 on its first report once
+/// client 0 has asked for new ones to be and the venue has named what was
+/// already working, or on client 0's own `req_open_orders`; not on a later
+/// report of an order already known, nor on a request for every client's
+/// orders. Its callbacks carry the bound number, the venue is asked to bind
+/// it, and `order_bound` follows the venue's acceptance alone.
+#[test]
+fn an_order_placed_elsewhere_is_bound_and_the_venue_asked_to_bind_it() {
+    use std::io::Read;
+    #[derive(Clone, Copy, Debug)]
+    enum Then { Nothing, AskOwn, AskAll, AutoAndReport }
+    for (own, automatic, named, then, bound) in [
+        (0, true, true, Then::Nothing, -2),
+        (0, true, false, Then::Nothing, 0),
+        (0, false, true, Then::AskOwn, -2),
+        (0, false, true, Then::AskAll, 0),
+        (0, false, true, Then::AutoAndReport, 0),
+        // Only client 0 binds: another client asking for its own orders binds none.
+        (1, false, true, Then::AskOwn, 0),
+    ] {
+        let case = format!("{own} {automatic} {named} {then:?}");
+        let (client, rx, shared) = test_client();
+        shared.orders.set_api_client_id(own);
+        client.core.set_api_client_id(own);
+        if named { shared.orders.set_replay_done(); }
+        client.req_auto_open_orders(automatic);
+        startup_report(&rx, &shared, "6121=0|");
+        let mut heard = RecordingWrapper::default();
+        client.process_msgs(&mut heard);
+        match then {
+            Then::Nothing => {}
+            Then::AskOwn => client.req_open_orders(),
+            Then::AskAll => client.req_all_open_orders(),
+            Then::AutoAndReport => {
+                client.req_auto_open_orders(true);
+                startup_report(&rx, &shared, "6121=0|150=5|44=121|");
+            }
+        }
+        the_engine_answers(&rx, &shared);
+        client.process_msgs(&mut heard);
+        assert_eq!(client.core.api_order_id(700), bound, "{case}");
+        if bound == 0 {
+            assert!(shared.orders.take_bindings().is_empty(), "{case}");
+            continue;
+        }
+        assert!(heard.events.iter().any(|e| e.starts_with("open_order:-2:")), "{case}: {:?}", heard.events);
+        assert_eq!(heard.events.iter().any(|e| e.starts_with("open_order:0:")), !automatic,
+            "{case}: bound on its first report where client 0 asked: {:?}", heard.events);
+        assert!(shared.reference.drain_orders_bound().is_empty(), "{case}: the binding waits for the venue");
+        let (conn, mut peer) = crate::protocol::connection::Connection::for_test();
+        let mut conn = Some(conn);
+        let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+        let mut held = rx.engine();
+        let e = &mut *held;
+        e.ccp.send_order_bindings(&shared, &mut conn, &mut hb);
+        let mut bytes = [0; 4096];
+        let n = peer.read(&mut bytes).unwrap();
+        let sent = String::from_utf8_lossy(&bytes[..n]);
+        assert!(sent.contains("35=U\x01") && sent.contains("6040=86\x018192=5\x0111=700.0\x011=DU123\x016119=0\x016121=-2\x01"), "{case}: {sent}");
+        for answer in [
+            "35=U|6040=200|8192=5|11=99.0|6119=0|6121=-2|",
+            "35=U|6040=200|8192=5|11=700.0|6119=0|",
+            "35=U|6040=200|8192=5|11=700.0|6119=0|6121=-2|",
+            "35=U|6040=200|8192=5|11=700.0|6119=0|6121=-2|",
+        ] {
+            e.ccp.process_ccp_message(answer.replace('|', "\x01").as_bytes(), &mut conn, &mut e.context, &shared, &None, &mut hb, "DU123");
+        }
+        assert_eq!(shared.reference.drain_orders_bound(), [(700, 0, -2)], "{case}: once, for the answer that names it in full");
+    }
+}
+
+/// A binding the venue refuses is told under 10198 and says no `order_bound`,
+/// and an OMS container or a child of one is bound here without the venue
+/// being asked.
+#[test]
+fn a_refused_binding_is_told_and_an_oms_order_is_bound_here_alone() {
+    for (extra, asked) in [("6121=0|", true), ("6121=0|6406=1|", false), ("6121=0|6407=650.0|", false)] {
+        let (client, rx, shared) = test_client();
+        shared.orders.set_replay_done();
+        startup_report(&rx, &shared, extra);
+        client.req_open_orders();
+        the_engine_answers(&rx, &shared);
+        client.process_msgs(&mut RecordingWrapper::default());
+        assert_eq!(client.core.api_order_id(700), -2, "{extra}");
+        if !asked {
+            assert!(shared.orders.take_bindings().is_empty(), "{extra}");
+            continue;
+        }
+        let (conn, _peer) = crate::protocol::connection::Connection::for_test();
+        let mut conn = Some(conn);
+        let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+        let mut held = rx.engine();
+        let e = &mut *held;
+        e.ccp.send_order_bindings(&shared, &mut conn, &mut hb);
+        for answer in ["35=9|11=700.0|58=denied|", "35=U|6040=200|8192=5|11=700.0|6119=0|6121=-2|"] {
+            e.ccp.process_ccp_message(answer.replace('|', "\x01").as_bytes(), &mut conn, &mut e.context, &shared, &None, &mut hb, "DU123");
+        }
+        let refused = shared.drain_refused();
+        assert!(refused.iter().any(|(id, code, text)| *id == -2 && *code == 10198 && text.contains("denied")), "{refused:?}");
+        assert!(shared.reference.drain_orders_bound().is_empty(), "a refused binding is not accepted afterwards");
+    }
 }

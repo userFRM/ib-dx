@@ -964,6 +964,7 @@ impl HotLoop {
 
             // 4. Check control_plane_rx (SPSC) for commands
             self.poll_control_commands();
+            self.ccp.send_order_bindings(&self.shared, &mut self.ccp_conn, &mut self.hb);
             self.poll_attached_quotes(Instant::now());
 
             // After the commands, not before them. A request a caller has sent

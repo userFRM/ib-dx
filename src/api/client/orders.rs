@@ -723,21 +723,21 @@ impl EClient {
     /// Automatically bind future orders to this client. Matches `reqAutoOpenOrders` in
     /// C++.
     ///
-    /// Nothing goes to the venue. On a gateway, client 0's flag turns binding
-    /// on or off; here an order's callbacks follow the gateway's routing
-    /// whichever way it is set — a session is told about the orders its own
-    /// client placed, and client 0 about the orders placed away from the API
-    /// as well — so `b_auto_bind` changes nothing. Any client but 0 is
-    /// refused, as a gateway refuses one: asked to bind, with 321, as a
-    /// request that fails validation; asked not to, with 327.
-    ///
-    /// [`Wrapper::order_bound`](crate::api::wrapper::Wrapper::order_bound) does not follow from this call. It is fired once
-    /// for each order the venue restates when the session opens that this
-    /// session did not place, pairing its permanent id, the number the session
-    /// that placed it sent it under, with the order id it is reached under
-    /// here.
+    /// For client 0, `b_auto_bind` turns binding on or off, as on a gateway:
+    /// while it is on, each order placed elsewhere that the venue states after
+    /// it has named what was already working is bound to client 0, under the
+    /// next negative number, or the next order id where
+    /// `use_negative_auto_range` is off. Turning it off keeps the numbers
+    /// already given. The venue is asked to bind each one, and
+    /// [`Wrapper::order_bound`](crate::api::wrapper::Wrapper::order_bound)
+    /// follows when it accepts. Any client but 0 is refused, as a gateway
+    /// refuses one: asked to bind, with 321, as a request that fails
+    /// validation; asked not to, with 327.
     pub fn req_auto_open_orders(&self, b_auto_bind: bool) {
-        if self.shared.orders.api_client_id() == 0 { return; }
+        if self.shared.orders.api_client_id() == 0 {
+            self.shared.orders.auto_bind_orders.store(b_auto_bind, Ordering::Release);
+            return;
+        }
         self.refuse_session(&if b_auto_bind {
             Refusal::validation("only the client numbered zero can bind orders entered elsewhere")
         } else {

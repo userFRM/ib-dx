@@ -95,6 +95,11 @@ pub(crate) fn settings_from(
                     !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
                 );
             }
+            "use_negative_auto_range" | "useNegativeAutoRange" => {
+                settings.use_negative_auto_range = Some(
+                    !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
+                );
+            }
             "include_fx_positions" | "includeFxPositions" => {
                 settings.include_fx_positions = Some(
                     !["0", "false", "no"].iter().any(|off| value.eq_ignore_ascii_case(off)),
@@ -221,12 +226,16 @@ mod settings_from_tests {
             ("reconnectOnSocketErr".to_string(), "true".to_string()),
         ])).expect("the name is known");
         assert!(on.reconnect_on_socket_err, "and on when it says so");
-        for name in ["download_open_orders_on_connection", "downloadOpenOrdersOnConnection"] {
+        for (download, negative) in [
+            ("download_open_orders_on_connection", "use_negative_auto_range"),
+            ("downloadOpenOrdersOnConnection", "useNegativeAutoRange"),
+        ] {
             for (spelling, on) in [("True", true), ("YES", true), ("1", true), ("False", false), ("no", false), ("0", false)] {
                 let settled = super::settings_from(std::collections::HashMap::from([
-                    (name.into(), spelling.into()),
+                    (download.into(), spelling.into()), (negative.into(), (!on).to_string()),
                 ])).unwrap();
                 assert_eq!(settled.download_open_orders_on_connection, on);
+                assert_eq!(settled.use_negative_auto_range, !on);
             }
         }
         for (fx, zero) in [

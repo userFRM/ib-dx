@@ -272,9 +272,6 @@ here:
 | `req_ids` | `num_ids` | The next valid id is answered whatever number is asked for |
 | `req_real_time_bars` | `bar_size` | A real-time bar is five seconds. The venue's request carries no bar size; a gateway reads the number and does not use it |
 
-One more acts on a gateway and changes nothing here, and is on
-[Limits](./limits.md): `b_auto_bind` on `req_auto_open_orders`.
-
 ## Stopping profit and loss
 
 `cancel_pnl` stops the updates. The venue has no message withdrawing the
@@ -1100,3 +1097,18 @@ retain their existing callback behavior. This setting does not add automatic
 binding or change order IDs. Whatever it is set to, an order this session is
 told of but did not place is stated with `openOrder` beside its status, under
 its API number and with its parent under the parent's.
+
+Client 0 binds an order placed elsewhere, one with no API number of its own,
+as a gateway does. `reqOpenOrders` binds each such order working when it is
+asked; after `reqAutoOpenOrders(True)` each new one is bound as the venue first
+reports it, once the venue has named what was already working, and
+`reqAutoOpenOrders(False)` stops that and keeps the numbers already given.
+`reqAllOpenOrders` binds nothing. `use_negative_auto_range` is on by default: a
+bound order takes the next number from -2 down, counted apart from the order IDs
+and kept beside them in the order-ID file. Turned off, it takes the next order
+ID. The order's callbacks carry that number, and a cancel reaches the order
+under it. The venue is then asked to bind it: `orderBound` follows the venue's
+acceptance, and a refusal is error 10198. Naming an order at connection is not
+a binding and says no `orderBound`. An OMS container or a child of one is bound
+here without the venue being asked. The setting is also read from
+`IB_DX_USE_NEGATIVE_AUTO_RANGE`.

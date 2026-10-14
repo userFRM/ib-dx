@@ -33,6 +33,12 @@ struct Numbers {
 /// Attachment fields stated by execution reports, including explicit zeroes.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct AttachedOrderMetadata {
+    /// The order's name on tag 11, which a binding request names it by.
+    pub fix_order_id: Option<String>,
+    /// Whether the venue states the order is an OMS container, on tag 6406.
+    pub oms_container: Option<bool>,
+    /// Whether the venue states the order is a child of one, on tag 6407.
+    pub oms_child: Option<bool>,
     pub family_key: Option<String>,
     pub parent: Option<String>,
     pub use_parent_price: Option<bool>,
@@ -115,6 +121,14 @@ pub struct OrderState {
     reusable_order_ids: Mutex<std::collections::HashSet<u64>>,
     attached_metadata: Mutex<HashMap<u64, AttachedOrderMetadata>>,
     api_order_ids: Mutex<HashMap<(i32, i64), u64>>,
+    /// The API number each order placed elsewhere was bound to here.
+    bound_order_ids: Mutex<HashMap<u64, i64>>,
+    /// Bound orders whose binding the venue has not been asked for yet.
+    pending_bindings: Mutex<Vec<u64>>,
+    /// Whether client 0 asked for new orders placed elsewhere to be bound.
+    pub(crate) auto_bind_orders: AtomicBool,
+    /// The next negative number a binding takes.
+    next_bound_id: std::sync::atomic::AtomicI64,
     api_client_id: std::sync::atomic::AtomicI32,
     waiting_attached_orders: Mutex<Vec<OrderRequest>>,
     /// Every finished order the venue stated an API order id for.
@@ -268,6 +282,10 @@ impl OrderState {
             reusable_order_ids: Mutex::new(std::collections::HashSet::new()),
             attached_metadata: Mutex::new(HashMap::new()),
             api_order_ids: Mutex::new(HashMap::new()),
+            bound_order_ids: Mutex::new(HashMap::new()),
+            pending_bindings: Mutex::new(Vec::new()),
+            auto_bind_orders: AtomicBool::new(false),
+            next_bound_id: std::sync::atomic::AtomicI64::new(-2),
             api_client_id: std::sync::atomic::AtomicI32::new(0),
             waiting_attached_orders: Mutex::new(Vec::new()),
             api_numbered: Mutex::new(std::collections::HashSet::new()),
@@ -373,9 +391,22 @@ impl OrderState {
     }
 
     pub(crate) fn note_attached_order_metadata(&self, wire: u64, update: AttachedOrderMetadata) {
+        // Held through the merge, so a report read beside a binding cannot undo it.
+        let bound = self.bound_order_ids.lock().unwrap();
+        let update = match bound.get(&wire) {
+            Some(&api) => AttachedOrderMetadata { api_order_id: Some(api), api_client_id: Some(0), ..update },
+            None => update,
+        };
         if update == AttachedOrderMetadata::default() { return; }
+        // A number an earlier session bound is not given again.
+        if let Some(api) = update.api_order_id.filter(|id| *id < -1) {
+            self.next_bound_id.fetch_min(api.saturating_sub(1), Ordering::AcqRel);
+        }
         let mut all = self.attached_metadata.lock().unwrap();
         let held = all.entry(wire).or_default();
+        if update.fix_order_id.is_some() { held.fix_order_id = update.fix_order_id; }
+        if update.oms_container.is_some() { held.oms_container = update.oms_container; }
+        if update.oms_child.is_some() { held.oms_child = update.oms_child; }
         if update.family_key.is_some() { held.family_key = update.family_key; }
         if update.parent.is_some() { held.parent = update.parent; }
         if update.use_parent_price.is_some() { held.use_parent_price = update.use_parent_price; }
@@ -386,6 +417,55 @@ impl OrderState {
         if let (Some(client), Some(api)) = (held.api_client_id, held.api_order_id) {
             self.api_order_ids.lock().unwrap().entry((client, api)).or_insert(wire);
         }
+    }
+
+    /// Bind an order placed elsewhere to client 0, as a gateway does: under
+    /// the next negative number, or the next order id where
+    /// `use_negative_auto_range` is off. Only an order with no API number of
+    /// its own, never one already bound, and never a preview. The venue is
+    /// asked to bind it unless it is an OMS container or one of its children,
+    /// which are numbered here alone.
+    pub(crate) fn bind_order_id(&self, wire: u64, negative: bool) {
+        if self.api_client_id() != 0 { return; }
+        let Some(info) = self.get_order_info(wire) else { return };
+        if info.order.client_id != 0 || info.order.what_if { return; }
+        let mut bound = self.bound_order_ids.lock().unwrap();
+        let mut all = self.attached_metadata.lock().unwrap();
+        let held = all.entry(wire).or_default();
+        if held.api_client_id.is_some_and(|id| id != 0)
+            || held.api_order_id.is_some_and(|id| id != 0 && id != i64::from(i32::MAX))
+            || bound.contains_key(&wire)
+        { return; }
+        let api = if negative {
+            let Some(id) = self.next_negative_bound_id() else { return };
+            id
+        } else {
+            match self.reserve_order_ids(&AtomicU64::new(0), 1) {
+                Ok(id) => { self.note_used(id); id as i64 }
+                Err(why) => { log::error!("{}", why.message); return; }
+            }
+        };
+        bound.insert(wire, api);
+        if held.oms_container != Some(true) && held.oms_child != Some(true) {
+            self.pending_bindings.lock().unwrap().push(wire);
+        }
+        let previous = held.api_client_id.zip(held.api_order_id);
+        held.api_order_id = Some(api);
+        held.api_client_id = Some(0);
+        let mut ids = self.api_order_ids.lock().unwrap();
+        if let Some(pair) = previous && ids.get(&pair) == Some(&wire) { ids.remove(&pair); }
+        ids.insert((0, api), wire);
+    }
+
+    /// The bindings to ask the venue for: each order, the number it is bound
+    /// to, its name on tag 11 and its account.
+    pub(crate) fn take_bindings(&self) -> Vec<(u64, i64, String, String)> {
+        let waiting = std::mem::take(&mut *self.pending_bindings.lock().unwrap());
+        waiting.into_iter().filter_map(|wire| {
+            let metadata = self.attached_order_metadata(wire)?;
+            let info = self.get_order_info(wire)?;
+            Some((wire, metadata.api_order_id?, metadata.fix_order_id?, info.order.account))
+        }).collect()
     }
 
     pub(crate) fn set_api_client_id(&self, client_id: i32) {

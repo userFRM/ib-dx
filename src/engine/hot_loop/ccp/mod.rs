@@ -365,6 +365,50 @@ impl CcpState {
         Ok(())
     }
 
+    /// Ask the venue to bind each order bound here since the last lap, as a
+    /// gateway does: the order's name, its account, client 0 and the number.
+    pub(crate) fn send_order_bindings(&mut self, shared: &SharedState, connection: &mut Option<Connection>, heartbeat: &mut HeartbeatState) {
+        if connection.is_none() { return; }
+        for (wire, api, identity, account) in shared.orders.take_bindings() {
+            let result = self.send_user_message(vec![
+                (6040, "86".into()), (8192, "5".into()), (11, identity.clone()),
+                (1, account), (6119, "0".into()), (6121, api.to_string()),
+            ], connection, heartbeat);
+            match result {
+                Ok(()) => { self.pending_bindings.insert(identity, (wire, api)); }
+                Err(error) => shared.push_refused(
+                    crate::types::model::ErrorOrigin::Order { id: api, op: crate::types::model::OrderOp::Venue },
+                    504, format!("Order binding could not be sent: {error}"),
+                ),
+            }
+        }
+    }
+
+    /// The venue's answer to a binding asked of it: accepted, `orderBound`
+    /// with the client and number it states; refused, error 10198. Whether
+    /// the message was such an answer.
+    fn answer_order_binding(&mut self, parsed: &std::collections::HashMap<u32, String>, shared: &SharedState, rejected: bool) -> bool {
+        let Some(identity) = parsed.get(&11) else { return false };
+        let Some(&(wire, requested)) = self.pending_bindings.get(identity) else { return false };
+        if rejected {
+            self.pending_bindings.remove(identity);
+            shared.push_refused(
+                crate::types::model::ErrorOrigin::Order { id: requested, op: crate::types::model::OrderOp::Venue },
+                10198, format!("Order binding rejected: {}", parsed.get(&58).map(String::as_str).unwrap_or("")),
+            );
+        } else {
+            let (Some(client), Some(api)) = (
+                parsed.get(&6119).and_then(|s| s.parse::<i64>().ok()),
+                parsed.get(&6121).and_then(|s| s.parse::<i64>().ok()),
+            ) else { return false };
+            self.pending_bindings.remove(identity);
+            if client == 0 {
+                shared.reference.push_order_bound(executions::wire_name(parsed).unwrap_or(wire) as i64, client, api);
+            }
+        }
+        true
+    }
+
     fn handle_order_preset_answer(&self, message: &[u8], shared: &SharedState) {
         if let Some(values) = crate::control::order_presets::parse_values(message) {
             shared.reference.set_order_preset_values(values);
@@ -824,6 +868,9 @@ pub(crate) fn maturity_tag(maturity: &str) -> Option<u32> {
 const RECOVERY_PUSH_GRACE: Duration = Duration::from_secs(30);
 
 pub(crate) struct CcpState {
+    /// Bindings asked of the venue and not yet answered, by the order's name
+    /// on tag 11: the order and the number it was bound to.
+    pending_bindings: HashMap<String, (u64, i64)>,
     /// Every execution this session has booked, kept for the session. Every
     /// logon states the day's executions again, and a gateway sets no bound on
     /// what it recognises: an execution let go would be booked again there.
@@ -1205,6 +1252,7 @@ pub(crate) struct PendingFanout {
 impl CcpState {
     pub(crate) fn new() -> Self {
         Self {
+            pending_bindings: HashMap::new(),
             seen_exec_ids: HashSet::with_capacity(256),
             charges_told: HashMap::new(),
             disconnected: false,
@@ -1369,7 +1417,11 @@ impl CcpState {
         }
         match msg_type {
             fix::MSG_EXEC_REPORT => self.handle_exec_report(&parsed, msg, context, shared, event_tx, account_id),
-            fix::MSG_CANCEL_REJECT => self.handle_cancel_reject(&parsed, context, event_tx),
+            fix::MSG_CANCEL_REJECT => {
+                if !self.answer_order_binding(&parsed, shared, true) {
+                    self.handle_cancel_reject(&parsed, context, event_tx);
+                }
+            }
             fix::MSG_NEWS => self.handle_news_bulletin(&parsed, shared),
             fix::MSG_HEARTBEAT => {}
             fix::MSG_TEST_REQUEST => {
@@ -1496,6 +1548,9 @@ impl CcpState {
             "U" => {
                 if let Some(comm) = parsed.get(&6040) {
                     match comm.as_str() {
+                        "200" if parsed.get(&8192).map(String::as_str) == Some("5") => {
+                            self.answer_order_binding(&parsed, shared, false);
+                        }
                         "7" | "36" | "154" => self.handle_attached_combo_answer(msg, shared),
                         "75" => {
                             // Position + market price feed (init burst + after each

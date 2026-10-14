@@ -3419,19 +3419,11 @@ fn an_unknown_time_in_force_falls_back_to_the_one_that_was_submitted() {
     assert_eq!(tracked(&mut ccp, &mut context, &shared, Some("7")), "???");
 }
 
-/// An order the venue replayed is paired with the number it is reachable under
-/// here, and the caller is told.
-///
-/// The venue replays what the account is working when a session opens, and this
-/// client gives each of those a number of its own. It worked that pairing out
-/// and never said it: a caller holding the permanent id the venue keeps had no
-/// way to reach the order here, and the callback that carries the pairing was
-/// one nothing fired.
-///
-/// Said once. The same orders come back on every reconnect, and a caller
-/// counting them would be counting reconnects.
+/// An order the venue replays at connection is not said to be bound: a
+/// gateway says `orderBound` when the venue accepts a binding it asked for,
+/// and naming an order is not one.
 #[test]
-fn a_replayed_order_is_paired_with_the_number_it_is_reachable_under() {
+fn a_replayed_order_is_not_said_to_be_bound() {
     let mut ccp = CcpState::new();
     let mut context = Context::new();
     let shared = SharedState::new();
@@ -3445,42 +3437,8 @@ fn a_replayed_order_is_paired_with_the_number_it_is_reachable_under() {
         frame.insert(tag, val.to_string());
     }
     ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
-
-    let bound = shared.reference.drain_orders_bound();
-    assert_eq!(bound.len(), 1, "the pairing is stated: {bound:?}");
-    let (perm_id, client_id, order_id) = bound[0];
-    assert_eq!(order_id, 91, "the number this client reaches it under");
-    assert_ne!(perm_id, 0, "and the permanent id the venue keeps");
-    assert_eq!(client_id, 0, "claimed for no client in particular, as it is owned by none");
-
-    // And the connection goes. Every working order is marked uncertain by
-    // that, and an uncertain order is recovered again when the venue replays
-    // it — which is the path that states the pairing a second time, and the
-    // one a check against the queue alone cannot see, because the queue was
-    // just emptied by the drain above.
-    ccp.handle_disconnect(&mut None, &mut context, &shared, &None);
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
-    assert!(
-        shared.reference.drain_orders_bound().is_empty(),
-        "one pairing, however many times the venue states it and however many \
-         times the connection goes",
-    );
-
-    // An order this session placed is not paired at all when the venue names
-    // it again after a drop: it is reachable under the number it was placed
-    // under, and a gateway binds nothing on a reconnect.
-    let instrument = context.register_instrument(756733);
-    context.insert_order(crate::types::Order::new(
-        92, instrument, Side::Buy, 100 * QTY_SCALE, 100 * PRICE_SCALE, b'2', b'0', 0,
-    ));
-    ccp.handle_disconnect(&mut None, &mut context, &shared, &None);
-    frame.insert(11, "92".to_string());
-    frame.insert(37, "1234567891".to_string());
-    ccp.handle_exec_report(&frame, b"", &mut context, &shared, &None, "");
-    assert!(
-        shared.reference.drain_orders_bound().is_empty(),
-        "its own order is not bound to client 0",
-    );
+    assert!(shared.orders.get_order_info(91).is_some(), "the order is named");
+    assert!(shared.reference.drain_orders_bound().is_empty(), "and not said to be bound");
 }
 
 /// The case the test above cannot reach: an order this session never
@@ -5306,21 +5264,23 @@ fn recovered_attachment_metadata_retains_unstated_fields_and_explicit_zeroes() {
     let first = exec_report_frame(&[
         (11, "42.0"), (39, "0"), (150, "0"), (6121, "0"), (6119, "7"),
         (6008, "756733"), (38, "1"), (54, "1"), (40, "2"), (44, "100"),
-        (6531, "group.2"), (6107, "10.7"), (6704, "1"), (6446, "2.5"),
+        (6406, "1"), (6407, "41.0"), (6531, "group.2"), (6107, "10.7"), (6704, "1"), (6446, "2.5"),
     ]);
     ccp.handle_exec_report(&first, b"", &mut context, &shared, &None, "");
     assert!(!context.submitted.contains_key(&42));
     assert_eq!(shared.orders.attached_order_metadata(42), Some(crate::bridge::AttachedOrderMetadata {
+        fix_order_id: Some("42.0".into()), oms_container: Some(true), oms_child: Some(true),
         family_key: Some("group.2".into()), parent: Some("10.7".into()),
         use_parent_price: Some(true), profit_offset: Some(2.5),
         api_order_id: Some(0), api_client_id: Some(7),
         ..Default::default()
     }));
     let update = exec_report_frame(&[
-        (11, "42.1"), (39, "0"), (150, "5"), (6704, "0"), (6446, "0"),
+        (11, "42.1"), (39, "0"), (150, "5"), (6407, "0.0"), (6704, "0"), (6446, "0"),
     ]);
     ccp.handle_exec_report(&update, b"", &mut context, &shared, &None, "");
     let expected = crate::bridge::AttachedOrderMetadata {
+        fix_order_id: Some("42.1".into()), oms_container: Some(true), oms_child: Some(false),
         family_key: Some("group.2".into()), parent: Some("10.7".into()),
         use_parent_price: Some(false), profit_offset: Some(0.0),
         api_order_id: Some(0), api_client_id: Some(7),

@@ -977,7 +977,7 @@ factor included. Offering the saved session (`EClientConfig::resume`, or
 ## Configuration
 
 The gateway's configuration file is replaced by settings on the client:
-announced build, time zone, execution-report scope, and others — 22 in total,
+announced build, time zone, execution-report scope, and others — 23 in total,
 readable at runtime. Fourteen gateway settings are not settings here, and each says
 why or names what stands in for it (no window geometry, no local listening socket,
 no JVM heap, and no message pacing: a gateway paces requests at the rate its logon
@@ -1007,6 +1007,21 @@ retain their existing callback behavior. This setting does not add automatic
 binding or change order IDs. Whatever it is set to, an order this session is
 told of but did not place is stated with `openOrder` beside its status, under
 its API number and with its parent under the parent's.
+
+Client 0 binds an order placed elsewhere, one with no API number of its own,
+as a gateway does. `reqOpenOrders` binds each such order working when it is
+asked; after `reqAutoOpenOrders(True)` each new one is bound as the venue first
+reports it, once the venue has named what was already working, and
+`reqAutoOpenOrders(False)` stops that and keeps the numbers already given.
+`reqAllOpenOrders` binds nothing. `use_negative_auto_range` is on by default: a
+bound order takes the next number from -2 down, counted apart from the order IDs
+and kept beside them in the order-ID file. Turned off, it takes the next order
+ID. The order's callbacks carry that number, and a cancel reaches the order
+under it. The venue is then asked to bind it: `orderBound` follows the venue's
+acceptance, and a refusal is error 10198. Naming an order at connection is not
+a binding and says no `orderBound`. An OMS container or a child of one is bound
+here without the venue being asked. The setting is also read from
+`IB_DX_USE_NEGATIVE_AUTO_RANGE`.
 
 `include_fx_positions` is on by default. Turn it off to omit CASH rows from
 `position`, `positionMulti`, and `updatePortfolio`.
@@ -1212,7 +1227,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,333 | No |
+| Rust, unit and integration | 3,337 | No |
 | Python | 1,481 | No |
 | Rust, live | 10 | Yes |
 | Python, live | 122 | Yes |

@@ -46,7 +46,8 @@ precautions, its smart-routing defaults and its warning messages. This client
 offers some of them: a read-only session (`readonly`), the older Nasdaq
 spelling (`island_for_nasdaq`), the time zone and date format, the logging
 level, the master API client id (`master_client_id`), the initial open-order
-download (`download_open_orders_on_connection`), and the position filters
+download (`download_open_orders_on_connection`), the numbers bound orders take
+(`use_negative_auto_range`), and the position filters
 (`include_fx_positions` and `send_zero_positions_for_todays_opening_only`). The others, among
 them the order-precaution bypasses and the smart-routing defaults, are not configurable here yet, and
 `req_config` and `update_config` are refused with 10357. The full list is in
@@ -381,11 +382,17 @@ the permission does not allow — nothing stated, no top of book, or not
 available through the API — and gives up on the data after seven seconds. This
 client asks the venue whatever the permission, and waits up to eleven seconds.
 
-## Arguments a gateway acts on and this client does not need
+## Binding a new order placed elsewhere
 
-| Call | Argument | On a gateway | Here |
-| --- | --- | --- | --- |
-| `req_auto_open_orders` | `b_auto_bind` | Turns binding on or off for client 0 | Order callbacks follow the gateway's routing whatever the flag says: a session is told about the orders its own client placed, and client 0 about the orders placed away from the API as well, so the flag changes nothing here. A client other than 0 is refused, as a gateway refuses one: with 321 asked to bind, as a request that fails validation, and with 327 asked not to |
+`req_auto_open_orders(true)` turns binding on for client 0, as on a gateway,
+and a client other than 0 is refused as a gateway refuses one: with 321 asked
+to bind, as a request that fails validation, and with 327 asked not to. A
+gateway numbers a new order placed elsewhere as the order is created. This
+client learns of the order from the venue's first report of it, binds it then,
+and asks the venue to bind it with the request a gateway sends for an order
+`req_open_orders` binds. That request and the handling of the venue's answer
+are checked on a local socket; the venue's acceptance has not yet been read
+from a session.
 
 ## Configuration requests
 

@@ -1792,27 +1792,6 @@ impl CcpState {
                 stop_price: stop_price_i64,
             });
             shared.orders.note_naming_began();
-            // And said to the caller, which is the half that was missing. This
-            // order was not placed here: the venue replayed it when the
-            // session opened, and this client gave it a number of its own. A
-            // caller cannot pair that number with the permanent id the venue
-            // keeps unless it is told, and being told is what `order_bound`
-            // is. Nought for the client that placed it — no session here owns
-            // an order to the exclusion of another, so the one it is claimed
-            // for is the one the reference claims unowned orders for.
-            //
-            // Only for an order this session did not already hold. One it
-            // placed, or held in doubt across a drop, is not bound anew by the
-            // venue naming it again, and a gateway binds no order on a
-            // reconnect: told so, the caller read its own order as bound to
-            // client 0.
-            if prior.is_none() {
-                shared.reference.push_order_bound(
-                    wire_name(parsed).map_or(0, |id| id as i64),
-                    0,
-                    clord_id as i64,
-                );
-            }
             log::info!("CCP recovery: inserted orderId={} sym={:?} side={:?} qty={} px={}",
                 clord_id, parsed.get(&55), side, qty,
                 limit_price_i64 as f64 / PRICE_SCALE as f64);
@@ -2064,6 +2043,9 @@ impl CcpState {
         // for an order nothing has named yet. The record kept under the number
         // is read for the order held under it alone: it can be an earlier
         // order's, and it states that order's.
+        // An order nothing here has held before, which client 0 may have
+        // asked to bind.
+        let new_order = context.order(clord_id).is_none() && shared.orders.get_order_info(clord_id).is_none();
         let perm_id = (context.order(clord_id).is_some() && recovery_origin_order_id.is_none())
             .then(|| shared.orders.perm_id(clord_id))
             .flatten()
@@ -2120,6 +2102,11 @@ impl CcpState {
         }
         if !another_order {
             shared.orders.note_attached_order_metadata(clord_id, crate::bridge::AttachedOrderMetadata {
+                fix_order_id: parsed.get(&11).map(|id| id.trim_start_matches(['C', 'L']).to_string()),
+                oms_container: parsed.get(&6406).map(|v| flag(v)),
+                oms_child: parsed.get(&6407).map(|id| id.trim_start_matches(['C', 'L'])
+                    .split('.').next().and_then(|id| id.parse::<i64>().ok())
+                    .is_some_and(|id| id > 0 && id != i64::MAX)),
                 family_key: parsed.get(&6531).cloned(),
                 parent: parsed.get(&6107).cloned(),
                 use_parent_price: parsed.get(&6704).map(|value| value == "1"),
@@ -3356,6 +3343,14 @@ impl CcpState {
         // states go out together, each with what the report stated, so they
         // reach a caller in the venue's order and are never paired up again
         // by their quantities.
+        //
+        // Bound first where client 0 asked for new orders placed elsewhere to
+        // be, once the venue has named what was already working: a gateway
+        // binds an order as it learns of it, so its first callbacks carry the
+        // number it is bound to.
+        if new_order && shared.orders.replay_done() && shared.orders.auto_bind_orders.load(std::sync::atomic::Ordering::Acquire) {
+            shared.orders.bind_order_id(clord_id, shared.settings().use_negative_auto_range);
+        }
         shared.orders.push_report(filled, booked_off, announce, shared.settings().download_open_orders_on_connection);
         match (filled, announce) {
             (Some(fill), Some(update)) => {

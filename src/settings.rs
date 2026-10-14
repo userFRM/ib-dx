@@ -100,6 +100,9 @@ pub struct GatewaySettings {
     /// Send existing API open orders when connecting. On by default;
     /// also read from `IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION`.
     pub download_open_orders_on_connection: Option<bool>,
+    /// Give automatically bound non-API orders negative IDs. On by default;
+    /// also read from `IB_DX_USE_NEGATIVE_AUTO_RANGE`.
+    pub use_negative_auto_range: Option<bool>,
     /// Whether a session recovers on its own when a connection goes away.
     ///
     /// On by default, which is what a process that must keep running wants.
@@ -202,6 +205,8 @@ pub struct SessionSettings {
     pub send_zero_positions_for_todays_opening_only: bool,
     /// Whether connecting downloads existing API open orders.
     pub download_open_orders_on_connection: bool,
+    /// Whether bound non-API orders receive negative IDs.
+    pub use_negative_auto_range: bool,
     /// Whether this session recovers on its own when a connection goes away.
     pub reconnect_on_socket_err: bool,
     /// The API client told of every client's orders, if one is set.
@@ -375,6 +380,11 @@ impl GatewaySettings {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
                 })
             }),
+            use_negative_auto_range: self.use_negative_auto_range.unwrap_or_else(|| {
+                !std::env::var("IB_DX_USE_NEGATIVE_AUTO_RANGE").is_ok_and(|stated| {
+                    ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
+                })
+            }),
             reconnect_on_socket_err: self.reconnect_on_socket_err.unwrap_or_else(|| {
                 !std::env::var("IB_DX_RECONNECT_ON_SOCKET_ERR").is_ok_and(|stated| {
                     ["0", "false", "no"].iter().any(|off| stated.eq_ignore_ascii_case(off))
@@ -492,29 +502,35 @@ mod tests {
         assert!(neither.island_for_nasdaq, "the documented default");
         assert!(neither.include_fx_positions);
         assert!(neither.download_open_orders_on_connection);
+        assert!(neither.use_negative_auto_range);
         assert!(!neither.send_zero_positions_for_todays_opening_only);
         for (spelling, on) in [("TRUE", true), ("yes", true), ("1", true), ("False", false), ("NO", false), ("0", false)] {
             unsafe {
                 std::env::set_var("IB_DX_INCLUDE_FX_POSITIONS", spelling);
                 std::env::set_var("IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION", spelling);
+                std::env::set_var("IB_DX_USE_NEGATIVE_AUTO_RANGE", if on { "false" } else { "true" });
                 std::env::set_var("IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY", spelling);
             }
             let settings = GatewaySettings::default().resolve();
             assert_eq!(settings.include_fx_positions, on);
             assert_eq!(settings.download_open_orders_on_connection, on);
+            assert_eq!(settings.use_negative_auto_range, !on);
             assert_eq!(settings.send_zero_positions_for_todays_opening_only, on);
             let stated = GatewaySettings {
                 include_fx_positions: Some(!on),
                 download_open_orders_on_connection: Some(!on),
+                use_negative_auto_range: Some(!on),
                 send_zero_positions_for_todays_opening_only: Some(!on), ..Default::default()
             }.resolve();
             assert_eq!(stated.include_fx_positions, !on);
             assert_eq!(stated.download_open_orders_on_connection, !on);
+            assert_eq!(stated.use_negative_auto_range, !on);
             assert_eq!(stated.send_zero_positions_for_todays_opening_only, !on);
         }
         unsafe {
             std::env::remove_var("IB_DX_INCLUDE_FX_POSITIONS");
             std::env::remove_var("IB_DX_DOWNLOAD_OPEN_ORDERS_ON_CONNECTION");
+            std::env::remove_var("IB_DX_USE_NEGATIVE_AUTO_RANGE");
             std::env::remove_var("IB_DX_SEND_ZERO_POSITIONS_FOR_TODAYS_OPENING_ONLY");
         }
 
@@ -645,6 +661,7 @@ mod tests {
             reconnect_on_socket_err: Some(false),
             master_client_id: Some(3),
             download_open_orders_on_connection: Some(false),
+            use_negative_auto_range: Some(false),
         };
         let resolved = all.resolve();
         assert_eq!(resolved.order_id_file.as_deref(), Some(std::path::Path::new("state/order-ids.json")));
@@ -666,6 +683,7 @@ mod tests {
         assert!(!resolved.reconnect_on_socket_err);
         assert_eq!(resolved.master_client_id, Some(3));
         assert!(!resolved.download_open_orders_on_connection);
+        assert!(!resolved.use_negative_auto_range);
         // The three log settings are process-scoped by nature — one logger per
         // process — so they are not on the resolved form. They reach the
         // logger instead, and are checked here for the same reason: stated
@@ -687,7 +705,7 @@ mod tests {
             execution_reports: _, datetime_format: _,
             island_for_nasdaq: _, include_fx_positions: _, send_zero_positions_for_todays_opening_only: _,
             reconnect_on_socket_err: _, master_client_id: _,
-            download_open_orders_on_connection: _,
+            download_open_orders_on_connection: _, use_negative_auto_range: _,
         } = all;
     }
 }
