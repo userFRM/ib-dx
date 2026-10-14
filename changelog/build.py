@@ -103,8 +103,8 @@ FEAT={
  "Blocking login, waits and shutdown release the GIL; KeyboardInterrupt and SystemExit raised in a callback reach the caller; clients take part in cyclic garbage collection.",
 ],
 "settings":[
- "Gateway settings on the client: read-only API, timezone and locale, date-time format for timestamps, which execution reports are downloaded, the older Nasdaq spelling, reconnect on socket error, the announced build, the master API client id (<code>master_client_id</code>), and the announced network identity (the connection's own interface, or <code>mac_address</code>/<code>IB_DX_MAC</code> and <code>lan_ip</code>/<code>IB_DX_IP</code>). <code>setServerLogLevel</code> changes this client's logger.",
- "Still to do, tracked in #273 (#275–#294): about 20 further API settings, the order precautions and their bypasses, smart-routing defaults, warning messages, and reqConfig/updateConfig.",
+ "Gateway settings on the client: read-only API, timezone and locale, date-time format for timestamps, which execution reports are downloaded, the older Nasdaq spelling, reconnect on socket error, the announced build, the master API client id (<code>master_client_id</code>), whether FX positions and today's flat opening positions are sent (<code>include_fx_positions</code>, <code>send_zero_positions_for_todays_opening_only</code>), and the announced network identity (the connection's own interface, or <code>mac_address</code>/<code>IB_DX_MAC</code> and <code>lan_ip</code>/<code>IB_DX_IP</code>). <code>setServerLogLevel</code> changes this client's logger.",
+ "Still to do, tracked in #273 (#275, #278–#294): about 18 further API settings, the order precautions and their bypasses, smart-routing defaults, warning messages, and reqConfig/updateConfig.",
 ],
 "removed":[
  "<code>cancelOrderByPermId</code>, present in ibx 0.7.1: a request no gateway or reference client has.",
@@ -115,7 +115,7 @@ FEAT={
 ],
 "quality":[
  "A full gate (<code>scripts/gate.py</code>): clippy on both feature sets, three library test configurations, doc tests, integration suites, rustdoc, the Python build and suite, paper-compat build, count and doc-generator checks.",
- "Tests: 4,796 offline and 182 that run against a paper session; behaviour fixes carry a regression test written to fail without the fix.",
+ "Tests: 4,798 offline and 182 that run against a paper session; behaviour fixes carry a regression test written to fail without the fix.",
  "CI: tests, docs deploy, nightly gateway-build drift check, paper-session workflow (dormant without secrets), release dry run.",
  "Documentation site: reference pages for requests and delivery, venue behaviour, limits, coverage (all 87 calls and 88 of 90 callbacks implemented; 78 request rows covered by the suites that run on a live session), wire coverage, beyond-the-API, recipes in Rust and Python, generated API references.",
  "Conformance and soak scripts, a paper harness, and wire captures used to check behaviour.",
@@ -134,7 +134,7 @@ RULES=[
  ("quality",r"test|[Tt]est |gate|conformance|CI"),
 ]
 groups={k:[] for k,_ in SECTIONS}
-OVR={274: 'settings', 27: 'settings', 30: 'orders', 64: 'orders', 75: 'orders', 83: 'mktdata', 85: 'mktdata', 87: 'mktdata', 95: 'hist', 97: 'hist', 106: 'removed', 114: 'orders', 115: 'removed', 120: 'mktdata', 127: 'python', 132: 'python', 154: 'hist', 161: 'hist', 169: 'python', 188: 'hist', 193: 'python', 209: 'hist', 228: 'hist', 253: 'fills', 271: 'orders', 165: 'orders', 197: 'orders', 242: 'session', 32: 'quality', 1: 'orders', 3: 'orders', 39: 'orders', 72: 'orders', 91: 'orders', 152: 'orders', 179: 'orders', 105: 'python', 155: 'python', 21: 'python', 41: 'python', 128: 'python', 131: 'python', 125: 'hist', 205: 'mktdata', 23: 'mktdata', 68: 'mktdata', 206: 'mktdata', 246: 'mktdata', 235: 'session', 107: 'quality', 110: 'quality', 139: 'quality', 200: 'quality', 236: 'quality', 265: 'quality', 248: 'quality', 269: 'quality', 164: 'quality', 239: 'removed', 244: 'rust', 140: 'quality', 238: 'quality', 255: 'quality', 258: 'quality', 121: 'mktdata', 159: 'mktdata', 203: 'mktdata', 226: 'contracts', 227: 'contracts', 256: 'contracts', 262: 'contracts', 185: 'hist'}
+OVR={274: 'settings', 276: 'settings', 277: 'settings', 27: 'settings', 30: 'orders', 64: 'orders', 75: 'orders', 83: 'mktdata', 85: 'mktdata', 87: 'mktdata', 95: 'hist', 97: 'hist', 106: 'removed', 114: 'orders', 115: 'removed', 120: 'mktdata', 127: 'python', 132: 'python', 154: 'hist', 161: 'hist', 169: 'python', 188: 'hist', 193: 'python', 209: 'hist', 228: 'hist', 253: 'fills', 271: 'orders', 165: 'orders', 197: 'orders', 242: 'session', 32: 'quality', 1: 'orders', 3: 'orders', 39: 'orders', 72: 'orders', 91: 'orders', 152: 'orders', 179: 'orders', 105: 'python', 155: 'python', 21: 'python', 41: 'python', 128: 'python', 131: 'python', 125: 'hist', 205: 'mktdata', 23: 'mktdata', 68: 'mktdata', 206: 'mktdata', 246: 'mktdata', 235: 'session', 107: 'quality', 110: 'quality', 139: 'quality', 200: 'quality', 236: 'quality', 265: 'quality', 248: 'quality', 269: 'quality', 164: 'quality', 239: 'removed', 244: 'rust', 140: 'quality', 238: 'quality', 255: 'quality', 258: 'quality', 121: 'mktdata', 159: 'mktdata', 203: 'mktdata', 226: 'contracts', 227: 'contracts', 256: 'contracts', 262: 'contracts', 185: 'hist'}
 NOTE={89: " (787 now refused; the 258 gate is documented as not reproduced)"}
 for i in sorted(iss,key=lambda x:x['number']):
     t=i['title']; n=i['number']
@@ -169,10 +169,10 @@ def MD(s):
     s = re.sub(r'</?code>', '`', s)
     return _h.unescape(re.sub(r'<[^>]+>', '', s))
 md = ['# ib-dx: everything since ibx 0.7.1', '',
-      "One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1, 25 July 2026) were a single squash merge. Each line states the end result on `main` (0e659eac, 12 October 2026); work that was redone later appears once, in its final form. Fixes are listed by the issue that tracked them.", '',
-      f'- ibx 0.7.1 → ib-dx 0.1.0', f'- 1,970 commits, 557 files changed, 44k → 218k lines of Rust in `src/`',
+      "One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1, 25 July 2026) were a single squash merge. Each line states the end result on `main` (df2060ec, 14 October 2026); work that was redone later appears once, in its final form. Fixes are listed by the issue that tracked them.", '',
+      f'- ibx 0.7.1 → ib-dx 0.1.0', f'- 1,976 commits, 557 files changed, 44k → 218k lines of Rust in `src/`',
       f'- {total_fixed} issues fixed on ib-dx, {len(groups["closed"])} closed without a fix of their own; 146 fork-era issue and PR references',
-      f'- 4,796 offline tests + 182 that run against a paper session', '']
+      f'- 4,798 offline tests + 182 that run against a paper session', '']
 for k, name in SECTIONS:
     md.append(f'## {name}'); md.append('')
     for f in FEAT.get(k, []): md.append(f'- {MD(f)}')
@@ -181,5 +181,5 @@ for k, name in SECTIONS:
         md.append(f"### {'Closed' if k=='closed' else 'Fixed'} ({len(groups[k])})"); md.append('')
         for n, t in groups[k]: md.append(f'- #{n} {t}{NOTE.get(n, "")}')
         md.append('')
-md.append('Also open at the time of writing: #156 (release setup on PyPI and crates.io), #26 (advisor percentage allocation for attached orders, needs an advisor account) and #296 (openOrder for an order the session is told of but did not place); the gateway settings still to do are listed under Gateway settings.')
+md.append('Also open at the time of writing: #156 (release setup on PyPI and crates.io), #26 (advisor percentage allocation for attached orders, needs an advisor account), #296 (openOrder for an order the session is told of but did not place), and #297 and #298 (orders and fills downloaded at connection delivered as live callbacks); the gateway settings still to do are listed under Gateway settings.')
 open(os.path.join(HERE,'..','CHANGELOG.md'),'w').write('\n'.join(md) + '\n')

@@ -1,11 +1,11 @@
 # ib-dx: everything since ibx 0.7.1
 
-One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1, 25 July 2026) were a single squash merge. Each line states the end result on `main` (0e659eac, 12 October 2026); work that was redone later appears once, in its final form. Fixes are listed by the issue that tracked them.
+One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1, 25 July 2026) were a single squash merge. Each line states the end result on `main` (df2060ec, 14 October 2026); work that was redone later appears once, in its final form. Fixes are listed by the issue that tracked them.
 
 - ibx 0.7.1 → ib-dx 0.1.0
-- 1,970 commits, 557 files changed, 44k → 218k lines of Rust in `src/`
-- 256 issues fixed on ib-dx, 8 closed without a fix of their own; 146 fork-era issue and PR references
-- 4,796 offline tests + 182 that run against a paper session
+- 1,976 commits, 557 files changed, 44k → 218k lines of Rust in `src/`
+- 261 issues fixed on ib-dx, 8 closed without a fix of their own; 146 fork-era issue and PR references
+- 4,798 offline tests + 182 that run against a paper session
 
 ## Identity, packaging and release
 
@@ -61,7 +61,7 @@ One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1
 - Exercise and lapse an option position; what-if previews state the commission and the regular margin impact.
 - Contracts named on every order path (index, bond, warrant, CFD, crypto, futures by maturity tag); orders refused for an unknown account, out-of-range or non-finite values, and quantities the wire cannot carry. Prices go out as stated: a price off the contract's tick grid is the venue's to refuse.
 
-### Fixed (53)
+### Fixed (56)
 
 - #1 Bracket placed with parentId and transmit is not linked: a filled child leaves its sibling working
 - #2 A refused order modification reports the order inactive while the venue keeps it working
@@ -116,6 +116,9 @@ One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1
 - #261 The order builder's naming gates read the unset id marker as a stated identifier
 - #266 An order on an option or a future under the unset identifier marker skips the identity check zero gets
 - #271 The two clients disagree on what a combination leg must state as its id
+- #299 Recovered orders can report the wrong Continuous Update value
+- #300 Returned orders can report the wrong Sweep to Fill value
+- #301 Returned orders can report incorrect Hidden, Auto Cancel Parent and Imbalance Only values
 
 ## Executions, commissions, positions and account
 
@@ -366,13 +369,15 @@ One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1
 
 ## Gateway settings
 
-- Gateway settings on the client: read-only API, timezone and locale, date-time format for timestamps, which execution reports are downloaded, the older Nasdaq spelling, reconnect on socket error, the announced build, the master API client id (`master_client_id`), and the announced network identity (the connection's own interface, or `mac_address`/`IB_DX_MAC` and `lan_ip`/`IB_DX_IP`). `setServerLogLevel` changes this client's logger.
-- Still to do, tracked in #273 (#275–#294): about 20 further API settings, the order precautions and their bypasses, smart-routing defaults, warning messages, and reqConfig/updateConfig.
+- Gateway settings on the client: read-only API, timezone and locale, date-time format for timestamps, which execution reports are downloaded, the older Nasdaq spelling, reconnect on socket error, the announced build, the master API client id (`master_client_id`), whether FX positions and today's flat opening positions are sent (`include_fx_positions`, `send_zero_positions_for_todays_opening_only`), and the announced network identity (the connection's own interface, or `mac_address`/`IB_DX_MAC` and `lan_ip`/`IB_DX_IP`). `setServerLogLevel` changes this client's logger.
+- Still to do, tracked in #273 (#275, #278–#294): about 18 further API settings, the order precautions and their bypasses, smart-routing defaults, warning messages, and reqConfig/updateConfig.
 
-### Fixed (2)
+### Fixed (4)
 
 - #27 Answer reqConfig and updateConfig when configuration access is not available (10357)
 - #274 Gateway setting: master API client ID
+- #276 Gateway setting: include FX positions when sending portfolio
+- #277 Gateway setting: send zero positions for today's opening positions only
 
 ## Removed (present in ibx 0.7.1, gone now)
 
@@ -406,7 +411,7 @@ One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1
 ## Tests, CI, docs and tooling
 
 - A full gate (`scripts/gate.py`): clippy on both feature sets, three library test configurations, doc tests, integration suites, rustdoc, the Python build and suite, paper-compat build, count and doc-generator checks.
-- Tests: 4,796 offline and 182 that run against a paper session; behaviour fixes carry a regression test written to fail without the fix.
+- Tests: 4,798 offline and 182 that run against a paper session; behaviour fixes carry a regression test written to fail without the fix.
 - CI: tests, docs deploy, nightly gateway-build drift check, paper-session workflow (dormant without secrets), release dry run.
 - Documentation site: reference pages for requests and delivery, venue behaviour, limits, coverage (all 87 calls and 88 of 90 callbacks implemented; 78 request rows covered by the suites that run on a live session), wire coverage, beyond-the-API, recipes in Rust and Python, generated API references.
 - Conformance and soak scripts, a paper harness, and wire captures used to check behaviour.
@@ -430,4 +435,4 @@ One netted changelog, as if the work since DeepEntropy's last release (ibx 0.7.1
 - #265 No test pins the upper bound of the characters a connect host may carry
 - #269 The scanner's refusal tests pin the refusal but not that nothing was sent, so a guard that reports and sends anyway survives
 
-Also open at the time of writing: #156 (release setup on PyPI and crates.io), #26 (advisor percentage allocation for attached orders, needs an advisor account) and #296 (openOrder for an order the session is told of but did not place); the gateway settings still to do are listed under Gateway settings.
+Also open at the time of writing: #156 (release setup on PyPI and crates.io), #26 (advisor percentage allocation for attached orders, needs an advisor account), #296 (openOrder for an order the session is told of but did not place), and #297 and #298 (orders and fills downloaded at connection delivered as live callbacks); the gateway settings still to do are listed under Gateway settings.
