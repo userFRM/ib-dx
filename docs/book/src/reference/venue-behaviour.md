@@ -719,13 +719,16 @@ working again.
 
 Returned orders read Sweep to Fill (`sweep_to_fill` in Rust and Python, also
 `sweepToFill` in Python) from tag 6102, and Continuous Update (`continuous_update`,
-also `continuousUpdate` in Python) from tag 6275. Sweep to Fill is enabled only
-when the stated value starts with ASCII `1`; Continuous Update accepts ASCII
-`1` or `2`. Suffixes are allowed. Other stated values, including empty, `Y`,
-`y`, `true`, leading whitespace and non-ASCII digits, disable the respective
-field. In the report reader, an omitted field leaves the supplied order alone:
-ordinary snapshots start with false, while completed orders can keep earlier
-terms.
+also `continuousUpdate` in Python) from tag 6275. Hidden (`hidden`) uses tag
+6135, Auto Cancel Parent (`auto_cancel_parent`, also `autoCancelParent` in
+Python) tag 6965, and Imbalance Only (`imbalance_only`, also `imbalanceOnly`
+in Python) tag 6737. Sweep to Fill, Hidden, Auto Cancel Parent and Imbalance
+Only are enabled only when their stated value starts with ASCII `1` on ordinary
+and completed reports; Continuous Update accepts ASCII `1` or `2`. Suffixes
+are allowed. Other stated values, including empty, `Y`, `y`, `true`, leading
+whitespace and non-ASCII digits, disable the respective field. In this client’s
+report reader, an omitted field leaves the supplied order alone: ordinary
+snapshots start with false, while completed orders can keep earlier terms.
 
 ## Orders across a lost connection
 

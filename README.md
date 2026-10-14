@@ -1178,10 +1178,11 @@ cancel-reject message reaches no callback, and neither does a report's reason
 for restating an order. `open_order` states an order's total as a gateway
 does: what has filled, and what is left of the order's own size, which only
 the reports a gateway takes a size from restate. Hedge pricing instructions are
-retained on replacement. Returned orders enable Sweep to Fill when its reported
-value starts with ASCII `1`, and Continuous Update when its value starts with
-ASCII `1` or `2`. Other stated values, including empty, `true` and `y`, disable
-the respective field.
+retained on replacement. Returned orders enable Sweep to Fill, Hidden, Auto
+Cancel Parent and Imbalance Only when the respective reported value starts with
+ASCII `1`, and Continuous Update when its value starts with ASCII `1` or `2`.
+Other stated values, including empty, `true` and `y`, disable the respective
+field.
 See [order behaviour](https://userfrm.github.io/ib-dx/reference/venue-behaviour.html#orders).
 
 ## Testing

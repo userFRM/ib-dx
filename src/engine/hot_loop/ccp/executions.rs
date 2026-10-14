@@ -100,7 +100,7 @@ pub(crate) fn read_stated_attributes(
     }
     if let Some(v) = parsed.get(&6102) { order.sweep_to_fill = v.starts_with('1'); }
     if let Some(v) = parsed.get(&6115).and_then(|v| v.parse::<i32>().ok()) { order.trigger_method = v; }
-    if let Some(v) = parsed.get(&6135) { order.hidden = flag(v); }
+    if let Some(v) = parsed.get(&6135) { order.hidden = v.starts_with('1'); }
     if let Some(v) = parsed.get(&6152).and_then(|v| v.parse::<f64>().ok()) { order.stock_range_lower = v; }
     if let Some(v) = parsed.get(&6153).and_then(|v| v.parse::<f64>().ok()) { order.stock_range_upper = v; }
     if let Some(v) = parsed.get(&6154).and_then(|v| v.parse::<f64>().ok()) { order.delta = v; }
@@ -147,8 +147,8 @@ pub(crate) fn read_stated_attributes(
         order.conditions_include_overnight = on(8612);
         order.conditions_cancel_order = on(6151);
     }
-    if let Some(v) = parsed.get(&6737) { order.imbalance_only = flag(v); }
-    if let Some(v) = parsed.get(&6965) { order.auto_cancel_parent = flag(v); }
+    if let Some(v) = parsed.get(&6737) { order.imbalance_only = v.starts_with('1'); }
+    if let Some(v) = parsed.get(&6965) { order.auto_cancel_parent = v.starts_with('1'); }
     if let Some(v) = parsed.get(&8089) { order.ext_operator = v.clone(); }
     if let Some(v) = parsed.get(&8229) { order.advanced_error_override = v.clone(); }
     // Written `1`, which Rust's own boolean parser refuses, so an order that

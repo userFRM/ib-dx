@@ -1689,72 +1689,116 @@ fn the_whole_order_the_venue_states_comes_back() {
     assert_eq!(held.display_size, 0, "unstated stays unstated");
     assert!(!held.hidden);
 
-    // Sweep to Fill and Continuous Update read the first character.
-    // Hidden keeps its own spellings.
-    let raw_report = |frame: &std::collections::HashMap<u32, String>| {
-        let mut fields = vec![(35, "8")];
-        fields.extend(frame.iter().map(|(tag, value)| (*tag, value.as_str())));
-        fields.iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect::<String>().into_bytes()
+    // Each field reads its own tag; Continuous Update also accepts a leading 2.
+    let tags = [6102, 6275, 6135, 6965, 6737];
+    let values = |order: &crate::types::model::Order| {
+        [order.sweep_to_fill, order.continuous_update, order.hidden,
+            order.auto_cancel_parent, order.imbalance_only]
     };
-    for (stated, sweep, continuous, hidden) in [
-        (Some("2"), false, true, false), (Some("1"), true, true, true),
-        (Some("3"), false, false, false), (Some("0"), false, false, false),
-        (Some(""), false, false, false), (None, false, false, false),
-        (Some("1suffix"), true, true, false), (Some("2suffix"), false, true, false),
-        (Some("3suffix"), false, false, false), (Some("01"), false, false, false),
-        (Some(" 2"), false, false, false), (Some("true"), false, false, true),
-        (Some("TrUe"), false, false, true), (Some("y"), false, false, true),
-        (Some("Y"), false, false, true), (Some("false"), false, false, false),
-        (Some(" "), false, false, false), (Some(" 1"), false, false, false),
-        (Some("\t1"), false, false, false), (Some("1 "), true, true, false),
-        (Some("1\t"), true, true, false), (Some("１"), false, false, false),
-        (Some("١"), false, false, false), (Some("𝟙"), false, false, false),
-        (Some("é1"), false, false, false), (Some("\u{feff}1"), false, false, false),
-        (Some("\u{a0}1"), false, false, false), (Some("1é"), true, true, false),
-        (Some("1𝟙"), true, true, false),
+    let raw_report = |frame: &std::collections::HashMap<u32, String>, extra: &[(u32, &str)]| {
+        let mut raw = String::from("35=8\x01");
+        for (tag, value) in frame { raw.push_str(&format!("{tag}={value}\x01")); }
+        for (tag, value) in extra { raw.push_str(&format!("{tag}={value}\x01")); }
+        let mut expected = frame.clone();
+        expected.insert(35, "8".to_string());
+        for (tag, value) in extra { expected.insert(*tag, value.to_string()); }
+        assert_eq!(crate::protocol::fix::fix_parse(raw.as_bytes()), expected,
+            "literal empty, Unicode and last duplicate values survive parsing");
+        raw.into_bytes()
+    };
+    let mut rows = Vec::new();
+    for (stated, first_one, continuous) in [
+        (Some("2"), false, true), (Some("1"), true, true),
+        (Some("3"), false, false), (Some("0"), false, false),
+        (Some(""), false, false), (None, false, false),
+        (Some("1suffix"), true, true), (Some("2suffix"), false, true),
+        (Some("3suffix"), false, false), (Some("01"), false, false),
+        (Some(" 2"), false, false), (Some("true"), false, false),
+        (Some("TrUe"), false, false), (Some("y"), false, false),
+        (Some("Y"), false, false), (Some("false"), false, false),
+        (Some(" "), false, false), (Some(" 1"), false, false),
+        (Some("\t1"), false, false), (Some("1 "), true, true),
+        (Some("1\t"), true, true), (Some("１"), false, false),
+        (Some("١"), false, false), (Some("𝟙"), false, false),
+        (Some("é1"), false, false), (Some("\u{feff}1"), false, false),
+        (Some("\u{a0}1"), false, false), (Some("1é"), true, true),
+        (Some("1𝟙"), true, true),
     ] {
-        let (mut ccp, mut context, shared) = tracked_order_state();
-        let first = fill_frame(&[(6102, "1"), (6275, "1"), (6135, "1")]);
-        ccp.process_ccp_message(&raw_report(&first), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
-        let order = shared.orders.get_order_info(42).expect("the earlier order").order;
-        assert!(order.sweep_to_fill && order.continuous_update && order.hidden);
-        let mut frame = fill_frame(&[]);
-        if let Some(value) = stated {
-            for tag in [6102, 6275, 6135] { frame.insert(tag, value.to_string()); }
+        rows.push((format!("all/{stated:?}"),
+            stated.map(|v| tags.map(|t| (t, v)).to_vec()).unwrap_or_default(),
+            [first_one, continuous, first_one, first_one, first_one].map(|v| stated.map(|_| v))));
+        for (index, tag) in [(2, 6135), (3, 6965), (4, 6737)] {
+            let mut expected = [None; 5];
+            expected[index] = stated.map(|_| first_one);
+            rows.push((format!("{tag}/{stated:?}"),
+                stated.map(|v| vec![(tag, v)]).unwrap_or_default(), expected));
         }
-        ccp.process_ccp_message(&raw_report(&frame), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+    }
+    rows.extend([
+        ("mixed".into(), vec![(6102, "0"), (6275, "2"), (6135, "1suffix"), (6965, "Y"), (6737, "0")],
+            [Some(false), Some(true), Some(true), Some(false), Some(false)]),
+        ("duplicate-clear".into(), vec![(6135, "1"), (6135, ""), (6965, "0"), (6737, "1")],
+            [None, None, Some(false), Some(false), Some(true)]),
+        ("duplicate-set".into(), vec![(6135, "Y"), (6135, "1é"), (6965, "1"), (6737, "0")],
+            [None, None, Some(true), Some(true), Some(false)]),
+        ("other-duplicates".into(), vec![(6135, "0"), (6965, "1"), (6965, "true"), (6737, "Y"), (6737, "1suffix")],
+            [None, None, Some(false), Some(false), Some(true)]),
+        ("partial-absence".into(), vec![(6965, "1suffix")],
+            [None, None, None, Some(true), None]),
+        ("unicode-isolation".into(), vec![(6135, "１"), (6965, "1𝟙"), (6737, "١")],
+            [None, None, Some(false), Some(true), Some(false)]),
+    ]);
+    #[cfg(feature = "python")]
+    pyo3::Python::initialize();
+    let observe = |order: &crate::types::model::Order, expected, name: &str| {
+        assert_eq!(values(order), expected, "{name}");
+        #[cfg(feature = "python")]
+        pyo3::Python::attach(|py| {
+            let converted = crate::python::compat::class_orders::Order::from_api(py, order).unwrap();
+            assert_eq!([converted.sweep_to_fill, converted.continuous_update, converted.hidden,
+                converted.auto_cancel_parent, converted.imbalance_only], expected, "Python {name}");
+        });
+    };
+    for (name, extra, expected) in rows {
+        let (mut ccp, mut context, shared) = tracked_order_state();
+        let first = fill_frame(&tags.map(|t| (t, "1")));
+        ccp.process_ccp_message(&raw_report(&first, &[]), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+        assert_eq!(values(&shared.orders.get_order_info(42).unwrap().order), [true; 5]);
+        ccp.process_ccp_message(&raw_report(&fill_frame(&[]), &extra), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
         let order = shared.orders.get_order_info(42).expect("the reported order").order;
-        assert_eq!((order.sweep_to_fill, order.continuous_update, order.hidden),
-            (sweep, continuous, hidden), "ordinary flags {stated:?}");
+        // Compatibility control: ordinary snapshots still default absent fields to false.
+        observe(&order, expected.map(|v| v.unwrap_or(false)), &format!("ordinary {name}"));
 
         for prior in [None, Some("0"), Some("1")] {
             let (mut ccp, mut context, shared) = ord_status_test_state();
+            assert!(context.order(9000).is_none());
             ccp.completed_orders_open = true;
             if let Some(value) = prior {
                 let first = exec_report_frame(&[
                     (11, "9000"), (39, "0"), (150, "0"), (14, "0"), (151, "0"),
-                    (6102, value), (6275, value), (6135, value),
                 ]);
-                ccp.process_ccp_message(&raw_report(&first), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+                ccp.process_ccp_message(&raw_report(&first, &tags.map(|t| (t, value))), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+                assert_eq!(ccp.finished_orders.len(), 1);
+                assert_eq!(values(&ccp.finished_orders[0].order), [value == "1"; 5]);
+                assert!(!ccp.finished_orders[0].status.is_terminal());
             }
-            let mut last = exec_report_frame(&[
+            let last = exec_report_frame(&[
                 (11, "9000"), (39, "2"), (150, "0"), (14, "100"), (151, "0"),
             ]);
-            if let Some(value) = stated {
-                for tag in [6102, 6275, 6135] { last.insert(tag, value.to_string()); }
-            }
-            ccp.process_ccp_message(&raw_report(&last), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+            ccp.process_ccp_message(&raw_report(&last, &extra), &mut None, &mut context, &shared, &None, &mut HeartbeatState::new(), "DU1");
+            assert!(context.order(9000).is_none());
+            assert!(shared.orders.drain_fills().is_empty());
+            assert_eq!(ccp.finished_orders.len(), 1);
+            assert!(ccp.finished_orders[0].status.is_terminal());
             ccp.deliver_finished_orders(&shared);
+            assert!(ccp.finished_orders.is_empty());
             let finished = shared.orders.drain_completed_orders();
-            assert_eq!(finished.len(), 1, "one finished order for {prior:?}/{stated:?}");
+            assert_eq!(finished.len(), 1, "one finished order for {prior:?}/{name}");
             let (_, order, state) = finished[0].stated.as_deref().expect("the finished order's terms");
             assert_eq!(state.status, "Filled");
-            // An absent field keeps the completed order's earlier terms.
-            let previous = prior == Some("1");
-            let expected = if stated.is_none() { (previous, previous, previous) }
-                else { (sweep, continuous, hidden) };
-            assert_eq!((order.sweep_to_fill, order.continuous_update, order.hidden),
-                expected, "finished flags {prior:?}/{stated:?}");
+            // Compatibility control: absent fields still keep the completed order's earlier terms.
+            observe(order, expected.map(|v| v.unwrap_or(prior == Some("1"))),
+                &format!("finished {prior:?}/{name}"));
         }
     }
 }
