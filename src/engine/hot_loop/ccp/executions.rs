@@ -1971,9 +1971,11 @@ impl CcpState {
     ) {
         let mut messages = messages.into_iter();
         while let Some(msg) = messages.next() {
-            let named = shared.orders.open_orders_named();
+            // The naming ends where the venue says so, whether or not a
+            // recovery still holds the answers behind it.
+            let (done, named) = (shared.orders.replay_done(), shared.orders.open_orders_named());
             self.process_ccp_message(&msg, ccp_conn, context, shared, event_tx, hb, account_id);
-            if !named && shared.orders.open_orders_named() {
+            if (!done && shared.orders.replay_done()) || (!named && shared.orders.open_orders_named()) {
                 self.after_the_naming = messages.collect();
                 return;
             }
@@ -3353,7 +3355,7 @@ impl CcpState {
         // states go out together, each with what the report stated, so they
         // reach a caller in the venue's order and are never paired up again
         // by their quantities.
-        shared.orders.push_report(filled, booked_off, announce);
+        shared.orders.push_report(filled, booked_off, announce, shared.settings().download_open_orders_on_connection);
         match (filled, announce) {
             (Some(fill), Some(update)) => {
                 emit(event_tx, Event::Fill(fill));

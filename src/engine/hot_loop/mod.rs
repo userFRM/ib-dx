@@ -1338,12 +1338,11 @@ impl HotLoop {
         );
     }
 
-    /// Read the order connection's reports. Reports held after the naming
-    /// wait while the connection's own answers are ready and only queued
-    /// behind a busy lap: those answers come first, as a gateway states them
-    /// at connection.
+    /// Read the order connection's reports. Nothing is read while the
+    /// connection's own answers are ready and only queued behind a busy lap:
+    /// those answers come first, as a gateway states them at connection.
     pub(crate) fn read_reports(&mut self) {
-        if !self.ccp.after_the_naming.is_empty() && self.asks.a_connection_answer_is_ready(&self.shared) {
+        if self.asks.a_connection_answer_is_ready(&self.shared) {
             return;
         }
         self.ccp.poll_executions(

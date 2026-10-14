@@ -794,16 +794,18 @@ impl OrderState {
     /// A report on an order this session sent is never the download's: a
     /// gateway downloads what was working when the program connected, and
     /// tells the program's own orders as they happen.
-    pub(crate) fn push_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>) {
+    pub(crate) fn push_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>, downloads: bool) {
         let order_id = fill.as_ref().map(|fill| fill.order_id).or(update.as_ref().map(|update| update.order_id));
         // Once the venue has named what is working, a recovery still holding
         // the download holds only what it restates: a fill or a finish said
-        // then is news, told as it happens.
+        // then is news, told as it happens, and with no download asked for,
+        // so is the rest.
         let naming = {
             let replay = self.replay.lock().unwrap();
             !replay.initial_done
                 && !(replay.done
-                    && (fill.is_some() || update.as_ref().is_some_and(|update| update.status.is_terminal())))
+                    && (!downloads || fill.is_some()
+                        || update.as_ref().is_some_and(|update| update.status.is_terminal())))
         };
         let startup = naming && !order_id.is_some_and(|id| self.the_order_went_out(id));
         self.record_report(fill, report, update, startup);

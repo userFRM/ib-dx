@@ -15088,40 +15088,56 @@ fn a_report_read_with_the_end_of_the_naming_follows_the_download() {
 /// read after the end of the naming.
 #[test]
 fn the_connections_answers_are_not_held_behind_a_busy_lap() {
-    let (client, rx, shared) = test_client();
-    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
-        download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
-    }.resolve()));
-    let (start, _) = std::sync::mpsc::channel();
-    let client = client.finish_connect(start).unwrap();
-    for command in rx.try_iter() { let _ = rx.into.send(command); }
-    startup_report(&rx, &shared, "");
-    // A socket set up as the engine's own are, so a read with nothing on it
-    // returns rather than waits.
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    let _peer = listener.accept().unwrap();
-    let conn = crate::protocol::connection::Connection::new_raw(stream).unwrap();
-    {
-        let mut held = rx.engine();
-        let e = &mut *held;
-        e.ccp_conn = Some(conn);
-        e.poll_once();
-        // Requests the program sent while the venue was naming, and the read
-        // that ends the naming with a live report behind it.
-        for id in 0..64 {
-            e.context.pending_orders.push(OrderRequest::Cancel { order_id: 5000 + id, stated: Default::default() });
+    use std::io::Write;
+    // Read with the end of the naming and held a lap, or read off the socket
+    // in a later lap with nothing held.
+    for held_over in [true, false] {
+        let (client, rx, shared) = test_client();
+        shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+            download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+        }.resolve()));
+        let (start, _) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        for command in rx.try_iter() { let _ = rx.into.send(command); }
+        startup_report(&rx, &shared, "");
+        // A socket set up as the engine's own are, so a read with nothing on it
+        // returns rather than waits.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        let conn = crate::protocol::connection::Connection::new_raw(stream).unwrap();
+        let live = "39=1|14=1|151=3|44=124|";
+        {
+            let mut held = rx.engine();
+            let e = &mut *held;
+            e.ccp_conn = Some(conn);
+            e.poll_once();
+            // Requests the program sent while the venue was naming.
+            for id in 0..64 {
+                e.context.pending_orders.push(OrderRequest::Cancel { order_id: 5000 + id, stated: Default::default() });
+            }
+            let read = if held_over { vec![startup_frame("11=*|55=*|"), startup_frame(live)] } else { vec![startup_frame("11=*|55=*|")] };
+            e.ccp.process_until_named(read, &mut None, &mut e.context, &shared, &None,
+                &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+            e.poll_once();
+            if !held_over {
+                let frame = String::from_utf8(startup_frame(live)).unwrap();
+                let mut fields: Vec<(u32, &str)> = frame.split('\x01').filter_map(|f| {
+                    let (tag, value) = f.split_once('=')?;
+                    Some((tag.parse().ok()?, value))
+                }).collect();
+                fields.sort_by_key(|(tag, _)| *tag != 35);
+                peer.write_all(&crate::protocol::fix::fix_build(&fields, 1)).unwrap();
+            }
+            for _ in 0..4 { e.read_reports(); e.poll_once(); }
         }
-        e.ccp.process_until_named(vec![startup_frame("11=*|55=*|"), startup_frame("39=1|14=1|151=3|44=124|")],
-            &mut None, &mut e.context, &shared, &None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
-        for _ in 0..4 { e.read_reports(); e.poll_once(); }
+        let mut heard = RecordingWrapper::default();
+        client.process_msgs(&mut heard);
+        let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
+        let live = heard.events.iter().rposition(|e| e.starts_with("order_status:17:")).unwrap();
+        assert!(end < live, "held_over={held_over}: the live status follows the download: {:?}", heard.events);
+        assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < end, "{:?}", heard.events);
     }
-    let mut heard = RecordingWrapper::default();
-    client.process_msgs(&mut heard);
-    let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
-    let live = heard.events.iter().rposition(|e| e.starts_with("order_status:17:")).unwrap();
-    assert!(end < live, "the live status follows the download: {:?}", heard.events);
-    assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < end, "{:?}", heard.events);
 }
 
 /// A drop before the first naming ended holds the start of the session with
@@ -15131,14 +15147,18 @@ fn the_connections_answers_are_not_held_behind_a_busy_lap() {
 /// recovery is over, what follows is told as it happens.
 #[test]
 fn a_report_during_a_recovery_before_the_first_naming_belongs_to_the_download() {
-    for (during, told) in [
-        ("39=1|14=1|151=3|44=124|", None),
-        ("39=2|150=F|20=0|17=live-print|32=4|31=120|14=4|151=0|", Some("Filled")),
-        ("39=4|150=4|20=0|14=0|151=0|", Some("Cancelled")),
+    let fill = "39=2|150=F|20=0|17=live-print|32=4|31=120|14=4|151=0|";
+    for (downloads, batch, during, told) in [
+        (true, false, "39=1|14=1|151=3|44=124|", None),
+        (true, false, fill, Some("Filled")),
+        (true, true, fill, Some("Filled")),
+        (true, false, "39=4|150=4|20=0|14=0|151=0|", Some("Cancelled")),
+        (false, false, "39=5|150=5|38=5|151=5|", Some("Submitted")),
+        (false, true, "39=5|150=5|38=5|151=5|", Some("Submitted")),
     ] {
         let (client, rx, shared) = test_client();
         shared.set_settings(Arc::new(crate::settings::GatewaySettings {
-            download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+            download_open_orders_on_connection: Some(downloads), order_id_file: Some(String::new()), ..Default::default()
         }.resolve()));
         let (start, _) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
@@ -15156,30 +15176,48 @@ fn a_report_during_a_recovery_before_the_first_naming_belongs_to_the_download() 
             e.ccp.reconnect(conn, &mut None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123", &shared);
         }
         startup_report(&rx, &shared, "");
-        startup_report(&rx, &shared, "11=*|55=*|");
-        asks.answer_what_is_ready(&shared, &mut 64);
-        startup_report(&rx, &shared, during);
+        if batch {
+            // The end of the naming and what follows it, read as one.
+            {
+                let mut held = rx.engine();
+                let e = &mut *held;
+                e.ccp.process_until_named(vec![startup_frame("11=*|55=*|"), startup_frame(during)],
+                    &mut None, &mut e.context, &shared, &None, &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+            }
+            asks.answer_what_is_ready(&shared, &mut 64);
+            let mut held = rx.engine();
+            let e = &mut *held;
+            e.ccp.poll_executions(&mut None, &mut e.context, &shared, &None,
+                &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+        } else {
+            startup_report(&rx, &shared, "11=*|55=*|");
+            asks.answer_what_is_ready(&shared, &mut 64);
+            startup_report(&rx, &shared, during);
+        }
         asks.answer_what_is_ready(&shared, &mut 64);
         shared.orders.hold_open_orders(false);
         asks.answer_what_is_ready(&shared, &mut 64);
         let mut heard = RecordingWrapper::default();
         client.process_msgs(&mut heard);
+        let case = format!("downloads={downloads} batch={batch} {during}");
         match told {
             None => {
                 let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
                 assert_eq!(heard.events[..end].iter().filter(|e| e.starts_with("order_status:17:")).count(), 1,
-                    "nothing about 17 precedes its download: {:?}", heard.events);
+                    "{case}: nothing about 17 precedes its download: {:?}", heard.events);
                 heard.events.clear();
                 startup_report(&rx, &shared, "39=1|14=2|151=2|44=125|");
                 client.process_msgs(&mut heard);
                 assert!(heard.events.iter().any(|e| e.starts_with("order_status:17:")),
-                    "after the recovery, 17 is told as it changes: {:?}", heard.events);
+                    "{case}: after the recovery, 17 is told as it changes: {:?}", heard.events);
             }
             Some(status) => {
-                assert!(heard.events.iter().any(|e| e.starts_with(&format!("order_status:17:{status}"))),
-                    "{status} during the recovery is told: {:?}", heard.events);
+                let at = heard.events.iter().position(|e| e.starts_with(&format!("order_status:17:{status}")))
+                    .unwrap_or_else(|| panic!("{case}: {status} during the recovery is told: {:?}", heard.events));
+                assert!(heard.events.iter().position(|e| e.starts_with("next_valid_id:")).unwrap() < at,
+                    "{case}: the next id comes first: {:?}", heard.events);
                 assert_eq!(heard.events.iter().any(|e| e.starts_with("exec_details:")), status == "Filled",
-                    "{:?}", heard.events);
+                    "{case}: {:?}", heard.events);
             }
         }
     }
