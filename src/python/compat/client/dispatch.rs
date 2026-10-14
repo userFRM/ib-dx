@@ -1085,8 +1085,8 @@ impl EClient {
     /// order's state as the report stated it, then `order_status`.
     fn deliver_update(&self, py: Python<'_>, shared: &Arc<SharedState>, record: UpdateRecord) -> PyResult<()> {
         let UpdateRecord { startup, update, state: stated_state, client_id } = record;
+        self.core.learn_order_identity(shared, update.order_id);
         if startup {
-            self.core.learn_order_identity(shared, update.order_id);
             // Initial reports still advance the orders this client is told of
             // before the snapshot, so their later live reports carry the
             // order beside the status.
@@ -1127,8 +1127,8 @@ impl EClient {
         // as the venue reports it, not a preview.
         let own = self.core.speaks_for_the_order(shared, update.order_id, client);
         let api_id = self.core.api_order_id(update.order_id);
-        let published = tracked.map(|t| (t.contract, t.order)).or_else(|| {
-            let info = stated_state.as_deref().filter(|info| own && !info.order.what_if)?;
+        let published = tracked.filter(|_| own).map(|t| (t.contract, t.order)).or_else(|| {
+            let info = stated_state.as_deref().filter(|_| own)?;
             let contract = if info.contract.con_id != 0 {
                 self.core.get_contract(info.contract.con_id, shared).unwrap_or_else(|| info.contract.clone())
             } else {
@@ -1136,7 +1136,7 @@ impl EClient {
             };
             Some((contract, info.order.clone()))
         });
-        if let Some((contract, mut order)) = published {
+        if let Some((contract, mut order)) = published.filter(|(_, order)| !order.what_if) {
             order.order_id = api_id;
             order.parent_id = parent_id;
             let contract_py = Py::new(py, Contract::from_api(py, &contract)?)?.into_any();

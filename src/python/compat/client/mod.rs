@@ -5143,6 +5143,56 @@ w.calls.clear()
         });
     }
 
+    /// A session told of an order it did not place states it with openOrder
+    /// beside its status on this surface too, under its API number and with
+    /// its parent under the parent's; a preview it holds is not stated.
+    #[test]
+    fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
+        use crate::api::client::tests::{Engine, startup_report};
+        Python::initialize();
+        Python::attach(|py| {
+            let (client, receiver, shared, w) = wired_client(py);
+            let rx = Engine::new(receiver, &shared);
+            shared.orders.set_api_client_id(1);
+            client.get().core.set_api_client_id(1);
+            shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+                master_client_id: Some(1), download_open_orders_on_connection: Some(false),
+                order_id_file: Some(String::new()), ..Default::default()
+            }.resolve()));
+            startup_report(&rx, &shared, "11=*|55=*|");
+            startup_report(&rx, &shared, "11=700.0|6121=91|6119=7|37=parent|");
+            startup_report(&rx, &shared, "11=701.0|6121=92|6119=7|6107=700.0|37=child|");
+            // One held under its venue number, which the venue states its API number beside.
+            shared.orders.note_attached_order_metadata(801, crate::bridge::AttachedOrderMetadata {
+                api_order_id: Some(98), api_client_id: Some(7), ..Default::default()
+            });
+            shared.orders.push_order_info(801, crate::bridge::RichOrderInfo {
+                contract: Default::default(),
+                order: crate::types::model::Order { order_id: 801, client_id: 7, ..Default::default() },
+                order_state: Default::default(), last_exec: Default::default(),
+            });
+            shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: 801, instrument: 0, status: crate::types::OrderStatus::Submitted,
+                filled_qty: 0.0, remaining_qty: 1.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0,
+            });
+            client.get().core.track_order(75, Default::default(),
+                crate::types::model::Order { order_id: 75, what_if: true, ..Default::default() }, 0);
+            shared.orders.push_order_update(crate::types::OrderUpdate {
+                order_id: 75, instrument: 0, status: crate::types::OrderStatus::Submitted,
+                filled_qty: 0.0, remaining_qty: 1.0, avg_price: 0, perm_id: 0, parent_id: 0, timestamp_ns: 0,
+            });
+            client.get().dispatch_once(py, &shared).unwrap();
+            let g = pyo3::types::PyDict::new(py);
+            g.set_item("w", &w).unwrap();
+            py.run(c"
+opened = sorted((c[1], c[3].orderId, c[3].parentId) for c in w.calls if c[0] == 'openOrder')
+assert opened == [(91, 91, 0), (92, 92, 91), (98, 98, 0)], (opened, w.calls)
+told = sorted((c[1], c[7]) for c in w.calls if c[0] == 'orderStatus')
+assert (92, 91) in told and (91, 0) in told and (98, 0) in told, told
+", Some(&g), None).unwrap();
+        });
+    }
+
     /// The download is answered before a report read with the end of the
     /// naming on this surface too, and the first live status of an order the
     /// download stated carries the order beside it.

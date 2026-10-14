@@ -854,7 +854,7 @@ impl EClient {
         // as the venue reports it.
         let own = self.core.speaks_for_the_order(&self.shared, update.order_id, client);
         let api_id = self.core.api_order_id(update.order_id);
-        let published = tracked.map(|t| (t.contract, t.order)).or_else(|| {
+        let published = tracked.filter(|_| own).map(|t| (t.contract, t.order)).or_else(|| {
             let info = state.as_deref().filter(|_| own)?;
             let contract = if info.contract.con_id != 0 {
                 self.core.get_contract(info.contract.con_id, &self.shared).unwrap_or_else(|| info.contract.clone())
@@ -2455,6 +2455,12 @@ mod ownership_tests {
         let mut told = Told::default();
         client.process_msgs(&mut told);
         assert_eq!(told.0, ["open_order 72".to_string(), "order_status 72".to_string()]);
+        // Nor does its next report: what this session records of it from the
+        // first does not make it this session's.
+        shared.orders.push_order_update(OrderUpdate { remaining_qty: 90.0, ..update(71) });
+        let mut told = Told::default();
+        client.process_msgs(&mut told);
+        assert!(told.0.is_empty(), "{:?}", told.0);
     }
 
     /// A session whose client is the configured master client is told of every

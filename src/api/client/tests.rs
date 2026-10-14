@@ -15287,13 +15287,24 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
         assert!(heard.0.contains(&format!("open_order:{id}:{id}:{parent}")), "{id}: {:?}", heard.0);
         assert!(heard.0.contains(&format!("order_status:{id}:{parent}")), "{id}: {:?}", heard.0);
     }
-    // Asked for, the child is answered with the same parent.
+    // A child whose first report is a fill is told with its parent.
+    heard.0.clear();
+    startup_report(&rx, &shared, "11=702.0|6121=93|6119=7|6107=700.0|37=fill-child|39=1|150=F|20=0|17=fill-child-print|32=1|31=120|14=1|151=3|");
+    client.process_msgs(&mut heard);
+    assert!(heard.0.contains(&"order_status:93:91".to_string()), "fill: {:?}", heard.0);
+    // A child told of before its parent is answered with it once the parent is known.
+    startup_report(&rx, &shared, "11=705.0|6121=96|6119=7|6107=710.0|37=early-child|");
+    client.process_msgs(&mut heard);
+    startup_report(&rx, &shared, "11=710.0|6121=95|6119=7|37=late-parent|");
+    client.process_msgs(&mut heard);
+    // Asked for, the children are answered with their parents.
     heard.0.clear();
     client.req_all_open_orders();
     the_engine_answers(&rx, &shared);
     client.process_msgs(&mut heard);
     assert!(heard.0.contains(&"open_order:92:92:91".to_string()), "answered: {:?}", heard.0);
     assert!(heard.0.contains(&"order_status:92:91".to_string()), "answered: {:?}", heard.0);
+    assert!(heard.0.contains(&"open_order:96:96:95".to_string()), "answered: {:?}", heard.0);
     // Once the parent's record is gone, the child keeps it.
     shared.orders.remove_order_info(91);
     heard.0.clear();

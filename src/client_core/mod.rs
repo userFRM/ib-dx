@@ -4455,6 +4455,8 @@ impl ClientCore {
             (Some(info), None) => (info.order.perm_id, info.order.parent_id),
             (None, None) => (0, 0),
         };
+        // The record of an order states no parent; the report's status does.
+        let engine_parent = if engine_parent > 0 { engine_parent } else { status.map_or(0, |u| u.parent_id) };
         (perm_id, self.published_parent(shared, order_id, engine_parent))
     }
 
@@ -4477,7 +4479,7 @@ impl ClientCore {
     pub(crate) fn speaks_for_the_order(
         &self, shared: &SharedState, order_id: u64, stated: i32,
     ) -> bool {
-        self.open_orders.lock().unwrap().contains_key(&order_id)
+        self.open_orders.lock().unwrap().get(&order_id).is_some_and(|t| t.placed_here)
             || self.tells_client(shared, i64::from(stated))
     }
 
@@ -4813,6 +4815,16 @@ impl ClientCore {
 
         for (wire, tracked) in &mut result {
             tracked.order.order_id = self.api_order_id(*wire);
+            // A child told of before its parent states it from what its report
+            // named, once the parent is known.
+            if tracked.order.parent_id <= 0
+                && let Some(named) = shared.orders.attached_order_metadata(*wire)
+                    .and_then(|stated| stated.parent)
+                    .and_then(|named| named.split('.').next()?.parse::<i64>().ok())
+                && let Some(parent) = shared.orders.order_named(named)
+            {
+                tracked.order.parent_id = parent as i64;
+            }
             if tracked.order.parent_id > 0 {
                 self.learn_order_identity(shared, tracked.order.parent_id as u64);
                 tracked.order.parent_id = self.api_order_id(tracked.order.parent_id as u64);
