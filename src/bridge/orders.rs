@@ -814,8 +814,8 @@ impl OrderState {
     /// tells the program's own orders as they happen.
     pub(crate) fn push_report(&self, fill: Option<Fill>, report: Option<RichOrderInfo>, update: Option<OrderUpdate>) {
         let order_id = fill.as_ref().map(|fill| fill.order_id).or(update.as_ref().map(|update| update.order_id));
-        let startup = !self.replay.lock().unwrap().initial_done
-            && !order_id.is_some_and(|id| self.the_order_went_out(id));
+        let naming = !self.replay.lock().unwrap().initial_done;
+        let startup = naming && !order_id.is_some_and(|id| self.the_order_went_out(id));
         if let Some(fill) = fill {
             let report = report.map(Arc::new).or_else(|| self.order_cache.lock().unwrap().get(&fill.order_id).cloned());
             if let Some(update) = &update { self.note_what_the_status_says(update); }
@@ -1196,13 +1196,6 @@ impl OrderState {
     /// socket.
     #[doc(hidden)] pub fn note_the_order_went_out(&self, order_id: u64) {
         self.orders_sent.lock().unwrap().insert(order_id);
-    }
-
-    /// A preview under this number is answered: it placed nothing, so the
-    /// number holds no order that went out, and a placement reusing it is a
-    /// new one.
-    pub(crate) fn forget_the_preview_went_out(&self, order_id: u64) {
-        self.orders_sent.lock().unwrap().remove(&order_id);
     }
 
     /// Whether this client put this order's message on the wire.

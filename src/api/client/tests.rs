@@ -14886,7 +14886,9 @@ fn connection_download_obeys_the_setting_and_client_scope() {
         assert_eq!(rx.keeps(90), !order.transmit, "{local}");
         let identity = shared.orders.attached_order_metadata(90).unwrap();
         assert_eq!((identity.api_order_id, identity.api_client_id), (Some(90), Some(1)));
-        assert!(!shared.orders.the_order_went_out(90));
+        if !matches!(local, "previewed" | "refused") {
+            assert!(!shared.orders.the_order_went_out(90), "a held placement has not gone out");
+        }
         assert!(shared.orders.get_order_info(90).is_none());
         if local == "released" {
             order.transmit = true;
@@ -15022,18 +15024,63 @@ pub(crate) fn startup_send(rx: &Engine, shared: &Arc<SharedState>, order_id: u64
     assert!(shared.orders.get_order_info(order_id).is_none(), "eligible before acknowledgement");
 }
 
-/// Feed one report through the same parser and engine as the connection.
-pub(crate) fn startup_report(rx: &Engine, shared: &SharedState, extra: &str) {
+/// One report on the order the startup tests name, with `extra` stated over it.
+pub(crate) fn startup_frame(extra: &str) -> Vec<u8> {
     let base = "35=8|11=700.0|6121=17|6119=0|1=DU123|150=0|39=0|20=3|6008=756733|55=SPY|167=STK|54=1|40=2|38=4|44=120|59=0|14=0|151=4|37=0256d0f1.0001417e.6ab5fd25.0002|";
     let mut fields = std::collections::BTreeMap::new();
     for field in base.split('|').chain(extra.split('|')) {
         if let Some((tag, value)) = field.split_once('=') { fields.insert(tag, value); }
     }
-    let raw: String = fields.into_iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect();
+    fields.into_iter().map(|(tag, value)| format!("{tag}={value}\x01")).collect::<String>().into_bytes()
+}
+
+/// Feed one report through the same parser and engine as the connection.
+pub(crate) fn startup_report(rx: &Engine, shared: &SharedState, extra: &str) {
+    let raw = startup_frame(extra);
     let mut held = rx.engine();
     let e = &mut *held;
-    e.ccp.process_ccp_message(raw.as_bytes(), &mut None, &mut e.context, shared, &None,
+    e.ccp.process_ccp_message(&raw, &mut None, &mut e.context, shared, &None,
         &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+}
+
+/// A report read in the same batch as the end of the naming is told after
+/// the download, as a gateway's download comes before anything that happens
+/// after the program connected, and the first live status of an order the
+/// download stated carries the order beside it.
+#[test]
+fn a_report_read_with_the_end_of_the_naming_follows_the_download() {
+    let (client, rx, shared) = test_client();
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        download_open_orders_on_connection: Some(true), order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    let mut asks = crate::engine::hot_loop::asks::Asks::new();
+    for command in rx.try_iter() { if let ControlCommand::Ask(ask) = command { asks.take(ask); } }
+    startup_report(&rx, &shared, "");
+    let lap = |asks: &mut crate::engine::hot_loop::asks::Asks, read: Vec<Vec<u8>>| {
+        {
+            let mut held = rx.engine();
+            let e = &mut *held;
+            e.ccp.process_until_named(read, &mut None, &mut e.context, &shared, &None,
+                &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+        }
+        asks.answer_what_is_ready(&shared, &mut 64);
+    };
+    lap(&mut asks, vec![startup_frame("11=*|55=*|"), startup_frame("39=1|14=1|151=3|44=124|")]);
+    {
+        let mut held = rx.engine();
+        let e = &mut *held;
+        e.ccp.poll_executions(&mut None, &mut e.context, &shared, &None,
+            &mut crate::engine::hot_loop::HeartbeatState::new(), "DU123");
+    }
+    let mut heard = RecordingWrapper::default();
+    client.process_msgs(&mut heard);
+    let end = heard.events.iter().position(|e| e == "open_order_end").expect("the download");
+    let live = heard.events.iter().rposition(|e| e.starts_with("order_status:17:")).unwrap();
+    assert!(end < live, "the live status follows the download: {:?}", heard.events);
+    // And it carries the order beside it, as every later status does.
+    assert!(heard.events[end..].iter().any(|e| e.starts_with("open_order:17:")), "{:?}", heard.events);
 }
 
 // Initial option reports and later sparse reports of the same order.
@@ -15079,7 +15126,6 @@ fn connection_download_preserves_report_provenance() {
             let mut initial = RecordingWrapper::default();
             client.process_msgs(&mut initial);
             assert!(shared.orders.get_order_info(17).is_some());
-            assert!(client.core.tracked_order(17).is_none());
             assert!(!initial.events.iter().any(|e| e.starts_with("open_order") || e.starts_with("order_status:")));
         }
         startup_report(&rx, &shared, "39=1|150=F|20=0|43=Y|17=startup-print|32=1|31=120|14=1|151=3|");

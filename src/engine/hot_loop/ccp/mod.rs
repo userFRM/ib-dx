@@ -836,6 +836,10 @@ pub(crate) struct CcpState {
     /// next logon.
     charges_told: HashMap<(jiff::civil::Date, String), (String, f64)>,
     pub(crate) disconnected: bool,
+    /// Reports read after the message that ended the naming of what the
+    /// account is working, held for one lap so that what waited on the naming
+    /// is answered before them, as a gateway answers it at connection.
+    pub(crate) after_the_naming: Vec<Vec<u8>>,
     /// When to account for orders the reconnect did not explain.
     ///
     /// An order that terminated while the connection was down leaves no
@@ -1204,6 +1208,7 @@ impl CcpState {
             seen_exec_ids: HashSet::with_capacity(256),
             charges_told: HashMap::new(),
             disconnected: false,
+            after_the_naming: Vec::new(),
             recovery_sweep_at: None,
             recovery: Default::default(),
             pending_secdef: Vec::new(),

@@ -769,7 +769,6 @@ fn take_what_if(
                 clord_id, crate::types::model::OrderOp::Place, ORDER_REJECTED_ERROR_CODE, reason, sent(parsed),
             );
             context.retire_order(clord_id);
-            shared.orders.forget_the_preview_went_out(clord_id);
             return true;
         }
         // The venue prices a preview once per impact group, names each group
@@ -814,8 +813,7 @@ fn take_what_if(
                     response.init_margin_after as f64 / PRICE_SCALE as f64,
                     response.commission.map_or(f64::NAN, |c| c as f64 / PRICE_SCALE as f64));
                 context.retire_order(clord_id);
-                shared.orders.forget_the_preview_went_out(clord_id);
-                shared.orders.push_what_if(response.clone());
+                    shared.orders.push_what_if(response.clone());
                 emit(event_tx, Event::WhatIf(response));
             }
     parsed.get(&39).map(|s| s.as_str()) != Some("8")
@@ -1882,6 +1880,11 @@ impl CcpState {
         hb: &mut HeartbeatState,
         account_id: &str,
     ) {
+        let held = std::mem::take(&mut self.after_the_naming);
+        if !held.is_empty() {
+            self.process_until_named(held, ccp_conn, context, shared, event_tx, hb, account_id);
+            return;
+        }
         if self.disconnected { return; }
         let messages = match ccp_conn.as_mut() {
             None => return,
@@ -1949,8 +1952,31 @@ impl CcpState {
                 msgs
             }
         };
-        for msg in &messages {
-            self.process_ccp_message(msg, ccp_conn, context, shared, event_tx, hb, account_id);
+        self.process_until_named(messages, ccp_conn, context, shared, event_tx, hb, account_id);
+    }
+
+    /// Process reports in order, stopping after the one that ends the naming
+    /// of what the account is working: the rest wait a lap, so the answers
+    /// held on the naming go out before anything that followed it.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn process_until_named(
+        &mut self,
+        messages: Vec<Vec<u8>>,
+        ccp_conn: &mut Option<Connection>,
+        context: &mut Context,
+        shared: &SharedState,
+        event_tx: &Option<EventSink>,
+        hb: &mut HeartbeatState,
+        account_id: &str,
+    ) {
+        let mut messages = messages.into_iter();
+        while let Some(msg) = messages.next() {
+            let named = shared.orders.open_orders_named();
+            self.process_ccp_message(&msg, ccp_conn, context, shared, event_tx, hb, account_id);
+            if !named && shared.orders.open_orders_named() {
+                self.after_the_naming = messages.collect();
+                return;
+            }
         }
     }
 

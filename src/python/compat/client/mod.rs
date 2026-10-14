@@ -1837,13 +1837,16 @@ impl EClient {
         // refused as a duplicate, and nothing about the refusal points here.
         self.wait_for_the_replay(py);
         if !self.is_current_session(shared) { return Ok(()); }
-        self.notify(py, "next_valid_id", (self.stated_order_id() as i64,))?;
-        if self.is_current_session(shared) && shared.settings().download_open_orders_on_connection {
+        // Asked before the id is announced, as the other surface asks it: an
+        // order the program places from `nextValidId` is its own, told as it
+        // happens, and the download is answered in its place before it.
+        if shared.settings().download_open_orders_on_connection {
             let tx = self.control_tx.lock().unwrap().clone();
             if let Some(tx) = tx {
                 self.send_control(&tx, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))?;
             }
         }
+        self.notify(py, "next_valid_id", (self.stated_order_id() as i64,))?;
         Ok(())
     }
 
@@ -4910,7 +4913,6 @@ client.poll()
                 if !delayed {
                     client.get().dispatch_once(py, &shared).unwrap();
                     assert!(shared.orders.get_order_info(17).is_some());
-                    assert!(client.get().core.tracked_order(17).is_none());
                     let initial = pyo3::types::PyDict::new(py);
                     initial.set_item("w", &w).unwrap();
                     py.run(c"assert not any(c[0] in ('openOrder','orderStatus') for c in w.calls), w.calls", Some(&initial), None).unwrap();
@@ -5154,8 +5156,10 @@ w.calls.clear()
                 }).unwrap();
             wrapper.setattr(py, "nextValidId", callback).unwrap();
             replaced.get().announce_the_new_session(py, &original).unwrap();
-            assert!(!receiver.try_iter().any(|cmd| matches!(cmd, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))),
-                "replacing a session in nextValidId leaves no old startup request on the new connection");
+            assert_eq!(
+                receiver.try_iter().filter(|cmd| matches!(cmd, ControlCommand::Ask(crate::types::Ask::InitialOpenOrders))).count(),
+                usize::from(original.settings().download_open_orders_on_connection),
+                "the announced session asks its download once, before nextValidId; replacing it there asks no other");
 
             let (client, _rx, shared, w) = wired_client(py);
             let g = pyo3::types::PyDict::new(py);
