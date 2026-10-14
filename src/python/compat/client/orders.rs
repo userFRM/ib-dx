@@ -419,6 +419,7 @@ impl EClient {
         if let Err(why) = self.send_control(&tx, ControlCommand::CancelOrder { order_id: oid, stated }) {
             return self.report_refusal_as(py, cancelling, Refusal::not_connected(why.to_string()));
         }
+        self.core.note_cancel_asked(order_id);
         Ok(())
     }
 

@@ -4389,10 +4389,13 @@ impl ClientCore {
             crate::bridge::OrderBook::RevisionRefused(reject, stated) => {
                 self.take_the_refusal(&reject, stated.as_deref());
             }
-            crate::bridge::OrderBook::CancelSent(update) => self.update_order_status(
-                shared, update.order_id, update.status, update.filled_qty, update.remaining_qty,
-                update.instrument,
-            ),
+            crate::bridge::OrderBook::CancelSent(update) => {
+                self.update_order_status(
+                    shared, update.order_id, update.status, update.filled_qty, update.remaining_qty,
+                    update.instrument,
+                );
+                self.answer_here_where_asked(update.order_id);
+            }
         }
     }
 

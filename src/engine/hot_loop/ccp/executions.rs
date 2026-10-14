@@ -286,14 +286,15 @@ fn revision_of(clord: &str) -> u32 {
 }
 
 /// The parent an order states on 6107, read only in the shape this client
-/// writes one: a whole number with a fraction, naming another order. None is
-/// zero.
-fn parent_stated(parsed: &std::collections::HashMap<u32, String>, order_id: u64) -> i64 {
+/// writes one: a whole number with a fraction. None is zero. The number is the
+/// one the parent went to the venue under, which is not the number an order is
+/// held under here, so which order it names is read where it is resolved.
+fn parent_stated(parsed: &std::collections::HashMap<u32, String>) -> i64 {
     parsed
         .get(&6107)
         .and_then(|stated| stated.split_once('.'))
         .and_then(|(whole, _)| whole.parse().ok())
-        .filter(|named: &i64| *named != 0 && *named as u64 != order_id)
+        .filter(|named: &i64| *named != 0)
         .unwrap_or(0)
 }
 
@@ -2275,7 +2276,7 @@ impl CcpState {
                     avg_price: shared.orders.get_order_info(clord_id)
                         .map_or(0, |info| crate::types::price_from_f64(info.last_exec.avg_price)),
                     perm_id,
-                    parent_id: parent_stated(parsed, clord_id),
+                    parent_id: parent_stated(parsed),
                     timestamp_ns: context.now_ns(),
                 };
                 shared.orders.push_order_update(update);
@@ -2352,7 +2353,7 @@ impl CcpState {
                         parsed.get(&6).and_then(|s| s.parse().ok()).unwrap_or(0.0),
                     ),
                     perm_id,
-                    parent_id: parent_stated(parsed, clord_id),
+                    parent_id: parent_stated(parsed),
                     timestamp_ns: context.now_ns(),
                 };
                 shared.orders.push_order_update(update);
@@ -2934,7 +2935,7 @@ impl CcpState {
                 // which read as a parent gives each of them a parent that does
                 // not exist. A parent that is missing is recoverable; one that
                 // is invented is not.
-                let parent_id = parent_stated(parsed, clord_id);
+                let parent_id = parent_stated(parsed);
                 let update = crate::types::OrderUpdate {
                     order_id: clord_id,
                     instrument: order.instrument,

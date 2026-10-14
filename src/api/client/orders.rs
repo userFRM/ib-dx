@@ -359,7 +359,9 @@ impl EClient {
             // order nothing is working as no such order — read once the venue has
             // named the account's working set, since an order carried over from a
             // previous session is unknown until then.
-            self.send(ControlCommand::CancelOrder { order_id, stated: order_cancel })
+            self.send(ControlCommand::CancelOrder { order_id, stated: order_cancel })?;
+            self.core.note_cancel_asked(order_id as i64);
+            Ok(())
         })() {
             self.refuse_order(order_id, OrderOp::Cancel, &why);
         }
