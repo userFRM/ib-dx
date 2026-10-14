@@ -21,7 +21,7 @@ Verification runs against a paper account on IBKR production servers, and the or
 | Requests | 85. Every one either does what it says or reports why it cannot — none returns success having sent nothing |
 | Order fields | 159. 128 are sent; 23 are taken and not sent, as a gateway sends nothing for them on the orders this client places; 1 is not carried by this client and the call says so rather than dropping them; 6 are what the venue fills on the way back, which an order does not carry out; 1 is acted on here rather than sent |
 | Rust and Python | every canonical call and callback is on both, with the same status on each; `scripts/conformance.py --compare` holds 10 server responses to the same answer on both |
-| Tests | 4,808 offline, and 182 more that live in the suites run against a broker session |
+| Tests | 4,809 offline, and 182 more that live in the suites run against a broker session |
 
 ## API surface
 
@@ -72,7 +72,7 @@ reply needs an advisor account to see, and the status row below says so.
 
 | Suite | Count | Requires credentials |
 | --- | ---: | :---: |
-| Rust unit and integration | 3,327 | No |
+| Rust unit and integration | 3,328 | No |
 | Rust, live | 10 | Yes |
 | Python | 1,481 | No |
 | Python, live | 122 | Yes |
@@ -391,8 +391,9 @@ still work. Reports of orders working at connection keep their execution
 history without fill callbacks; the program's own orders, placed while the
 download waits, are told as they happen. Later reports and transport reconnects
 retain their existing callback behavior. This setting does not add automatic
-binding, change order IDs or parent resolution, or add live `openOrder`
-callbacks for orders placed elsewhere.
+binding or change order IDs. Whatever it is set to, an order this session is
+told of but did not place is stated with `openOrder` beside its status, under
+its API number and with its parent under the parent's.
 
 `order_id_file` retains the next ID per account and API client across restarts;
 reservations share an exclusive file lock. See [order IDs across sessions](book/src/reference/venue-behaviour.md#order-ids-across-sessions)

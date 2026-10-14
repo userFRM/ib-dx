@@ -620,6 +620,17 @@ impl OrderState {
         self.order_cache.lock().unwrap().get(&order_id).map(|info| (**info).clone())
     }
 
+    /// The order a report names by the number it went to the venue under,
+    /// which is its permanent id: the one still working where a finished order
+    /// went under the same number before it.
+    pub(crate) fn order_named(&self, named: i64) -> Option<u64> {
+        let named_by: Vec<u64> = self.order_cache.lock().unwrap().iter()
+            .filter(|(_, info)| info.order.perm_id == named)
+            .map(|(&id, _)| id)
+            .collect();
+        named_by.iter().copied().find(|&id| !self.recently_completed(id)).or(named_by.first().copied())
+    }
+
     /// The permanent id an order's record states, where it states one.
     pub(crate) fn perm_id(&self, order_id: u64) -> Option<i64> {
         self.order_cache.lock().unwrap().get(&order_id)

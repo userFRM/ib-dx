@@ -708,7 +708,7 @@ impl EClient {
             .unwrap_or(if fill.remaining == 0 { "Filled" } else { "Submitted" });
         self.core.learn_order_identity(&self.shared, fill.order_id);
         let (perm_id, parent_id) = self.core.perm_and_parent_stated(
-            fill.order_id, report.as_deref(), status.as_ref(),
+            &self.shared, fill.order_id, report.as_deref(), status.as_ref(),
         );
         let client = self.core.client_stated(fill.order_id, report.as_deref());
         // A gateway tells a fill to the connection of the order's client, and
@@ -822,11 +822,9 @@ impl EClient {
             return;
         }
         let status = order_status_str(update.status);
-        // The engine reads no parent from the report, but this client placed
-        // the order and was told. Prefer what it recorded; an order it did not
-        // place keeps the engine's answer of none.
-        let parent_id = self.core.tracked_parent_id(update.order_id)
-            .unwrap_or(update.parent_id);
+        // The parent recorded here where this client placed the order, the
+        // one its report states otherwise, under the parent's API number.
+        let parent_id = self.core.published_parent(&self.shared, update.order_id, update.parent_id);
         // What the order has paid, as the report that changed its status
         // stated it.
         let avg = update.avg_price as f64 / crate::types::PRICE_SCALE as f64;
@@ -850,14 +848,26 @@ impl EClient {
             .filter(|c| *c != 0)
             .unwrap_or(client_id);
         // A gateway tells an order's status to the connection of the order's
-        // client, and to the master client where one is set. `open_order`
-        // below is stated only for an order this session holds, which is one
-        // it placed.
+        // client, and to the master client where one is set, and states the
+        // order beside it: the one this session holds, or one it is told of
+        // as the venue reports it.
         let own = self.core.speaks_for_the_order(&self.shared, update.order_id, client);
+        let api_id = self.core.api_order_id(update.order_id);
+        let published = tracked.map(|t| (t.contract, t.order)).or_else(|| {
+            let info = state.as_deref().filter(|_| own)?;
+            let contract = if info.contract.con_id != 0 {
+                self.core.get_contract(info.contract.con_id, &self.shared).unwrap_or_else(|| info.contract.clone())
+            } else {
+                info.contract.clone()
+            };
+            Some((contract, info.order.clone()))
+        });
         // Not for a preview: the answer to a preview is the margin the venue
         // states on its own reply, and a pair sent from the status alone
         // answered it with no margin figures.
-        if let Some(tracked) = tracked.filter(|t| !t.order.what_if) {
+        if let Some((contract, mut order)) = published.filter(|(_, order)| !order.what_if) {
+            order.order_id = api_id;
+            order.parent_id = parent_id;
             // What the venue said about the order, under the status this
             // client names it by — as the report that changed the status
             // stated it, not as the order's record stands at the read.
@@ -874,16 +884,14 @@ impl EClient {
                 &state.completed_time,
                 &settings.timezone,
                 settings.datetime_format,
-                self.shared.reference.instrument_zone(tracked.contract.con_id).as_deref(),
+                self.shared.reference.instrument_zone(contract.con_id).as_deref(),
             );
-            wrapper.open_order(
-                self.core.api_order_id(update.order_id), &tracked.contract, &tracked.order, &state,
-            );
+            wrapper.open_order(api_id, &contract, &order, &state);
         }
         if own {
             let why_held = self.core.why_held(&self.shared, update.order_id, status);
             wrapper.order_status(
-                self.core.api_order_id(update.order_id), status, update.filled_qty.into(),
+                api_id, status, update.filled_qty.into(),
                 update.remaining_qty.into(), avg, update.perm_id, parent_id, last_fill,
                 i64::from(client), &why_held, 0.0,
             );
@@ -2427,7 +2435,8 @@ mod ownership_tests {
 
     /// A gateway tells the connection of the order's client and no other: the
     /// status of an order the venue states another client placed says nothing
-    /// to this session, and the status of this client's own order is delivered.
+    /// to this session, and the status of this client's own order is delivered
+    /// with the order beside it.
     #[test]
     fn a_status_of_another_clients_order_says_nothing_to_this_one() {
         let (client, _rx, shared) = crate::api::client::tests::test_client();
@@ -2443,7 +2452,7 @@ mod ownership_tests {
 
         let mut told = Told::default();
         client.process_msgs(&mut told);
-        assert_eq!(told.0, ["order_status 72".to_string()]);
+        assert_eq!(told.0, ["open_order 72".to_string(), "order_status 72".to_string()]);
     }
 
     /// A session whose client is the configured master client is told of every

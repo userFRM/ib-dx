@@ -3961,17 +3961,35 @@ impl ClientCore {
 
     // ── Open order tracking ──
 
-    /// The parent this client recorded when it placed the order, if any.
-    ///
-    /// The engine reads no parent from an execution report, so for an order
-    /// this client placed its own record is the only source. An order placed
-    /// elsewhere keeps whatever the engine reports.
-    pub(crate) fn tracked_parent_id(&self, order_id: u64) -> Option<i64> {
-        let parent = self.open_orders.lock().unwrap()
+    /// The parent an order is published with, under the parent's API
+    /// number: the one this client recorded where it placed the order, by the
+    /// number it holds the parent under; otherwise the one the report states,
+    /// which names the parent by the number it went to the venue under.
+    pub(crate) fn published_parent(&self, shared: &SharedState, order_id: u64, stated: i64) -> i64 {
+        let recorded = self.open_orders.lock().unwrap()
             .get(&order_id)
-            .map(|t| t.order.parent_id)
-            .filter(|p| *p > 0);
-        parent.map(|wire| self.api_order_id(wire as u64))
+            .map(|t| (t.placed_here, t.order.parent_id))
+            .filter(|(_, parent)| *parent > 0);
+        match recorded {
+            Some((true, held_under)) => {
+                self.learn_order_identity(shared, held_under as u64);
+                self.api_order_id(held_under as u64)
+            }
+            Some((false, named)) => self.api_parent_id(shared, named),
+            None => self.api_parent_id(shared, stated),
+        }
+    }
+
+    /// The API number of the parent a report names by the number it went to
+    /// the venue under. That number and an API number are two spaces, and
+    /// where they overlap one names another order: read as an order held here
+    /// it stated an unrelated order as the parent. A parent not yet known here
+    /// is stated as none rather than as a number that may name another.
+    pub(crate) fn api_parent_id(&self, shared: &SharedState, named: i64) -> i64 {
+        if named <= 0 { return named; }
+        let Some(parent) = shared.orders.order_named(named) else { return 0 };
+        self.learn_order_identity(shared, parent);
+        self.api_order_id(parent)
     }
 
     /// Check if an order with this ID is currently tracked (for modify detection).
@@ -4411,6 +4429,7 @@ impl ClientCore {
     /// order was told. An order it did not place keeps the engine's answer.
     pub(crate) fn perm_and_parent_stated(
         &self,
+        shared: &SharedState,
         order_id: u64,
         report: Option<&crate::bridge::RichOrderInfo>,
         status: Option<&OrderUpdate>,
@@ -4423,7 +4442,7 @@ impl ClientCore {
             (Some(info), None) => (info.order.perm_id, info.order.parent_id),
             (None, None) => (0, 0),
         };
-        (perm_id, self.tracked_parent_id(order_id).unwrap_or(engine_parent))
+        (perm_id, self.published_parent(shared, order_id, engine_parent))
     }
 
     /// The client that placed an order: this client's record where it placed
@@ -4781,7 +4800,11 @@ impl ClientCore {
 
         for (wire, tracked) in &mut result {
             tracked.order.order_id = self.api_order_id(*wire);
-            if tracked.order.parent_id > 0 { tracked.order.parent_id = self.api_order_id(tracked.order.parent_id as u64); }
+            tracked.order.parent_id = if tracked.placed_here {
+                if tracked.order.parent_id > 0 { self.api_order_id(tracked.order.parent_id as u64) } else { tracked.order.parent_id }
+            } else {
+                self.api_parent_id(shared, tracked.order.parent_id)
+            };
         }
         result
     }

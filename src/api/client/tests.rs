@@ -15250,6 +15250,45 @@ fn an_echoed_working_status_beside_a_fill_of_a_finished_order_is_dropped() {
     assert!(!heard.events.iter().any(|e| e.starts_with("order_status:79:Submitted")), "{:?}", heard.events);
 }
 
+/// A session is told of an order it did not place with openOrder beside its
+/// status, as a gateway tells the master client of every client's orders: the
+/// order and its parent under their API numbers, never the venue's.
+#[test]
+fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
+    #[derive(Default)]
+    struct Heard(Vec<String>);
+    impl Wrapper for Heard {
+        fn open_order(&mut self, id: i64, _: &Contract, order: &Order, _: &crate::types::model::OrderState) {
+            self.0.push(format!("open_order:{id}:{}:{}", order.order_id, order.parent_id));
+        }
+        fn order_status(&mut self, id: i64, _: &str, _: crate::types::model::Decimal, _: crate::types::model::Decimal,
+            _: f64, _: i64, parent: i64, _: f64, _: i64, _: &str, _: f64) {
+            self.0.push(format!("order_status:{id}:{parent}"));
+        }
+    }
+    let (client, rx, shared) = test_client();
+    shared.orders.set_api_client_id(1);
+    client.core.set_api_client_id(1);
+    shared.set_settings(Arc::new(crate::settings::GatewaySettings {
+        master_client_id: Some(1), download_open_orders_on_connection: Some(false),
+        order_id_file: Some(String::new()), ..Default::default()
+    }.resolve()));
+    let (start, _) = std::sync::mpsc::channel();
+    let client = client.finish_connect(start).unwrap();
+    startup_report(&rx, &shared, "11=*|55=*|");
+    // Another client's parent at venue 700 under API 91, an unrelated order of
+    // its under API 700, and the parent's child naming the parent by venue.
+    startup_report(&rx, &shared, "11=700.0|6121=91|6119=7|37=parent|");
+    startup_report(&rx, &shared, "11=800.0|6121=700|6119=7|37=unrelated|");
+    startup_report(&rx, &shared, "11=701.0|6121=92|6119=7|6107=700.0|37=child|");
+    let mut heard = Heard::default();
+    client.process_msgs(&mut heard);
+    for (id, parent) in [(91, 0), (700, 0), (92, 91)] {
+        assert!(heard.0.contains(&format!("open_order:{id}:{id}:{parent}")), "{id}: {:?}", heard.0);
+        assert!(heard.0.contains(&format!("order_status:{id}:{parent}")), "{id}: {:?}", heard.0);
+    }
+}
+
 // Initial option reports and later sparse reports of the same order.
 pub(crate) const STARTUP_OPTION_CASES: &[(&[&str], bool)] = &[
     (&[""], true),

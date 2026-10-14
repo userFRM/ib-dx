@@ -1004,8 +1004,9 @@ still work. Reports of orders working at connection keep their execution
 history without fill callbacks; the program's own orders, placed while the
 download waits, are told as they happen. Later reports and transport reconnects
 retain their existing callback behavior. This setting does not add automatic
-binding, change order IDs or parent resolution, or add live `openOrder`
-callbacks for orders placed elsewhere.
+binding or change order IDs. Whatever it is set to, an order this session is
+told of but did not place is stated with `openOrder` beside its status, under
+its API number and with its parent under the parent's.
 
 `include_fx_positions` is on by default. Turn it off to omit CASH rows from
 `position`, `positionMulti`, and `updatePortfolio`.
@@ -1211,7 +1212,7 @@ Claims here rest on tests, and the tests are counted rather than described:
 
 | Suite | Count | Needs a session |
 | --- | ---: | :---: |
-| Rust, unit and integration | 3,327 | No |
+| Rust, unit and integration | 3,328 | No |
 | Python | 1,481 | No |
 | Rust, live | 10 | Yes |
 | Python, live | 122 | Yes |

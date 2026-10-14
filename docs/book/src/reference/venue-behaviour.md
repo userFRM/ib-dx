@@ -1085,5 +1085,6 @@ still work. Reports of orders working at connection keep their execution
 history without fill callbacks; the program's own orders, placed while the
 download waits, are told as they happen. Later reports and transport reconnects
 retain their existing callback behavior. This setting does not add automatic
-binding, change order IDs or parent resolution, or add live `openOrder`
-callbacks for orders placed elsewhere.
+binding or change order IDs. Whatever it is set to, an order this session is
+told of but did not place is stated with `openOrder` beside its status, under
+its API number and with its parent under the parent's.

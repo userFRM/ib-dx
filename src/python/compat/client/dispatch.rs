@@ -981,6 +981,7 @@ impl EClient {
             .unwrap_or(if fill.remaining == 0 { "Filled" } else { "Submitted" });
         self.core.learn_order_identity(shared, fill.order_id);
         let (perm_id, parent_id) = self.core.perm_and_parent_stated(
+            shared,
             fill.order_id, rich_info.as_deref(), with_it.as_ref(),
         );
         let client = self.core.client_stated(fill.order_id, rich_info.as_deref());
@@ -1101,8 +1102,7 @@ impl EClient {
         let status = order_status_str(update.status);
         // The engine reads no parent from the report, but this client placed
         // the order and was told.
-        let parent_id = self.core.tracked_parent_id(update.order_id)
-            .unwrap_or(update.parent_id);
+        let parent_id = self.core.published_parent(shared, update.order_id, update.parent_id);
         let avg = update.avg_price as f64 / crate::types::PRICE_SCALE as f64;
         // And what its last fill went at, as the order holds it: a gateway
         // keeps the last print from every execution report and states it on
@@ -1121,12 +1121,25 @@ impl EClient {
             .filter(|c| *c != 0)
             .unwrap_or(client_id);
         // A gateway tells an order's status to the connection of the order's
-        // client, and to the master client where one is set. `open_order` is
-        // stated only for an order this session holds, which is one it placed.
+        // client, and to the master client where one is set, and states the
+        // order beside it: the one this session holds, or one it is told of
+        // as the venue reports it, not a preview.
         let own = self.core.speaks_for_the_order(shared, update.order_id, client);
-        if let Some(tracked) = tracked {
-            let contract_py = Py::new(py, Contract::from_api(py, &tracked.contract)?)?.into_any();
-            let order_py = Py::new(py, Order::from_api(py, &tracked.order)?)?.into_any();
+        let api_id = self.core.api_order_id(update.order_id);
+        let published = tracked.map(|t| (t.contract, t.order)).or_else(|| {
+            let info = stated_state.as_deref().filter(|info| own && !info.order.what_if)?;
+            let contract = if info.contract.con_id != 0 {
+                self.core.get_contract(info.contract.con_id, shared).unwrap_or_else(|| info.contract.clone())
+            } else {
+                info.contract.clone()
+            };
+            Some((contract, info.order.clone()))
+        });
+        if let Some((contract, mut order)) = published {
+            order.order_id = api_id;
+            order.parent_id = parent_id;
+            let contract_py = Py::new(py, Contract::from_api(py, &contract)?)?.into_any();
+            let order_py = Py::new(py, Order::from_api(py, &order)?)?.into_any();
             // What the venue said about the order, under the status this
             // client names it by — as the report that changed the status
             // stated it.
@@ -1135,19 +1148,18 @@ impl EClient {
                 ..stated_state.map(|stated| stated.order_state.clone()).unwrap_or_default()
             };
             let settings = shared.settings();
-            let instrument_zone = shared.reference.instrument_zone(tracked.contract.con_id);
+            let instrument_zone = shared.reference.instrument_zone(contract.con_id);
             let state_py = Py::new(py, OrderState::from_api(
                 &stated,
                 &settings.timezone,
                 settings.datetime_format,
                 instrument_zone.as_deref(),
             ))?.into_any();
-            call_wrapper!(self, py, shared, "open_order",
-                (self.core.api_order_id(update.order_id), &contract_py, &order_py, &state_py));
+            call_wrapper!(self, py, shared, "open_order", (api_id, &contract_py, &order_py, &state_py));
         }
         if own {
             let why_held = self.core.why_held(shared, update.order_id, status);
-            call_wrapper!(self, py, shared, "order_status", (self.core.api_order_id(update.order_id), status, DecimalField::from_unsettable(update.filled_qty),
+            call_wrapper!(self, py, shared, "order_status", (api_id, status, DecimalField::from_unsettable(update.filled_qty),
                  DecimalField::from_float(update.remaining_qty), avg, update.perm_id, parent_id, last_fill,
                  i64::from(client), why_held.as_str(), 0.0f64));
         }
@@ -1979,7 +1991,7 @@ mod ownership_tests {
     /// another client placed says nothing to this session — no status, no
     /// fill, no charge — and this client's own orders say everything, as on
     /// the other surface. A session whose client is the configured master
-    /// client hears every client's.
+    /// client hears every client's, each order stated beside its status.
     #[test]
     fn another_clients_order_says_nothing_on_this_surface_either() {
         Python::initialize();
@@ -2053,19 +2065,25 @@ mod ownership_tests {
                     .map(|c| c.get_item(1).unwrap().get_item(0).unwrap()
                         .getattr("exec_id").unwrap().extract::<String>().unwrap())
                     .collect();
-                (statuses, count("xecDetails"), commissions)
+                let opened: Vec<i64> = list.iter()
+                    .filter(|c| c.get_item(0).unwrap().extract::<String>().unwrap().contains("penOrder"))
+                    .map(|c| c.get_item(1).unwrap().get_item(0).unwrap().extract::<i64>().unwrap())
+                    .collect();
+                (statuses, count("xecDetails"), commissions, opened)
             };
-            let (statuses, execs, commissions) = told(None);
+            let (statuses, execs, commissions, opened) = told(None);
             assert_eq!(
                 statuses, vec![72, 72],
                 "the own order's status alone, from the fill and from the report",
             );
             assert_eq!(execs, 1, "the own fill alone");
             assert_eq!(commissions, ["own"], "the own fill's charge alone");
-            let (statuses, execs, commissions) = told(Some(1));
+            assert_eq!(opened, vec![72], "the own order is stated beside its status");
+            let (statuses, execs, commissions, opened) = told(Some(1));
             assert_eq!(statuses, vec![71, 72, 71, 72], "a master hears every client's status");
             assert_eq!(execs, 2, "and every client's fill");
             assert_eq!(commissions, ["other", "own", "unknown"], "and every client's charge");
+            assert_eq!(opened, vec![71, 72], "and every client's order beside its status");
         });
     }
 }
