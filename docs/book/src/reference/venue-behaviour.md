@@ -654,10 +654,12 @@ open-orders view: a gateway retires no order on a refusal. The event channel
 engine's `Event::CancelReject` for it, with the status the engine's own book
 went back to.
 
-A cancel names this client's orders only. Under a number an order of another
-API client is held by, it finds none of this client's and is refused under
-10147, *OrderId N that needs to be cancelled is not found.*, as a gateway
-refuses it; the other client's order is not withdrawn. An order whose reports
+A cancel names this client's orders only, each by the number this client knows
+it by. Under a number an order of another API client is held by, or under the
+number one of this client's own orders went to the venue under where that is
+not its API number, it finds none and is refused under 10147, *OrderId N that
+needs to be cancelled is not found.*, as a gateway refuses it, whether or not
+that other order has finished; nothing is withdrawn. An order whose reports
 name no client is this client's to withdraw, and once withdrawn here what the
 venue says of it is told to this session.
 

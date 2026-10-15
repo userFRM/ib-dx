@@ -113,12 +113,15 @@ struct Pending {
     /// Held until the recovery behind the next logon is over, the trading
     /// connection having gone while it waited.
     held: bool,
+    /// The number a caller named a cancel by, which names the order only
+    /// where it is the number this client knows the order by.
+    asked: Option<i64>,
 }
 
 impl Pending {
     fn new(cmd: ControlCommand) -> Self {
         Self { cmd, lookup: None, watch: None, loading: None, wire_id: None, asked_algorithms: false,
-            deadline: std::time::Instant::now() + super::ccp::CcpState::NAMING_TIMEOUT, held: false }
+            deadline: std::time::Instant::now() + super::ccp::CcpState::NAMING_TIMEOUT, held: false, asked: None }
     }
 }
 
@@ -330,6 +333,7 @@ impl HotLoop {
 
     /// Take an order command a caller admitted.
     pub(crate) fn take_order_command(&mut self, cmd: ControlCommand) {
+        let asked = match &cmd { ControlCommand::CancelOrder { order_id, .. } => Some(*order_id as i64), _ => None };
         let cmd = match cmd {
             ControlCommand::CancelOrder { order_id, stated } => {
                 let order_id = self.shared.orders.wire_order_id(order_id as i64).unwrap_or(order_id);
@@ -354,6 +358,7 @@ impl HotLoop {
         };
         let behind = cmd.depends_on().any(|id| self.intake.waiting_ids.contains_key(&id));
         let mut pending = Pending::new(cmd);
+        pending.asked = asked;
         if behind || matches!(self.take_one(&mut pending), Step::Waits) {
             for id in pending.cmd.own() {
                 *self.intake.waiting_ids.entry(id).or_default() += 1;
@@ -396,11 +401,12 @@ impl HotLoop {
         if pending.held {
             return Step::Waits;
         }
+        let asked = pending.asked;
         match &mut pending.cmd {
             ControlCommand::Place(p) => self.take_placement(p, &mut pending.lookup, &mut pending.loading, &mut pending.wire_id, &mut pending.asked_algorithms, pending.deadline),
             ControlCommand::CancelOrder { order_id, stated } => {
                 let (order_id, stated) = (*order_id, stated.clone());
-                self.take_cancel(order_id, &stated)
+                self.take_cancel(order_id, asked, &stated)
             }
             ControlCommand::GlobalCancel { stated } => {
                 let stated = stated.clone();
@@ -1233,10 +1239,27 @@ impl HotLoop {
         }
     }
 
-    fn take_cancel(&mut self, order_id: u64, stated: &api::OrderCancel) -> Step {
+    fn take_cancel(&mut self, order_id: u64, asked: Option<i64>, stated: &api::OrderCancel) -> Step {
         if self.cancel_waiting_attached(Some(order_id), None) { return Step::Done; }
         if self.withdraw_kept_placement(order_id) {
             self.say_the_time_did_not_travel(order_id, stated);
+            return Step::Done;
+        }
+        // A gateway withdraws a client's own orders, by the number the client
+        // knows each by, and finds none of its own under any other: not under
+        // another client's number, nor under the number one of its own went to
+        // the venue under where that is not the order's API number.
+        if let Some(asked) = asked
+            && self.shared.orders.wire_order_id(asked) != Some(order_id)
+        {
+            self.refuse_order(
+                asked,
+                OrderOp::Cancel,
+                Refusal::stated(
+                    CANCEL_ORDER_NOT_FOUND,
+                    format!("OrderId {asked} that needs to be cancelled is not found."),
+                ),
+            );
             return Step::Done;
         }
         let api_id = self.shared.orders.attached_order_metadata(order_id)
@@ -1257,23 +1280,6 @@ impl HotLoop {
                     "OrderId {api_id} that needs to be cancelled can not be cancelled, state: {state}."
                 ),
             ));
-            return Step::Done;
-        }
-        // An order the venue states as another API client's is not one this
-        // client's number names: a gateway withdraws a client's own orders,
-        // and finds none of its own under the number.
-        if self.shared.orders.attached_order_metadata(order_id)
-            .and_then(|held| held.api_client_id)
-            .is_some_and(|client| client != self.shared.orders.api_client_id())
-        {
-            self.refuse_order(
-                api_id,
-                OrderOp::Cancel,
-                Refusal::stated(
-                    CANCEL_ORDER_NOT_FOUND,
-                    format!("OrderId {api_id} that needs to be cancelled is not found."),
-                ),
-            );
             return Step::Done;
         }
         // Read once the venue has named the account's working set: an order

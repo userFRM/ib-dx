@@ -349,6 +349,7 @@ impl CcpState {
                     "the venue restates order {order_id} working: the cancellation the drop \
                      left unanswered is written again"
                 );
+                context.cancels_resent.insert(order_id);
                 context.pending_orders.push(OrderRequest::Cancel {
                     order_id,
                     stated: api::OrderCancel::default(),

@@ -497,7 +497,8 @@ pub(crate) fn drain_and_send_orders(
             OrderRequest::Cancel { order_id, stated } => {
                 let result = send_cancel(conn, context, shared, account_id, order_id, &stated);
                 if result.is_ok() {
-                    synthesize_pending_cancel(context, shared, order_id, event_tx, true);
+                    let asked = !context.cancels_resent.remove(&order_id);
+                    synthesize_pending_cancel(context, shared, order_id, event_tx, asked);
                 }
                 result
             }

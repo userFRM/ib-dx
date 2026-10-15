@@ -2511,6 +2511,13 @@ fn a_cancel_the_drop_left_unanswered_is_sent_again_as_a_gateway_sends_it() {
                 "{what}: the cancel is written again, under a number of its own, naming the \
                  version the venue holds: {again}"
             );
+            // Written again by the recovery, not asked for by a caller.
+            let asked: Vec<bool> = heard.iter().filter_map(|(_, record)| match record {
+                crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(told, asked))
+                    if told.order_id == 7 => Some(*asked),
+                _ => None,
+            }).collect();
+            assert_eq!(asked, [false], "{what}: the cancel written again is the recovery's");
         } else {
             assert!(!again.contains("35=F|"), "{what}: the cancel is not written again: {again}");
         }

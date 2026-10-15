@@ -15376,18 +15376,34 @@ fn a_recovered_order_naming_no_client_is_told_once_modified_here() {
 /// other client's order is not withdrawn.
 #[test]
 fn a_cancel_under_another_clients_number_is_not_found() {
-    for (stated, refused) in [("6119=0", true), ("6119=7", true), ("6119=", false)] {
+    let finished = "39=4|150=4|20=0|14=0|151=0|";
+    for (reports, asked, refused) in [
+        (vec!["11=700.0|6121=55|6119=0|37=theirs|"], 55, true),
+        (vec!["11=700.0|6121=55|6119=7|37=theirs|"], 55, true),
+        (vec!["11=700.0|6121=55|6119=|37=nobodys|"], 55, false),
+        // Finished, it is still another client's, and not found rather than done.
+        (vec!["11=700.0|6121=55|6119=7|37=theirs|", finished], 55, true),
+        // This client's own order, named by the number it went to the venue
+        // under rather than its API number, and then by its API number.
+        (vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 700, true),
+        (vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 55, false),
+    ] {
         let (client, rx, shared) = test_client();
         shared.orders.set_api_client_id(1);
         client.core.set_api_client_id(1);
         let (start, _) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
-        startup_report(&rx, &shared, &format!("11=700.0|6121=55|{stated}|37=theirs|"));
+        startup_report(&rx, &shared, reports[0]);
         startup_report(&rx, &shared, "11=*|55=*|");
+        for report in &reports[1..] {
+            startup_report(&rx, &shared, &format!("{}{report}", reports[0]));
+        }
         settled(&client, &rx);
-        client.cancel_order(55, crate::types::model::OrderCancel::default());
+        client.cancel_order(asked, crate::types::model::OrderCancel::default());
         let told = settled(&client, &rx);
-        assert_eq!(told.iter().any(|e| e.starts_with("error:55:10147:")), refused, "{stated}: {told:?}");
+        let not_found = format!("error:{asked}:10147:");
+        assert_eq!(told.iter().any(|e| e.starts_with(&not_found)), refused, "{reports:?} cancel {asked}: {told:?}");
+        assert!(!told.iter().any(|e| e.contains(":10148:")), "{reports:?} cancel {asked}: {told:?}");
     }
 }
 

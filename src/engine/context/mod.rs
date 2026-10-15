@@ -123,6 +123,10 @@ pub struct Context {
     /// server is entitled to drop — which is exactly the case a retry exists
     /// for. Counts so each attempt is a new name.
     pub(crate) cancel_attempts: HashMap<OrderId, u32>,
+    /// Cancels the recovery writes again after a drop, rather than ones a
+    /// caller asked for: written into the book, they make no order the
+    /// session's.
+    pub(crate) cancels_resent: std::collections::HashSet<OrderId>,
     /// Where an order stood when this session's latest cancel moved it to
     /// pending cancel: what a refusal of that cancel puts back.
     pub(crate) before_the_cancel: HashMap<OrderId, OrderStatus>,
@@ -193,6 +197,7 @@ impl Context {
             submitted: HashMap::new(),
             external_instructions: HashMap::new(),
             cancel_attempts: HashMap::new(),
+            cancels_resent: std::collections::HashSet::new(),
             before_the_cancel: HashMap::new(),
             ladder_sizes: HashMap::new(),
             pre_replace: HashMap::new(),
