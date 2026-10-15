@@ -15329,7 +15329,9 @@ fn an_order_told_but_not_placed_is_stated_with_its_open_order() {
 /// the modify.
 #[test]
 fn a_recovered_order_naming_no_client_is_told_once_modified_here() {
-    for cancel in [false, true] {
+    // A modify, a cancel of this order alone, and a cancel of everything,
+    // which makes no order this session's.
+    for (action, told) in [("modify", true), ("cancel", true), ("global", false)] {
         let (client, rx, shared) = test_client();
         shared.orders.set_api_client_id(1);
         client.core.set_api_client_id(1);
@@ -15342,28 +15344,50 @@ fn a_recovered_order_naming_no_client_is_told_once_modified_here() {
         startup_report(&rx, &shared, "11=*|55=*|");
         let mut heard = RecordingWrapper::default();
         client.process_msgs(&mut heard);
-        if cancel {
-            client.cancel_order(42, crate::types::model::OrderCancel::default());
+        if action == "modify" {
+            let order = Order { action: "BUY".into(), total_quantity: 4.0, order_type: "LMT".into(), lmt_price: 121.0, ..Default::default() };
+            client.try_place_order(42, &spy(), &order).unwrap();
+        } else {
+            if action == "cancel" { client.cancel_order(42, crate::types::model::OrderCancel::default()); }
             // What the engine writes into the book as the withdrawal goes out.
             shared.push_call_record(crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(
                 crate::types::OrderUpdate {
                     order_id: 42, instrument: 0, status: OrderStatus::PendingCancel,
                     filled_qty: 0.0, remaining_qty: 4.0, avg_price: 0, perm_id: 42, parent_id: 0, timestamp_ns: 0,
-                })));
-        } else {
-            let order = Order { action: "BUY".into(), total_quantity: 4.0, order_type: "LMT".into(), lmt_price: 121.0, ..Default::default() };
-            client.try_place_order(42, &spy(), &order).unwrap();
+                },
+                action == "cancel",
+            )));
         }
         settled(&client, &rx);
         heard.events.clear();
-        startup_report(&rx, &shared, if cancel {
-            "11=42.1|41=42.0|6121=|6119=|37=mine|150=4|39=4|20=0|14=0|151=0|"
-        } else {
+        startup_report(&rx, &shared, if action == "modify" {
             "11=42.0|6121=|6119=|37=mine|44=121|100=SMART|"
+        } else {
+            "11=42.1|41=42.0|6121=|6119=|37=mine|150=4|39=4|20=0|14=0|151=0|"
         });
         client.process_msgs(&mut heard);
-        let status = if cancel { "order_status:42:Cancelled" } else { "order_status:42:" };
-        assert!(heard.events.iter().any(|e| e.starts_with(status)), "cancel={cancel}: {:?}", heard.events);
+        let status = if action == "modify" { "order_status:42:" } else { "order_status:42:Cancelled" };
+        assert_eq!(heard.events.iter().any(|e| e.starts_with(status)), told, "{action}: {:?}", heard.events);
+    }
+}
+
+/// A cancel names this client's orders only: under a number another API
+/// client's order is held by, a gateway finds none of this client's, and the
+/// other client's order is not withdrawn.
+#[test]
+fn a_cancel_under_another_clients_number_is_not_found() {
+    for (stated, refused) in [("6119=0", true), ("6119=7", true), ("6119=", false)] {
+        let (client, rx, shared) = test_client();
+        shared.orders.set_api_client_id(1);
+        client.core.set_api_client_id(1);
+        let (start, _) = std::sync::mpsc::channel();
+        let client = client.finish_connect(start).unwrap();
+        startup_report(&rx, &shared, &format!("11=700.0|6121=55|{stated}|37=theirs|"));
+        startup_report(&rx, &shared, "11=*|55=*|");
+        settled(&client, &rx);
+        client.cancel_order(55, crate::types::model::OrderCancel::default());
+        let told = settled(&client, &rx);
+        assert_eq!(told.iter().any(|e| e.starts_with("error:55:10147:")), refused, "{stated}: {told:?}");
     }
 }
 

@@ -1259,6 +1259,23 @@ impl HotLoop {
             ));
             return Step::Done;
         }
+        // An order the venue states as another API client's is not one this
+        // client's number names: a gateway withdraws a client's own orders,
+        // and finds none of its own under the number.
+        if self.shared.orders.attached_order_metadata(order_id)
+            .and_then(|held| held.api_client_id)
+            .is_some_and(|client| client != self.shared.orders.api_client_id())
+        {
+            self.refuse_order(
+                api_id,
+                OrderOp::Cancel,
+                Refusal::stated(
+                    CANCEL_ORDER_NOT_FOUND,
+                    format!("OrderId {api_id} that needs to be cancelled is not found."),
+                ),
+            );
+            return Step::Done;
+        }
         // Read once the venue has named the account's working set: an order
         // carried over from a previous session is unknown until then, and
         // refusing a withdrawal of a live order is worse than sending one the

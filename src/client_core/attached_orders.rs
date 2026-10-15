@@ -30,9 +30,6 @@ pub(crate) struct AttachedState {
     client_id: i32,
     pub(crate) family_keys: HashMap<u64, String>,
     pub(crate) sent_api_ids: HashSet<i64>,
-    /// Orders a caller on this session asked to withdraw, by the number they
-    /// are held under, until the withdrawal is written into the book.
-    cancels_asked: HashSet<u64>,
 }
 
 impl AttachedState {
@@ -186,25 +183,15 @@ impl ClientCore {
         }
     }
 
-    /// A caller on this session withdraws an order it did not place: what the
-    /// venue says of it from then on answers this session. Kept until the
-    /// withdrawal is written into the book, which is where the order's record
-    /// is made where none was held.
-    pub(crate) fn note_cancel_asked(&self, order_id: i64) {
-        let wire = self.wire_order_id(order_id).unwrap_or(order_id as u64);
-        self.attached_orders.lock().unwrap().cancels_asked.insert(wire);
-        self.answer_here_where_asked(wire);
-    }
-
-    /// The order a caller withdrew answers this session, where its reports
-    /// name no client or this session's: under another's, the number the
-    /// caller states names this session's order, not that one.
-    pub(crate) fn answer_here_where_asked(&self, wire: u64) {
-        let mut state = self.attached_orders.lock().unwrap();
-        let own = state.client_id;
-        if let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&wire)
-            && (tracked.order.client_id == 0 || tracked.order.client_id == own)
-            && state.cancels_asked.remove(&wire)
+    /// A caller on this session withdrew this order alone: what the venue
+    /// says of it from then on answers this session. Where the venue states
+    /// the order as another API client's, the withdrawal named this session's
+    /// number, not that order.
+    pub(crate) fn answer_here(&self, shared: &SharedState, wire: u64) {
+        let own = self.attached_orders.lock().unwrap().client_id;
+        let stated = shared.orders.attached_order_metadata(wire).and_then(|held| held.api_client_id);
+        if stated.is_none_or(|client| client == own)
+            && let Some(tracked) = self.open_orders.lock().unwrap().get_mut(&wire)
         {
             tracked.answered_here = true;
         }

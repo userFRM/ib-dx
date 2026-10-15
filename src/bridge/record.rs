@@ -370,8 +370,9 @@ pub enum OrderBook {
     RevisionRefused(crate::types::CancelReject, Option<Box<StatedTerms>>),
     /// A cancel went out. The order reads as being withdrawn to a caller
     /// asking for the open orders, and nothing is said of it until the venue
-    /// reports on it, as a gateway says nothing.
-    CancelSent(crate::types::OrderUpdate),
+    /// reports on it, as a gateway says nothing. Whether a caller asked to
+    /// withdraw this order alone, rather than everything.
+    CancelSent(crate::types::OrderUpdate, bool),
 }
 
 /// The terms a report states for an order, as a gateway takes them into its
@@ -1166,7 +1167,7 @@ fn call_owner(record: &Record) -> Option<Owner> {
         Record::MarketDataWithdrawn(req_id) => Some(Owner::Request(*req_id)),
         Record::OrderBook(OrderBook::Taken(taken)) => Some(Owner::Order(taken.order_id as i64)),
         Record::OrderBook(OrderBook::RevisionRefused(reject, _)) => Some(Owner::Order(reject.order_id as i64)),
-        Record::OrderBook(OrderBook::CancelSent(update)) => Some(Owner::Order(update.order_id as i64)),
+        Record::OrderBook(OrderBook::CancelSent(update, _)) => Some(Owner::Order(update.order_id as i64)),
         Record::OrderBook(OrderBook::Forgotten(id) | OrderBook::RevisionForgotten(id)) => {
             Some(Owner::Order(*id as i64))
         }

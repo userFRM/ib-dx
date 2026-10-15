@@ -2519,7 +2519,7 @@ fn a_cancel_the_drop_left_unanswered_is_sent_again_as_a_gateway_sends_it() {
             crate::bridge::Record::OrderUpdate(told) if told.update.order_id == 7 => {
                 Some(told.update.status)
             }
-            crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(told))
+            crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(told, _))
                 if told.order_id == 7 =>
             {
                 Some(OrderStatus::PendingCancel)

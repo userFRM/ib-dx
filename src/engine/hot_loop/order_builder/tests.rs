@@ -887,8 +887,8 @@ fn a_cancel_going_out_is_held_and_told_to_nobody() {
         contract: Default::default(), last_exec: Default::default(),
     });
 
-    synthesize_pending_cancel(&mut context, &shared, 7, &sink);
-    synthesize_pending_cancel(&mut context, &shared, 9, &sink);
+    synthesize_pending_cancel(&mut context, &shared, 7, &sink, true);
+    synthesize_pending_cancel(&mut context, &shared, 9, &sink, true);
 
     assert_eq!(context.order(7).unwrap().status, OrderStatus::PendingCancel);
     let records = shared.take_records(shared.next_seq(), crate::bridge::Take::Dispatch { bulletins: false });
@@ -920,8 +920,8 @@ fn synthesize_pending_cancel_skips_terminal_and_unknown_orders() {
     // Late cancel racing a fill: the order is done, no phase to report.
     context.insert_order(order(8, 10 * crate::types::QTY_SCALE, OrderStatus::Filled));
 
-    synthesize_pending_cancel(&mut context, &shared, 8, &None);
-    synthesize_pending_cancel(&mut context, &shared, 999, &None);
+    synthesize_pending_cancel(&mut context, &shared, 8, &None, true);
+    synthesize_pending_cancel(&mut context, &shared, 999, &None, true);
 
     assert_eq!(context.order(8).unwrap().status, OrderStatus::Filled);
     assert!(shared.take_records(shared.next_seq(), crate::bridge::Take::Dispatch { bulletins: false }).is_empty());

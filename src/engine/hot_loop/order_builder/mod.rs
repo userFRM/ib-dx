@@ -497,7 +497,7 @@ pub(crate) fn drain_and_send_orders(
             OrderRequest::Cancel { order_id, stated } => {
                 let result = send_cancel(conn, context, shared, account_id, order_id, &stated);
                 if result.is_ok() {
-                    synthesize_pending_cancel(context, shared, order_id, event_tx);
+                    synthesize_pending_cancel(context, shared, order_id, event_tx, true);
                 }
                 result
             }
@@ -517,7 +517,7 @@ pub(crate) fn drain_and_send_orders(
                         continue;
                     }
                     match send_cancel(conn, context, shared, account_id, oid, &stated) {
-                        Ok(()) => synthesize_pending_cancel(context, shared, oid, event_tx),
+                        Ok(()) => synthesize_pending_cancel(context, shared, oid, event_tx, false),
                         Err(e) => {
                             log::error!(
                                 "Failed to cancel order {oid}: {e} — its state is not known",
@@ -1345,6 +1345,7 @@ fn synthesize_pending_cancel(
     shared: &Arc<SharedState>,
     order_id: crate::types::OrderId,
     event_tx: &Option<crate::engine::hot_loop::EventSink>,
+    asked: bool,
 ) {
     // Where the order stood, for a refusal of this cancel to put back. One
     // already pending cancel stays so, and a cancel over it moves nothing.
@@ -1376,7 +1377,7 @@ fn synthesize_pending_cancel(
             parent_id: 0,
             timestamp_ns: context.now_ns(),
         };
-        shared.push_call_record(crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(update)));
+        shared.push_call_record(crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(update, asked)));
         crate::engine::hot_loop::emit(event_tx, crate::bridge::Event::OrderUpdate(update));
     }
 }
