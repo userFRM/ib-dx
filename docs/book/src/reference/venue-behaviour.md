@@ -661,7 +661,10 @@ not its API number, it finds none and is refused under 10147, *OrderId N that
 needs to be cancelled is not found.*, as a gateway refuses it, whether or not
 that other order has finished; nothing is withdrawn. An order whose reports
 name no client is this client's to withdraw, and once withdrawn here what the
-venue says of it is told to this session.
+venue says of it is told to this session. An order entered by hand states
+an API number of 0, which is none: client 0 withdraws it under the number it
+went to the venue under. A cancel that waits, behind a placement still being
+built, names the order its number names when it is taken.
 
 ## A cancel going out
 

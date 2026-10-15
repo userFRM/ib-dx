@@ -405,6 +405,11 @@ impl HotLoop {
         match &mut pending.cmd {
             ControlCommand::Place(p) => self.take_placement(p, &mut pending.lookup, &mut pending.loading, &mut pending.wire_id, &mut pending.asked_algorithms, pending.deadline),
             ControlCommand::CancelOrder { order_id, stated } => {
+                // Read again as it is taken: a cancel that waited names the
+                // order its number names now.
+                if let Some(wire) = asked.and_then(|asked| self.shared.orders.wire_order_id(asked)) {
+                    *order_id = wire;
+                }
                 let (order_id, stated) = (*order_id, stated.clone());
                 self.take_cancel(order_id, asked, &stated)
             }
@@ -1248,9 +1253,15 @@ impl HotLoop {
         // A gateway withdraws a client's own orders, by the number the client
         // knows each by, and finds none of its own under any other: not under
         // another client's number, nor under the number one of its own went to
-        // the venue under where that is not the order's API number.
+        // the venue under where that is not the order's API number. An order
+        // entered by hand states nought, which is no number: the client that
+        // sees it reaches it under the number it went to the venue under.
+        let by_hand = |asked: i64| asked == order_id as i64
+            && self.shared.orders.attached_order_metadata(order_id).is_some_and(|held| held.api_order_id == Some(0)
+                && held.api_client_id.is_none_or(|client| client == self.shared.orders.api_client_id()));
         if let Some(asked) = asked
             && self.shared.orders.wire_order_id(asked) != Some(order_id)
+            && !by_hand(asked)
         {
             self.refuse_order(
                 asked,

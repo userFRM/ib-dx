@@ -15377,20 +15377,24 @@ fn a_recovered_order_naming_no_client_is_told_once_modified_here() {
 #[test]
 fn a_cancel_under_another_clients_number_is_not_found() {
     let finished = "39=4|150=4|20=0|14=0|151=0|";
-    for (reports, asked, refused) in [
-        (vec!["11=700.0|6121=55|6119=0|37=theirs|"], 55, true),
-        (vec!["11=700.0|6121=55|6119=7|37=theirs|"], 55, true),
-        (vec!["11=700.0|6121=55|6119=|37=nobodys|"], 55, false),
+    for (own, reports, asked, refused) in [
+        (1, vec!["11=700.0|6121=55|6119=0|37=theirs|"], 55, true),
+        (1, vec!["11=700.0|6121=55|6119=7|37=theirs|"], 55, true),
+        (1, vec!["11=700.0|6121=55|6119=|37=nobodys|"], 55, false),
         // Finished, it is still another client's, and not found rather than done.
-        (vec!["11=700.0|6121=55|6119=7|37=theirs|", finished], 55, true),
+        (1, vec!["11=700.0|6121=55|6119=7|37=theirs|", finished], 55, true),
         // This client's own order, named by the number it went to the venue
         // under rather than its API number, and then by its API number.
-        (vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 700, true),
-        (vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 55, false),
+        (1, vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 700, true),
+        (1, vec!["11=700.0|6121=55|6119=1|37=mine|150=1|39=1|14=1|151=3|"], 55, false),
+        // One entered by hand states no API number, and client 0 reaches it
+        // under the number it went to the venue under; no other client does.
+        (0, vec!["11=901.0|6121=0|6119=0|37=hand|"], 901, false),
+        (1, vec!["11=901.0|6121=0|6119=0|37=hand|"], 901, true),
     ] {
         let (client, rx, shared) = test_client();
-        shared.orders.set_api_client_id(1);
-        client.core.set_api_client_id(1);
+        shared.orders.set_api_client_id(own);
+        client.core.set_api_client_id(own);
         let (start, _) = std::sync::mpsc::channel();
         let client = client.finish_connect(start).unwrap();
         startup_report(&rx, &shared, reports[0]);

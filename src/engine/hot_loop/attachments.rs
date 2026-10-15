@@ -455,20 +455,32 @@ mod tests {
 
     #[test]
     fn a_cancel_behind_preset_loading_withdraws_the_child_before_it_is_sent() {
-        let (mut engine, shared, send, mut peer) = engine();
-        shared.admit(&send, placement(true, true)).unwrap();
-        shared
-            .admit(&send, ControlCommand::CancelOrder { order_id: 11, stated: Default::default() })
-            .unwrap();
-        engine.poll_once();
-        answer(&shared, "OPR.3");
-        engine.poll_once();
-        engine.poll_attached_quotes(Instant::now() + Duration::from_secs(11));
-        engine.poll_once();
-        let sent = wire(&mut peer);
-        assert_eq!(submissions(&sent), ["10.0", "12.0"]);
-        assert!(!sent.contains("35=F|"), "an unsent child needs no venue cancel: {sent}");
-        assert!(shared.drain_refused().is_empty());
+        // Where another client's order holds the child's number, the child
+        // goes out under another, and the cancel names the child it waited
+        // behind, not the number it read when it came.
+        for held_elsewhere in [false, true] {
+            let (mut engine, shared, send, mut peer) = engine();
+            if held_elsewhere {
+                shared.orders.note_attached_order_metadata(11, crate::bridge::AttachedOrderMetadata {
+                    api_order_id: Some(55),
+                    api_client_id: Some(7),
+                    ..Default::default()
+                });
+            }
+            shared.admit(&send, placement(true, true)).unwrap();
+            shared
+                .admit(&send, ControlCommand::CancelOrder { order_id: 11, stated: Default::default() })
+                .unwrap();
+            engine.poll_once();
+            answer(&shared, "OPR.3");
+            engine.poll_once();
+            engine.poll_attached_quotes(Instant::now() + Duration::from_secs(11));
+            engine.poll_once();
+            let sent = wire(&mut peer);
+            assert_eq!(submissions(&sent), ["10.0", "12.0"], "held elsewhere: {held_elsewhere}");
+            assert!(!sent.contains("35=F|"), "an unsent child needs no venue cancel: {sent}");
+            assert!(shared.drain_refused().is_empty(), "held elsewhere: {held_elsewhere}");
+        }
     }
 
     #[test]

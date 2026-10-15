@@ -496,8 +496,10 @@ pub(crate) fn drain_and_send_orders(
             }
             OrderRequest::Cancel { order_id, stated } => {
                 let result = send_cancel(conn, context, shared, account_id, order_id, &stated);
+                // Taken whether or not it went: a re-send that failed is not
+                // re-sent, and the next cancel of the order is a caller's.
+                let asked = !context.cancels_resent.remove(&order_id);
                 if result.is_ok() {
-                    let asked = !context.cancels_resent.remove(&order_id);
                     synthesize_pending_cancel(context, shared, order_id, event_tx, asked);
                 }
                 result
