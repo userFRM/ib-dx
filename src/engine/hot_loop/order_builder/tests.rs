@@ -624,6 +624,42 @@ fn an_order_whose_write_failed_is_neither_rejected_nor_announced() {
     assert!(context.order(43).is_none(), "and the attempt itself is not tracked");
 }
 
+/// A cancel the recovery writes again is the recovery's, whether or not the
+/// write goes: one that failed leaves no mark behind, and the next cancel of
+/// the order is the caller's, answering this session.
+#[test]
+fn a_cancel_written_again_that_failed_leaves_the_next_to_the_caller() {
+    let open = || {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (peer, _) = listener.accept().unwrap();
+        (stream, peer)
+    };
+    let (failing, _first) = open();
+    failing.shutdown(std::net::Shutdown::Write).unwrap();
+    let (working, _second) = open();
+    let mut context = Context::new();
+    context.insert_order(order(42, 0, OrderStatus::Submitted));
+    context.cancels_resent.insert(42);
+    let shared = std::sync::Arc::new(SharedState::new());
+    let mut hb = crate::engine::hot_loop::HeartbeatState::new();
+    for stream in [failing, working] {
+        let mut conn = Some(crate::protocol::connection::Connection::new_raw(stream).unwrap());
+        context.pending_orders.push(crate::types::OrderRequest::Cancel { order_id: 42, stated: Default::default() });
+        drain_and_send_orders(&mut conn, &mut context, "DU1", &mut hb, false, &shared, false, &None, &mut 64);
+    }
+    let asked: Vec<bool> = shared
+        .take_records(shared.next_seq(), crate::bridge::Take::Dispatch { bulletins: false })
+        .into_iter()
+        .filter_map(|(_, record)| match record {
+            crate::bridge::Record::OrderBook(crate::bridge::OrderBook::CancelSent(told, asked))
+                if told.order_id == 42 => Some(asked),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(asked, [true], "the cancel that went is the caller's");
+}
+
 /// A replace names the order the broker knows, and a second replace names
 /// what the first one left it under. Stating anything else is an
 /// OrigClOrdID the broker has never seen, which it refuses.
