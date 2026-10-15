@@ -220,6 +220,8 @@ impl OrderState {
     pub(crate) fn next_negative_bound_id(&self) -> Option<i64> {
         let reserve = |floor: u64| {
             let mut reserved = None;
+            // `fetch_update` is `try_update` on newer toolchains; the declared minimum (1.89) has only this name.
+            #[allow(deprecated)]
             self.next_bound_id.fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
                 let magnitude = held.unsigned_abs().max(floor).max(2);
                 let id = i64::try_from(magnitude).ok()?.checked_neg()?;
